@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dabzo</string>
+    <string name="title_activity_main">Dabzo</string>
+    <string name="package_name">com.dabzo.app</string>
+    <string name="custom_url_scheme">com.dabzo.app</string>
+</resources>

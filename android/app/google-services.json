@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "651368129597",
+    "project_id": "dabzofb",
+    "storage_bucket": "dabzofb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:651368129597:android:803c9268cecc1a553b3654",
+        "android_client_info": {
+          "package_name": "com.dabzo.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "651368129597-915e9gamomgnnpd7gk5qla0n3psqrgim.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dabzo.app",
+            "certificate_hash": "179ff8174680fdfeaf146e9ca85b551f01a2df25"
+          }
+        },
+        {
+          "client_id": "651368129597-r7rpvu0gefa8av9202gfk82r7fq70n0j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD7aklPsIX3d37IDErVZ6_KSl_9jSZt3o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "651368129597-r7rpvu0gefa8av9202gfk82r7fq70n0j.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
