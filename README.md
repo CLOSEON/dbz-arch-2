@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="./releases/dabzo-v2-debug.apk">
+  <a href="https://github.com/CLOSEON/dbz-arch-2/raw/main/releases/dabzo-v2-debug.apk">
     <img src="https://img.shields.io/badge/Download-Latest%20APK-green?style=for-the-badge&logo=android" alt="Download APK" />
   </a>
 </p>
