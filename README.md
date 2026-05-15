@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="./releases/dabzo-v2-debug.apk">
+    <img src="https://img.shields.io/badge/Download-Latest%20APK-green?style=for-the-badge&logo=android" alt="Download APK" />
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" alt="React" />
   <img src="https://img.shields.io/badge/Capacitor-8-blue?style=for-the-badge&logo=capacitor" alt="Capacitor" />
@@ -140,6 +146,19 @@ npx cap open android
 
 ---
 
+## 📱 Mobile Builds (APK)
+
+The latest debug APK is available in the [releases](./releases) folder. 
+
+**To update the APK link:**
+1. Generate a new build in Android Studio (`Build > Build Bundle(s) / APK(s) > Build APK(s)`).
+2. Copy the generated `.apk` from `android/app/build/outputs/apk/debug/` to the `releases/` folder.
+3. Commit and push the changes.
+
+> [!TIP]
+> For production distribution, consider using GitHub Releases or the Play Store Console.
+
+---
 ## 🏗 Architecture & Design Patterns
 
 - **Static Export Flow**: Since Capacitor requires static assets, the project uses `output: 'export'` in `next.config.ts`. All routing is handled client-side via the Next.js router.
