@@ -125,23 +125,19 @@ NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=dabzofb
 ```
 
-### 4. Development
-```bash
-# Run web development server
-npm run dev
-```
+### Dabzo v2.0 | Meal Subscription Marketplace
 
-### 5. Mobile Synchronization
-```bash
-# 1. Build the static web bundle
-npm run build
+A premium, mobile-first marketplace for daily tiffin services, built with Next.js, Capacitor, and Firebase.
 
-# 2. Sync assets to native project
-npx cap sync android
+### 📚 Full Documentation
+For deep technical details, feature lists, and architecture overviews, see:
+**[DOCUMENTATION.md](./DOCUMENTATION.md)**
 
-# 3. Open in Android Studio
-npx cap open android
-```
+### 🚀 Quick Start
+1. `npm install`
+2. `npm run dev`
+3. `npx cap sync android` (for mobile)
+4. `npx cap open android`
 
 ---
 
