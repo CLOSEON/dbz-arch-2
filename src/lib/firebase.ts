@@ -38,7 +38,7 @@ try {
 export { db };
 
 // ─── Storage ─────────────────────────────────────────────────────────────────
-export const storage: FirebaseStorage = getStorage(app);
+export const storage: FirebaseStorage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 
 // ─── Functions ───────────────────────────────────────────────────────────────
 export const functions = getFunctions(app, 'us-central1'); 
