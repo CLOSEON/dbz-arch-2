@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "dabzofb"
+  },
+  "targets": {
+    "dabzofb": {
+      "hosting": {
+        "dabzo-site": [
+          "dabzo"
+        ]
+      }
+    }
+  }
+}

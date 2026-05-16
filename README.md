@@ -46,7 +46,7 @@ Designed as a high-fidelity **Single Page Application (SPA)**, it leverages **Ca
 - **Menu Management**: Update daily offerings with easy-to-use interfaces.
 - **Subscription Plans**: Custom pricing for different meal types and durations.
 - **Discount Codes**: Generate promotional codes to attract more customers.
-- **Cloudinary Integration**: High-quality image uploads for kitchens and dishes.
+- **Firebase Storage**: Secure image uploads for kitchens and dishes.
 
 ### 🚚 Delivery Operations
 - **Order Tracking**: View assigned deliveries with real-time status updates.
@@ -72,7 +72,7 @@ Designed as a high-fidelity **Single Page Application (SPA)**, it leverages **Ca
 | **Auth** | [Firebase Auth](https://firebase.google.com/docs/auth) | Native phone authentication support. |
 | **Backend** | [Cloud Functions](https://firebase.google.com/docs/functions) | Serverless logic for secure operations (Node 22). |
 | **Mobile** | [Capacitor 8](https://capacitorjs.com/) | Native bridge for Android/iOS integration. |
-| **Images** | [Cloudinary](https://cloudinary.com/) | On-the-fly image optimization and hosting. |
+| **Images** | [Firebase Storage](https://firebase.google.com/docs/storage) | Secure asset hosting and retrieval. |
 
 ---
 
@@ -123,7 +123,6 @@ Create a `.env.local` file in the root:
 # Firebase Client Config (Safe for browser)
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=dabzofb
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dqrd5odqi
 ```
 
 ### 4. Development

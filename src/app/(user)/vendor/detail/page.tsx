@@ -12,7 +12,7 @@ import { getDocs, collection, query, where, getDoc, doc } from 'firebase/firesto
 import { db } from '@/lib/firebase';
 import { createSubscription, getUserSubscriptions } from '@/lib/queries/subscriptions';
 import { validateDiscountCode } from '@/lib/queries/discounts';
-import { cloudinaryUrl } from '@/lib/cloudinary';
+import { getImageUrl } from '@/lib/storage';
 import { formatDate, toMillis, cn } from '@/lib/utils';
 import { SkeletonCard } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -187,7 +187,7 @@ export default function VendorDetailPage() {
       <div className="relative h-72 w-full bg-slate-200">
         {vendor.image ? (
           <Image 
-            src={cloudinaryUrl(vendor.image, 1000, 600)} 
+            src={getImageUrl(vendor.image)} 
             alt={vendor.name} 
             fill 
             className="object-cover"

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { updateUser } from '@/lib/queries/users';
-import { uploadImage, cloudinaryUrl } from '@/lib/cloudinary';
+import { uploadImage, getImageUrl } from '@/lib/storage';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -63,13 +63,6 @@ export default function ProfilePage() {
     { icon: '📦', label: 'My Subscriptions', href: '/orders' },
   ];
 
-  async function handleEnablePush() {
-    if (!user) return;
-    const { registerPushNotifications } = await import('@/lib/notifications/push');
-    await registerPushNotifications(user.id);
-    addToast('Requesting notification access...', 'info');
-  }
-
   return (
     <div className="animate-fade-in">
       {/* Profile Header */}
@@ -80,7 +73,7 @@ export default function ProfilePage() {
         >
           {user?.image ? (
             <Image 
-              src={cloudinaryUrl(user.image, 150, 150)} 
+              src={getImageUrl(user.image)} 
               alt={user.name || 'Profile'} 
               fill 
               className="object-cover" 
@@ -131,16 +124,6 @@ export default function ProfilePage() {
             </svg>
           </Link>
         ))}
-        
-        {/* Manual Push Trigger */}
-        <button
-          onClick={handleEnablePush}
-          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors border-t border-slate-100 text-left"
-        >
-          <span className="text-xl">🔔</span>
-          <span className="flex-1 text-sm font-semibold text-slate-800">Enable Notifications</span>
-          <span className="text-[10px] font-black text-brand bg-brand/10 px-2 py-0.5 rounded-full uppercase tracking-widest">Setup</span>
-        </button>
       </div>
 
       {/* Logout */}

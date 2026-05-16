@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { initializeFirestore, getFirestore, persistentLocalCache, Firestore } from 'firebase/firestore';
 import { getFunctions, Functions } from 'firebase/functions';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // ─── Firebase Configuration ─────────────────────────────────────────────────
 // These are safe to expose client-side — Firebase API keys are identifiers, not secrets.
@@ -36,5 +37,19 @@ try {
 }
 export { db };
 
+// ─── Storage ─────────────────────────────────────────────────────────────────
+export const storage: FirebaseStorage = getStorage(app);
+
 // ─── Functions ───────────────────────────────────────────────────────────────
 export const functions = getFunctions(app, 'us-central1'); 
+
+// ─── Messaging ───────────────────────────────────────────────────────────────
+export const getAppMessaging = async () => {
+  if (typeof window === 'undefined') return null;
+  const { getMessaging, isSupported } = await import('firebase/messaging');
+  const supported = await isSupported();
+  if (supported) {
+    return getMessaging(app);
+  }
+  return null;
+};

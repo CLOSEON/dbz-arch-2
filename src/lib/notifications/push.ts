@@ -2,12 +2,41 @@
 
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { db } from '@/lib/firebase';
+import { db, getAppMessaging } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { getToken, onMessage } from 'firebase/messaging';
 
 export async function registerPushNotifications(userId: string) {
   if (!Capacitor.isNativePlatform()) {
-    console.log('[PushNotifications] Skipping: Not a native platform');
+    console.log('[PushNotifications] Not native, trying Web Push');
+    try {
+      const messaging = await getAppMessaging();
+      if (!messaging) {
+        console.log('[PushNotifications] Web Push not supported');
+        return;
+      }
+      
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await getToken(messaging, {
+          // Add vapidKey here if Web Push throws an error
+        });
+        
+        if (token) {
+          console.log('[PushNotifications] Web Token generated:', token);
+          const userRef = doc(db, 'users', userId);
+          await updateDoc(userRef, { push_tokens: arrayUnion(token) });
+          
+          onMessage(messaging, (payload) => {
+            console.log('[PushNotifications] Web Foreground Message:', payload);
+          });
+        }
+      } else {
+        console.warn('[PushNotifications] Web Push permission denied');
+      }
+    } catch (err) {
+      console.error('[PushNotifications] Web Push Setup failed:', err);
+    }
     return;
   }
 

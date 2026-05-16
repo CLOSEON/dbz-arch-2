@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { updateUser } from '@/lib/queries/users';
-import { uploadImage, cloudinaryUrl } from '@/lib/cloudinary';
+import { uploadImage, getImageUrl } from '@/lib/storage';
 import Image from 'next/image';
 
 export function VendorProfileCard() {
@@ -87,7 +87,7 @@ export function VendorProfileCard() {
           {profile.image ? (
             <>
               <Image 
-                src={cloudinaryUrl(profile.image, 600, 300)} 
+                src={getImageUrl(profile.image)} 
                 alt="Profile" 
                 fill 
                 className="object-cover transition-transform group-hover:scale-105" 

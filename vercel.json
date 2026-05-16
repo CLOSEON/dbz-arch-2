@@ -1,7 +1,0 @@
-{
-  "cleanUrls": true,
-  "trailingSlash": true,
-  "framework": null,
-  "buildCommand": "npm run build",
-  "outputDirectory": "out"
-}

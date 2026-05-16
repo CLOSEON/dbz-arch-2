@@ -41,20 +41,3 @@ export function ticketStatusColor(status: TicketStatus): string {
   return 'bg-green-100 text-green-700';
 }
 
-export function sanitize(str: string | undefined | null): string {
-  if (!str) return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-export function slugify(str: string): string {
-  return str.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-}
-
-export function truncate(str: string, maxLen: number): string {
-  if (!str) return '';
-  return str.length <= maxLen ? str : str.slice(0, maxLen) + '…';
-}

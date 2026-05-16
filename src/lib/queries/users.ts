@@ -42,7 +42,7 @@ export async function resolveUserProfile(
   const userDoc = await getDoc(userRef);
 
   if (userDoc.exists()) {
-    const data = userDoc.data() as any;
+    const data = userDoc.data() as Partial<AppUser>;
     if (data.is_rejected) throw new Error('Account rejected.');
     return { user: { id: uid, ...data } as AppUser, isNewUser: false };
   }
@@ -59,13 +59,13 @@ export async function completeOnboarding(
   name: string,
   role: UserRole
 ): Promise<AppUser> {
-  const userData: any = {
+  const userData: Partial<AppUser> = {
     name,
     phone,
     role,
     is_approved: true,
     is_rejected: false,
-    created_at: Timestamp.now(),
+    created_at: Timestamp.now() as any, // Using any for Timestamp temporarily
   };
 
   if (role === 'vendor') {
@@ -86,7 +86,7 @@ export async function loginWithEmailPassword(
   const { user: authUser } = await signInWithEmailAndPassword(auth, email, password);
   const userDoc = await getDoc(doc(db, 'users', authUser.uid));
   if (!userDoc.exists()) throw new Error('Admin profile not found.');
-  const data = userDoc.data() as any;
+  const data = userDoc.data() as Partial<AppUser>;
   if (data.role !== 'admin') throw new Error('Unauthorized.');
   return { id: authUser.uid, ...data } as AppUser;
 }
@@ -117,8 +117,3 @@ export async function getApprovedVendors(): Promise<Vendor[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor));
 }
 
-export async function loginWithGoogle(): Promise<{ user: AppUser; isNewUser: boolean }> {
-  const provider = new GoogleAuthProvider();
-  const { user: authUser } = await signInWithPopup(auth, provider);
-  return resolveUserProfile(authUser.uid, authUser.phoneNumber || '');
-}

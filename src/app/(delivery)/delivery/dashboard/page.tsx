@@ -7,7 +7,7 @@ import { getAssignedDeliveries, updateDeliveryStatus } from '@/lib/queries/deliv
 import { Delivery, DeliveryStatus } from '@/types';
 import { Truck, Navigation, Clock, CheckCircle2, Loader2, Camera } from 'lucide-react';
 import Image from 'next/image';
-import { uploadImage, cloudinaryUrl } from '@/lib/cloudinary';
+import { uploadImage, getImageUrl } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
 import { useRef } from 'react';
 
@@ -100,7 +100,7 @@ export default function DeliveryDashboard() {
           >
             {user?.image ? (
               <Image 
-                src={cloudinaryUrl(user.image, 100, 100)} 
+                src={getImageUrl(user.image)} 
                 alt={user.name || 'Profile'} 
                 fill 
                 className="object-cover" 

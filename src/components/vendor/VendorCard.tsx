@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Vendor } from '@/types';
-import { cloudinaryUrl } from '@/lib/cloudinary';
+import { getImageUrl } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 
 interface VendorCardProps {
@@ -25,7 +25,7 @@ export function VendorCard({ vendor, index = 0 }: VendorCardProps) {
       <div className="relative h-44 bg-slate-50">
         {vendor.image ? (
           <Image
-            src={cloudinaryUrl(vendor.image, 500, 300)}
+            src={getImageUrl(vendor.image)}
             alt={vendor.name}
             fill
             className="object-cover"

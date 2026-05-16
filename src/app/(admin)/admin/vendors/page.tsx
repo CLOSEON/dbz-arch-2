@@ -6,7 +6,7 @@ import { AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { Search, Check, X, Store, MoreVertical } from 'lucide-react';
 import Image from 'next/image';
-import { cloudinaryUrl } from '@/lib/cloudinary';
+import { getImageUrl } from '@/lib/storage';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 
@@ -108,7 +108,7 @@ export default function AdminVendors() {
                   <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-xl overflow-hidden relative">
                     {v.image ? (
                       <Image 
-                        src={v.image.startsWith('http') ? v.image : cloudinaryUrl(v.image, 100, 100)} 
+                        src={v.image.startsWith('http') ? v.image : getImageUrl(v.image)} 
                         alt="" 
                         fill 
                         className="object-cover" 

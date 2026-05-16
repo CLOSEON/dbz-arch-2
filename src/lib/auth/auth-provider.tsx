@@ -14,7 +14,6 @@ import { auth, db } from '../firebase';
 import { useAuthStore } from '@/store/authStore';
 import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@/types';
-import { registerPushNotifications } from '../notifications/push';
 import { Logo } from '@/components/shared/Logo';
 
 interface AuthProviderProps {
@@ -44,11 +43,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             // We can't easily "force" the Web SDK to have the user without a token,
             // but we can at least ensure the Zustand store has the basic info 
             // so the AuthGuard doesn't redirect while we are still initializing.
+            const existingUser = useAuthStore.getState().user;
             const nativeUser: AppUser = {
               id: result.user.uid,
               phone: result.user.phoneNumber || '',
               name: (result.user as any).displayName || '',
-              role: 'user', // Will be refined by Firestore check below
+              role: existingUser?.role || 'user', // Preserve existing role if any
             };
             setUser(nativeUser);
           }
@@ -66,11 +66,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         if (firebaseUser) {
           // Immediately set basic user info so the UI is responsive
+          const existingUser = useAuthStore.getState().user;
           const basicUser: AppUser = {
             id: firebaseUser.uid,
             phone: firebaseUser.phoneNumber || '',
-            name: '',
-            role: 'user',
+            name: existingUser?.name || '',
+            role: existingUser?.role || 'user',
           };
           setUser(basicUser);
 
@@ -81,7 +82,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
               const data = userDoc.data();
               setUser({ id: firebaseUser.uid, ...data } as AppUser);
               
-              // Register for push notifications
+              // Automatically register and prompt for push notifications
+              const { registerPushNotifications } = await import('@/lib/notifications/push');
               registerPushNotifications(firebaseUser.uid);
             }
           } catch (firestoreErr) {
