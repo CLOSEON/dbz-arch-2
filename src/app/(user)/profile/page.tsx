@@ -30,6 +30,8 @@ export default function ProfilePage() {
         await updateUser(user.id, { image: url });
         setUser({ ...user, image: url });
         addToast('Profile image updated! 📸', 'success');
+      } else {
+        addToast('Upload failed. Check your connection or storage rules.', 'error');
       }
     } catch (err) {
       addToast('Image upload failed', 'error');

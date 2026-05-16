@@ -5,6 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Dabzo',
   webDir: 'out',
 
+  server: {
+    androidScheme: 'https'
+  },
   plugins: {
     FirebaseAuthentication: {
       skipNativeAuth: false,

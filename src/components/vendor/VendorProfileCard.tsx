@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { updateUser } from '@/lib/queries/users';
@@ -20,6 +20,18 @@ export function VendorProfileCard() {
     image: user?.image || '',
   });
 
+  // Sync state when user hydrates (critical for mobile app restarts)
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        name: user.name || '',
+        cuisine_type: user.cuisine_type || '',
+        phone: user.phone || '',
+        image: user.image || '',
+      });
+    }
+  }, [user]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -37,6 +49,8 @@ export function VendorProfileCard() {
           setUser({ ...user, image: url });
           addToast('Profile image updated! 📸', 'success');
         }
+      } else {
+        addToast('Upload failed. Check your internet or CORS settings.', 'error');
       }
     } catch (err) {
       addToast('Image upload failed', 'error');

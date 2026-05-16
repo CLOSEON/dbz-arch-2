@@ -8,6 +8,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -26,89 +27,83 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const setHydrated = useAuthStore((s) => s.setHydrated);
   const [initializing, setInitializing] = useState(true);
   const mounted = useRef(true);
+  const router = useRouter();
 
   useEffect(() => {
+    // ─── Native Back Button Handling ─────────────────────────────────────────
+    let backListener: any;
+    const setupBackButton = async () => {
+      if (Capacitor.isNativePlatform()) {
+        const { App } = await import('@capacitor/app');
+        backListener = await App.addListener('backButton', (data) => {
+          if (window.location.pathname === '/' || window.location.pathname.includes('dashboard')) {
+            // If on a main dashboard, maybe exit or minimize
+            App.exitApp();
+          } else {
+            window.history.back();
+          }
+        });
+      }
+    };
+    setupBackButton();
     mounted.current = true;
 
     // ─── Native Auth Sync ──────────────────────────────────────────────────
-    // On native platforms, the JS SDK might lose session on restart.
-    // We check if the Capacitor plugin has a session and sync it.
     const syncNativeAuth = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
-          const result = await FirebaseAuthentication.getCurrentUser();
-          if (result.user && !auth.currentUser) {
-            console.log('[AuthProvider] Syncing native user to web store');
-            // We can't easily "force" the Web SDK to have the user without a token,
-            // but we can at least ensure the Zustand store has the basic info 
-            // so the AuthGuard doesn't redirect while we are still initializing.
-            const existingUser = useAuthStore.getState().user;
-            const nativeUser: AppUser = {
-              id: result.user.uid,
-              phone: result.user.phoneNumber || '',
-              name: (result.user as any).displayName || '',
-              role: existingUser?.role || 'user', // Preserve existing role if any
-            };
-            setUser(nativeUser);
-          }
-        } catch (e) {
-          console.warn('[AuthProvider] Native sync failed:', e);
-        }
+      if (!Capacitor.isNativePlatform()) return null;
+      try {
+        const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+        const result = await FirebaseAuthentication.getCurrentUser();
+        return result.user || null;
+      } catch (e) {
+        console.warn('[AuthProvider] Native sync failed:', e);
+        return null;
       }
     };
-
-    syncNativeAuth();
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
       if (!mounted.current) return;
 
       try {
-        if (firebaseUser) {
-          // Immediately set basic user info so the UI is responsive
-          const existingUser = useAuthStore.getState().user;
-          const basicUser: AppUser = {
-            id: firebaseUser.uid,
-            phone: firebaseUser.phoneNumber || '',
-            name: existingUser?.name || '',
-            role: existingUser?.role || 'user',
-          };
-          setUser(basicUser);
+        let activeUser = firebaseUser;
 
-          // Then fetch the full Firestore profile
-          try {
-            const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-            if (userDoc.exists() && mounted.current) {
-              const data = userDoc.data();
-              setUser({ id: firebaseUser.uid, ...data } as AppUser);
-              
-              // Automatically register and prompt for push notifications
-              const { registerPushNotifications } = await import('@/lib/notifications/push');
-              registerPushNotifications(firebaseUser.uid);
-            }
-          } catch (firestoreErr) {
-            // Firestore may be offline — localStorage/basic user still works
-            console.warn('[AuthProvider] Firestore profile fetch failed:', firestoreErr);
-          }
-        } else {
-          // On native, if Firebase Web SDK says null, double check Capacitor 
-          // before force-logging out.
-          let hasNativeSession = false;
-          if (Capacitor.isNativePlatform()) {
-             try {
-               const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
-               const result = await FirebaseAuthentication.getCurrentUser();
-               if (result.user) hasNativeSession = true;
-             } catch {}
-          }
-          
-          if (!hasNativeSession) {
-            logout();
+        // If Web SDK says null, double check Native side on Capacitor
+        if (!activeUser && Capacitor.isNativePlatform()) {
+          const nativeUser = await syncNativeAuth();
+          if (nativeUser) {
+             console.log('[AuthProvider] Restored session from Native plugin');
+             activeUser = nativeUser as unknown as User;
           }
         }
+
+        if (activeUser) {
+          // 1. Initial hydration from Zustand (fast)
+          const existingUser = useAuthStore.getState().user;
+          if (!existingUser || existingUser.id !== activeUser.uid) {
+            setUser({
+              id: activeUser.uid,
+              phone: activeUser.phoneNumber || '',
+              name: '',
+              role: 'user'
+            });
+          }
+
+          // 2. Fetch full profile from Firestore
+          const userDoc = await getDoc(doc(db, 'users', activeUser.uid));
+          if (userDoc.exists() && mounted.current) {
+            const data = userDoc.data();
+            setUser({ id: activeUser.uid, ...data } as AppUser);
+            
+            // Register push tokens
+            import('@/lib/notifications/push').then(({ registerPushNotifications }) => {
+              registerPushNotifications(activeUser!.uid);
+            });
+          }
+        } else {
+          logout();
+        }
       } catch (err) {
-        console.error('[AuthProvider] Auth state change error:', err);
-        logout();
+        console.error('[AuthProvider] Auth loop error:', err);
       } finally {
         if (mounted.current) {
           setInitializing(false);
@@ -120,6 +115,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       mounted.current = false;
       unsubscribe();
+      if (backListener) backListener.remove();
     };
   }, [setUser, logout, setHydrated]);
 
