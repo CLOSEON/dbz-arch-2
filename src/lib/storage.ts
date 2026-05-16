@@ -1,44 +1,52 @@
 import { storage } from './firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 /**
  * Uploads a file to Firebase Storage and returns the download URL.
  * Optimized for both Web and Native (Capacitor) environments.
  */
 export async function uploadImage(file: File | Blob, path = 'uploads'): Promise<string | null> {
-  if (!file) return null;
+  if (!file || file.size === 0) {
+    console.error('[Storage] Invalid file or empty blob');
+    return null;
+  }
 
   try {
-    console.log('[Storage] Starting upload for:', (file as File).name || 'blob', 'Size:', file.size);
+    console.log('[Storage] Starting upload for:', (file as File).name || 'image', 'Size:', file.size);
     
-    const filename = `${Date.now()}-${(file as File).name || 'upload.jpg'}`;
+    // Sanitize filename
+    const cleanName = ((file as File).name || 'upload.jpg').replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+    const filename = `${Date.now()}-${cleanName}`;
     const storageRef = ref(storage, `${path}/${filename}`);
     
-    // Set metadata
     const metadata = {
       contentType: file.type || 'image/jpeg',
     };
     
-    // CRITICAL FOR MOBILE: Convert to ArrayBuffer
-    // Some mobile webviews have trouble streaming a File object directly to Firebase
+    // Convert to ArrayBuffer for maximum compatibility
     const arrayBuffer = await file.arrayBuffer();
     
-    console.log('[Storage] ArrayBuffer created, starting uploadBytes...');
-    const snapshot = await uploadBytes(storageRef, arrayBuffer, metadata);
-    
-    console.log('[Storage] uploadBytes complete, fetching URL...');
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    
-    console.log('[Storage] Upload success:', downloadURL);
-    return downloadURL;
+    return new Promise((resolve) => {
+      const uploadTask = uploadBytesResumable(storageRef, arrayBuffer, metadata);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log(`[Storage] Upload is ${progress.toFixed(0)}% done`);
+        }, 
+        (error) => {
+          console.error('[Storage] Upload task failed:', error);
+          resolve(null);
+        }, 
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log('[Storage] Upload success:', downloadURL);
+          resolve(downloadURL);
+        }
+      );
+    });
   } catch (err: any) {
-    console.error('[Storage] Firebase Storage upload error:', err);
-    // Explicitly check for CORS or Permission issues
-    if (err.code === 'storage/unauthorized') {
-      console.error('[Storage] ERROR: Unauthorized. Check Firebase Storage rules.');
-    } else if (err.code === 'storage/retry-limit-exceeded') {
-      console.error('[Storage] ERROR: Network timeout or CORS issue.');
-    }
+    console.error('[Storage] Firebase Storage unexpected error:', err);
     return null;
   }
 }
