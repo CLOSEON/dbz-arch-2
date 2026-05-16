@@ -15,21 +15,21 @@ export async function uploadImage(file: File | Blob, path = 'uploads'): Promise<
     const filename = `${Date.now()}-${((file as File).name || 'img.jpg').replace(/[^a-z0-9.]/gi, '_')}`;
     const storageRef = ref(storage, `${path}/${filename}`);
     const metadata = { contentType: file.type || 'image/jpeg' };
-    
+
     console.log('[Storage] Starting upload:', filename);
 
     return new Promise((resolve) => {
       const reader = new FileReader();
-      
+
       reader.onloadend = async () => {
         const blobData = new Blob([reader.result as ArrayBuffer], { type: metadata.contentType });
         const uploadTask = uploadBytesResumable(storageRef, blobData, metadata);
 
-        uploadTask.on('state_changed', 
+        uploadTask.on('state_changed',
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             console.log(`[Storage] Progress: ${progress.toFixed(0)}%`);
-          }, 
+          },
           (error) => {
             console.error('[Storage] TASK ERROR:', error);
             // Visual alert for mobile debugging
@@ -37,7 +37,7 @@ export async function uploadImage(file: File | Blob, path = 'uploads'): Promise<
               alert(`Upload Error: ${error.message} (Code: ${error.code})`);
             }
             resolve(null);
-          }, 
+          },
           async () => {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             console.log('[Storage] SUCCESS:', url);
