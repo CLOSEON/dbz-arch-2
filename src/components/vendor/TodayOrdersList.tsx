@@ -161,7 +161,7 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
   }
 
   return (
-    <div className="space-y-6 w-full max-w-lg mx-auto p-4 pb-24">
+    <div className="space-y-6 w-full pb-24">
       {/* Errors Notification */}
       {error && (
         <div className="bg-rose-50 border border-rose-100 rounded-3xl p-4 flex items-start gap-3 text-rose-700 text-sm">

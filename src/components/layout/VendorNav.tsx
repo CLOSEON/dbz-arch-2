@@ -94,19 +94,19 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center flex-1 py-1 gap-1 transition-all duration-200 outline-none select-none touch-none',
+                'flex flex-col items-center justify-center flex-1 py-1 gap-0.5 transition-all duration-300 outline-none select-none touch-none',
                 active ? 'text-brand' : 'text-slate-400'
               )}
             >
               <div className={cn(
-                "transition-transform duration-200",
-                active ? "scale-110" : ""
+                "transition-transform duration-300",
+                active ? "scale-110 -translate-y-0.5" : "hover:scale-110 hover:-translate-y-0.5"
               )}>
                 {item.icon(active)}
               </div>
               <span className={cn(
-                'text-[9px] font-black uppercase tracking-widest transition-opacity duration-200',
-                active ? 'opacity-100' : 'opacity-60'
+                'text-[10px] font-bold tracking-wide transition-all duration-300 overflow-hidden whitespace-nowrap',
+                active ? 'opacity-100 max-h-4' : 'opacity-0 max-h-0'
               )}>
                 {item.label}
               </span>

@@ -19,8 +19,8 @@ export default function VendorOrdersPage() {
   }
 
   return (
-    <div className="p-6 max-w-lg mx-auto space-y-6">
-      <div className="px-4 mt-2">
+    <div className="px-5 py-4 max-w-lg mx-auto space-y-6">
+      <div className="mt-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
           Daily Kitchen Operations
         </span>
