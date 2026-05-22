@@ -135,12 +135,9 @@ export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
   console.log(`[Auth] Sending OTP to ${phoneNumber} (platform: ${isNative ? 'native' : 'web'})`);
 
   try {
-    // Force web flow for test numbers so JS SDK gets properly signed in
-    if (isNative && !isTestAccount(phoneNumber)) {
-      return await sendOtpNative(phoneNumber);
-    } else {
-      return await sendOtpWeb(phoneNumber);
-    }
+    // Force web flow for all numbers so JS SDK gets properly signed in
+    // This prevents "insufficient permissions" when using Firestore Web SDK on Capacitor
+    return await sendOtpWeb(phoneNumber);
   } catch (err: any) {
     console.error('[Auth] sendOtp error:', err);
     return mapFirebaseError(err);
@@ -232,47 +229,13 @@ export async function verifyOtp(verificationId: string, code: string): Promise<V
 
   try {
     if (_confirmationResult) {
-      // Web path (used always on web, and used on native for test accounts)
+      // Web path (used for all auth now to ensure JS SDK sync)
       const result = await _confirmationResult.confirm(code);
       _confirmationResult = null;
       cleanupAuth();
       return { success: true, user: result.user };
     }
-
-    if (isNative) {
-      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
-      const result: any = await FirebaseAuthentication.confirmVerificationCode({
-        verificationId,
-        verificationCode: code
-      });
-      
-      cleanupAuth();
-
-      if (result.user) {
-         // Attempt to sync with web SDK if credential is provided
-         if (result.credential) {
-            try {
-              const credential = PhoneAuthProvider.credential(
-                verificationId, // some providers use this
-                code
-              );
-              // Wait, the credential from result might be what we need, but PhoneAuthProvider.credential 
-              // is safer to try if we want Web SDK access. 
-              // Actually, we can just return the native user. 
-            } catch (e) {
-               console.warn('Native auth sync to web SDK failed, returning native user', e);
-            }
-         }
-         return { success: true, user: result.user };
-      }
-      return { success: false, error: 'Verification failed: no user returned.' };
-    }
-
-    // Web fallback path (should not happen if isNative is true, but just in case)
-    const credential = PhoneAuthProvider.credential(verificationId, code);
-    const { user } = await signInWithCredential(auth, credential);
-    cleanupAuth();
-    return { success: true, user };
+    return { success: false, error: 'Session expired. Request a new OTP.' };
 
   } catch (err: any) {
     console.error('[Auth] verifyOtp error:', err);
