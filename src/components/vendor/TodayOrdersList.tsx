@@ -161,7 +161,7 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
   }
 
   return (
-    <div className="space-y-6 w-full max-w-lg mx-auto p-4">
+    <div className="space-y-6 w-full max-w-lg mx-auto p-4 pb-24">
       {/* Errors Notification */}
       {error && (
         <div className="bg-rose-50 border border-rose-100 rounded-3xl p-4 flex items-start gap-3 text-rose-700 text-sm">
@@ -224,20 +224,20 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
                   transition={{ duration: 0.2, delay: index * 0.05 }}
                   className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm flex items-center justify-between hover:border-brand/20 transition-all group"
                 >
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-2">
                     <div className="w-11 h-11 bg-slate-50 group-hover:bg-brand/5 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-brand transition-all shrink-0">
                       <User className="w-5 h-5" />
                     </div>
-                    <div>
-                      <p className="text-sm font-black text-slate-900 group-hover:text-brand transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black text-slate-900 group-hover:text-brand transition-colors truncate">
                         Meal Batch ID: #{order.id.slice(-4).toUpperCase()}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide truncate max-w-[120px]">
                           {order.meal.name}
                         </span>
-                        <span className="w-1 h-1 rounded-full bg-slate-300" />
-                        <span className={`text-[10px] font-black uppercase tracking-wider ${
+                        <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                        <span className={`text-[10px] font-black uppercase tracking-wider shrink-0 ${
                           order.meal.type === 'lunch' ? 'text-orange-500' : 'text-indigo-500'
                         }`}>
                           {order.meal.type}
@@ -246,10 +246,10 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-1 shrink-0">
                     {getStatusBadge(order.status)}
-                    <span className="text-[9px] text-slate-400 font-medium">
-                      {order.address.line1.slice(0, 18)}...
+                    <span className="text-[9px] text-slate-400 font-medium truncate max-w-[80px]">
+                      {order.address.line1}
                     </span>
                   </div>
                 </motion.div>
