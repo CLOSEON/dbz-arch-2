@@ -50,11 +50,23 @@ export async function createSubscription(data: {
   discount_pct?: number;
   promo_code?: string;
 }): Promise<string> {
-  const ref = await addDoc(collection(db, 'subscriptions'), {
-    ...data,
+  const payload: any = {
+    user_id: data.user_id,
+    vendor_id: data.vendor_id,
+    plan_id: data.plan_id,
+    meal_type: data.meal_type,
     status: 'active',
     created_at: Timestamp.now(),
-  });
+  };
+
+  if (data.discount_pct !== undefined && data.discount_pct !== null) {
+    payload.discount_pct = data.discount_pct;
+  }
+  if (data.promo_code !== undefined && data.promo_code !== null) {
+    payload.promo_code = data.promo_code;
+  }
+
+  const ref = await addDoc(collection(db, 'subscriptions'), payload);
   return ref.id;
 }
 

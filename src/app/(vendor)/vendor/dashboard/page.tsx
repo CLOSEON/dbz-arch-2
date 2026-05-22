@@ -1,15 +1,66 @@
 'use client';
-
-import { Users, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, CheckCircle, Navigation } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { VendorProfileCard } from '@/components/vendor/VendorProfileCard';
 import { VendorReviews } from '@/components/vendor/VendorReviews';
+import { getVendorDeliveries } from '@/lib/queries/delivery';
+import { getActiveDeliveryPartners } from '@/lib/queries/admin';
+import dynamic from 'next/dynamic';
+
+const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-64 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-center animate-pulse">
+      <Navigation className="w-8 h-8 text-slate-300" />
+    </div>
+  )
+});
 
 export default function VendorDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
+  const [fleetLocations, setFleetLocations] = useState<any[]>([]);
+
+  // Computed state for the map
+  const partnerLocations = fleetLocations.filter(p => 
+    activeDeliveries.some(d => d.assigned_to === p.id && d.status === 'picked_up')
+  );
+
+  useEffect(() => {
+    let unsubscribeDeliveries: (() => void) | undefined;
+    let unsubscribeFleet: (() => void) | undefined;
+
+    if (user?.id) {
+      import('firebase/firestore').then(({ collection, query, where, onSnapshot }) => {
+        import('@/lib/firebase').then(({ db }) => {
+          
+          // 1. Listen to vendor's deliveries
+          const qDel = query(collection(db, 'deliveries'), where('vendor_id', '==', user.id));
+          unsubscribeDeliveries = onSnapshot(qDel, (snap) => {
+            setActiveDeliveries(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+          });
+
+          // 2. Listen to all fleet locations
+          const qFleet = query(collection(db, 'users'), where('role', '==', 'delivery'));
+          unsubscribeFleet = onSnapshot(qFleet, (snap) => {
+            const fleet = snap.docs
+              .map(d => ({ id: d.id, ...d.data() } as any))
+              .filter(u => u.location && u.location.lat && u.location.lng);
+            setFleetLocations(fleet);
+          });
+        });
+      });
+    }
+
+    return () => {
+      if (unsubscribeDeliveries) unsubscribeDeliveries();
+      if (unsubscribeFleet) unsubscribeFleet();
+    };
+  }, [user?.id]);
 
   if (user?.role === 'vendor' && !user.is_approved) {
     return (
@@ -73,6 +124,28 @@ export default function VendorDashboard() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Fleet Tracking Map */}
+      <div className="bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-slate-900 flex items-center gap-2">
+            <Navigation className="w-5 h-5 text-emerald-500" />
+            Active Deliveries
+          </h3>
+          <span className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-full">
+            {partnerLocations.length} on route
+          </span>
+        </div>
+        <DeliveryMap 
+          markers={partnerLocations.map(p => ({
+            id: p.id,
+            lat: p.location.lat,
+            lng: p.location.lng,
+            title: p.name || 'Delivery Partner',
+            subtitle: p.phone
+          }))} 
+        />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 items-start">

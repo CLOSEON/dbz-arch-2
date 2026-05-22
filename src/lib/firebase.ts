@@ -30,6 +30,7 @@ let db: Firestore;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache(),
+    ignoreUndefinedProperties: true,
   });
 } catch {
   // Already initialized (HMR / SSR)

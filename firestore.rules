@@ -1,8 +1,142 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Helper functions for custom claims
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.role == "admin" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+    function isDriver() {
+      return request.auth != null && (
+        request.auth.token.role == "delivery" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "delivery"
+      );
+    }
+    function isVendor() {
+      return request.auth != null && (
+        request.auth.token.role == "vendor" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "vendor"
+      );
+    }
+    function isCustomer() {
+      return request.auth != null && (
+        request.auth.token.role == "user" ||
+        request.auth.token.role == "customer" ||
+        request.auth.token.role == null ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "user" ||
+        !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAll(["role"])
+      );
+    }
+
+    match /deliveries/{deliveryId} {
+      allow create, delete: if isAdmin();
+      
+      allow read: if isAdmin() ||
+                  (isCustomer() && resource.data.customerId == request.auth.uid) ||
+                  (isVendor() && resource.data.vendorId == request.auth.uid) ||
+                  (isDriver() && resource.data.agentId == request.auth.uid);
+
+      allow update: if isAdmin() ||
+                    (isDriver() && 
+                     resource.data.agentId == request.auth.uid &&
+                     (
+                       // Status transition validations
+                       (resource.data.status == "pending" && request.resource.data.status == "picked_up") ||
+                       (resource.data.status == "picked_up" && request.resource.data.status == "delivered") ||
+                       (resource.data.status == "picked_up" && request.resource.data.status == "failed_attempt") ||
+                       // Allow updates that don't change the status
+                       (resource.data.status == request.resource.data.status)
+                     ));
+    }
+
+    // Rules for driver_profiles collection (delivery fleet details)
+    match /driver_profiles/{driverId} {
+      allow read, write: if request.auth != null && request.auth.uid == driverId;
+      allow read, write: if isAdmin();
+      allow read: if request.auth != null;
+    }
+
+    // Rules for users collection
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Rules for subscriptions collection
+    match /subscriptions/{subId} {
+      allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.vendor_id == request.auth.uid || isAdmin());
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.vendor_id == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Rules for daily_menus collection
+    match /daily_menus/{menuId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
+    }
+
+    // Rules for discount_codes collection
+    match /discount_codes/{codeId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
+    }
+
+    // Rules for reviews collection
+    match /reviews/{reviewId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow delete: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+    }
+
+    // Rules for support_tickets collection
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth != null && (resource.data.submitter_id == request.auth.uid || isAdmin());
+      allow create: if request.auth != null && request.resource.data.submitter_id == request.auth.uid;
+      allow update: if request.auth != null && (resource.data.submitter_id == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Rules for delivery_orders collection
+    match /delivery_orders/{orderId} {
+      // list: allow any authenticated user with a relevant role (token OR profile)
+      allow list: if request.auth != null && (
+        isAdmin() ||
+        request.auth.token.role == "delivery" ||
+        request.auth.token.role == "delivery_agent" ||
+        request.auth.token.role == "vendor" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "vendor" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "delivery" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "delivery_agent" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "user"
+      );
+      // get: resource.data IS available for single-document reads
+      allow get: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isAdmin()
+      );
+      // Allow creation client-side (e.g. rescheduling)
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Rules for agent_payouts collection
+    match /agent_payouts/{payoutId} {
+      allow read: if request.auth != null && (resource.data.agentId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
     }
   }
 }

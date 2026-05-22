@@ -12,6 +12,7 @@ export interface AppUser {
   is_approved?: boolean;
   is_rejected?: boolean;
   push_tokens?: string[];
+  location?: { lat: number; lng: number; updated_at: number }; // For live tracking
   // Vendor-specific
   kitchen_name?: string;
   bio?: string;
@@ -150,6 +151,8 @@ export interface Delivery {
   status: DeliveryStatus;
   customer_name: string;
   address: string;
+  lat?: number;
+  lng?: number;
   vendor_name: string;
   meal_type: MealType;
   time_slot: string;

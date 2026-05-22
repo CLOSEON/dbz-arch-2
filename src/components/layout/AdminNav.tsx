@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Settings, Truck, Package } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -15,6 +15,16 @@ const NAV_ITEMS = [
     href: '/admin/vendors',
     label: 'Vendors',
     icon: (active: boolean) => <Users className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/delivery',
+    label: 'Logistics',
+    icon: (active: boolean) => <Truck className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/orders',
+    label: 'Orders',
+    icon: (active: boolean) => <Package className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/admin/support',
@@ -39,7 +49,8 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
     return (
       <nav className="flex flex-col gap-1.5 px-4">
         {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          const isDash = item.href.endsWith('/dashboard');
+          const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
@@ -70,9 +81,10 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-100 safe-area-pb">
-      <div className="max-w-md mx-auto flex">
+      <div className="max-w-3xl mx-auto flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          const isDash = item.href.endsWith('/dashboard');
+          const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}

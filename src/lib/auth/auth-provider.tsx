@@ -13,6 +13,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuthStore } from '@/store/authStore';
+import { useNetworkStore } from '@/store/networkStore';
 import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@/types';
 import { Logo } from '@/components/shared/Logo';
@@ -48,10 +49,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setupBackButton();
     mounted.current = true;
 
-    // ─── Native Auth Sync ──────────────────────────────────────────────────
+    // ─── Native Auth Sync & Crashlytics ──────────────────────────────────────────────────
     const syncNativeAuth = async () => {
       if (!Capacitor.isNativePlatform()) return null;
       try {
+        const { FirebaseCrashlytics } = await import('@capacitor-firebase/crashlytics');
+        await FirebaseCrashlytics.setEnabled({ enabled: true }).catch(console.warn);
+
         const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const result = await FirebaseAuthentication.getCurrentUser();
         return result.user || null;
@@ -95,8 +99,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
             // Register push tokens
-            import('@/lib/notifications/push').then(({ registerPushNotifications }) => {
-              registerPushNotifications(activeUser!.uid);
+            import('@/lib/notifications/pushInit').then(({ initPushNotifications }) => {
+              initPushNotifications(activeUser!.uid);
             });
           }
         } else {
@@ -112,10 +116,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     });
 
+    // ─── Network & Offline Queue Setup ───────────────────────────────────────
+    let handleOnline: () => void;
+    let handleOffline: () => void;
+
+    import('@/lib/offline/actionQueue').then(({ processQueue }) => {
+      handleOnline = () => {
+        useNetworkStore.getState().setOnline(true);
+        processQueue();
+      };
+      
+      handleOffline = () => {
+        useNetworkStore.getState().setOnline(false);
+      };
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      if (Capacitor.isNativePlatform()) {
+        import('@capacitor/app').then(({ App }) => {
+          App.addListener('appStateChange', ({ isActive }) => {
+            if (isActive && useNetworkStore.getState().isOnline) {
+              processQueue();
+            }
+          });
+        });
+      }
+    });
+
     return () => {
       mounted.current = false;
       unsubscribe();
       if (backListener) backListener.remove();
+      if (handleOnline) window.removeEventListener('online', handleOnline);
+      if (handleOffline) window.removeEventListener('offline', handleOffline);
     };
   }, [setUser, logout, setHydrated]);
 

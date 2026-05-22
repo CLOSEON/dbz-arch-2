@@ -39,19 +39,24 @@ Dabzo connects local food vendors with customers looking for consistent, high-qu
 - **Phone-Only Registration**: Zero-friction onboarding using mobile OTP.
 - **Vendor Discovery**: Browse local kitchens with rating and price filters.
 - **Smart Subscriptions**: Subscribe to Lunch, Dinner, or Both with automated renewal tracking.
+- **Live Order Tracking**: View real-time location of the delivery partner carrying your daily meal via an integrated interactive map.
 - **Profile Management**: Update personal info and profile pictures directly from the native gallery.
 
 ### 👩‍🍳 Vendor (Partner)
 - **Digital Storefront**: Manage kitchen details, bio, and pricing.
 - **Daily Menu Management**: Update what’s cooking today with instant subscriber notifications.
+- **Active Deliveries Map**: Track the location of all assigned delivery partners en route with your orders in real-time.
 - **Subscriber Insights**: Track active customers and subscription trends.
 - **Account Stability**: Session-hardened dashboard that remembers the vendor even after app restarts.
 
 ### 🚛 Delivery (Logistics)
 - **Task Management**: Real-time list of pickups and deliveries.
+- **Continuous Background Tracking**: Leverages Capacitor Geolocation to continuously broadcast live GPS coordinates to Firebase.
+- **Interactive Navigation**: In-app map rendering current location and assigned tasks.
 - **Status Updates**: Simple, one-tap delivery confirmation (Pending → Delivered).
 
 ### 🛡 Admin (Superuser)
+- **Fleet Tracking System**: A master map view displaying the live locations of all active delivery personnel across the city.
 - **User Oversight**: Full control over user accounts and roles.
 - **Vendor Approval**: Manually approve or reject new kitchen partners.
 - **Support System**: Centralized ticketing for resolving customer/vendor issues.

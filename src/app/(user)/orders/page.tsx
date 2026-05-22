@@ -10,18 +10,74 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDate, formatMeal, toMillis } from '@/lib/utils';
 import type { EnrichedSubscription } from '@/types';
 import Link from 'next/link';
-import { Box, History, CreditCard, Utensils, Calendar, ChevronRight } from 'lucide-react';
+import { Box, History, CreditCard, Utensils, Calendar, ChevronRight, Navigation } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-64 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-center animate-pulse">
+      <Navigation className="w-8 h-8 text-slate-300" />
+    </div>
+  )
+});
 
 export default function OrdersPage() {
   const user = useAuthStore((s) => s.user);
   const addToast = useUiStore((s) => s.addToast);
 
   const [orders, setOrders] = useState<EnrichedSubscription[]>([]);
+  const [activeDelivery, setActiveDelivery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
 
   useEffect(() => {
-    if (user) loadOrders();
+    let unsubscribeDeliveries: (() => void) | undefined;
+    let unsubscribePartner: (() => void) | undefined;
+
+    if (user) {
+      loadOrders();
+
+      // Real-time tracking logic
+      import('firebase/firestore').then(({ collection, query, where, onSnapshot, doc }) => {
+        import('@/lib/firebase').then(({ db }) => {
+          
+          const qDel = query(collection(db, 'deliveries'), where('user_id', '==', user.id));
+          unsubscribeDeliveries = onSnapshot(qDel, (snap) => {
+            const deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+            const active = deliveries.find(d => d.status === 'picked_up');
+            
+            if (active && active.assigned_to) {
+              if (unsubscribePartner) unsubscribePartner();
+              
+              const partnerRef = doc(db, 'users', active.assigned_to);
+              unsubscribePartner = onSnapshot(partnerRef, (partnerSnap) => {
+                const partnerData = partnerSnap.data();
+                if (partnerData && partnerData.location) {
+                  setActiveDelivery({
+                    ...active,
+                    partnerLocation: partnerData.location,
+                    partnerName: partnerData.name || 'Delivery Partner',
+                    partnerPhone: partnerData.phone
+                  });
+                }
+              });
+            } else {
+              setActiveDelivery(null);
+              if (unsubscribePartner) {
+                unsubscribePartner();
+                unsubscribePartner = undefined;
+              }
+            }
+          });
+        });
+      });
+    }
+
+    return () => {
+      if (unsubscribeDeliveries) unsubscribeDeliveries();
+      if (unsubscribePartner) unsubscribePartner();
+    };
   }, [user]);
 
   async function loadOrders() {
@@ -100,14 +156,43 @@ export default function OrdersPage() {
   return (
     <div className="animate-fade-in pb-20">
       {/* Header */}
-      <div className="mt-4 mb-10 px-1">
+      <div className="mt-4 mb-6 px-1">
         <h1 className="text-[36px] font-black text-slate-900 tracking-tight leading-tight">
           My Orders
         </h1>
         <p className="text-sm font-medium text-slate-400 mt-1">
-          Manage your active plans & history
+          Manage your active plans & tracking
         </p>
       </div>
+
+      {/* Active Delivery Tracking */}
+      {activeDelivery && (
+        <div className="mb-10">
+          <h3 className="font-bold text-slate-900 mb-3 px-1">Live Tracking</h3>
+          <div className="bg-white rounded-3xl p-5 md:p-8 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center animate-pulse">
+                  <Navigation className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 leading-tight">Your food is on the way!</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Partner: {activeDelivery.partnerName} ({activeDelivery.partnerPhone})</p>
+                </div>
+              </div>
+            </div>
+            <DeliveryMap 
+              markers={[{
+                id: activeDelivery.id,
+                lat: activeDelivery.partnerLocation.lat,
+                lng: activeDelivery.partnerLocation.lng,
+                title: activeDelivery.partnerName,
+                subtitle: 'On the way'
+              }]}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="pill-container mb-8">
