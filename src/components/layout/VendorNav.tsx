@@ -81,10 +81,15 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
     );
   }
 
+  // Mobile Bottom Nav - Only show essential 4 items to prevent clutter
+  const MOBILE_NAV_ITEMS = NAV_ITEMS.filter(item => 
+    ['Dashboard', 'Orders', 'Subscribers', 'Profile'].includes(item.label)
+  );
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-2 py-3 pb-safe animate-fade-in shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
       <div className="max-w-3xl mx-auto flex items-center justify-around">
-        {NAV_ITEMS.map((item) => {
+        {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.includes('dashboard');
           const active = isDash 
             ? pathname === item.href || pathname === item.href + '/'

@@ -117,17 +117,17 @@ service cloud.firestore {
       );
       // get: resource.data IS available for single-document reads
       allow get: if request.auth != null && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.vendorId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('driverId', '') == request.auth.uid ||
         isAdmin()
       );
       // Allow creation client-side (e.g. rescheduling)
       allow create: if request.auth != null;
       allow update: if request.auth != null && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.vendorId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('driverId', '') == request.auth.uid ||
         isAdmin()
       );
       allow delete: if isAdmin();

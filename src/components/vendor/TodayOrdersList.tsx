@@ -174,26 +174,26 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
       )}
 
       {/* Metrics Summary Row */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white rounded-2xl p-3 border border-slate-100 flex flex-col items-center text-center shadow-sm">
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-white rounded-[20px] p-4 border border-slate-100 flex flex-col items-center text-center shadow-sm">
           <Clock className="w-4 h-4 text-slate-400 mb-1" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
           <span className="text-xl font-black text-slate-900 mt-0.5">{stats.total}</span>
         </div>
         
-        <div className="bg-white rounded-2xl p-3 border border-slate-100 flex flex-col items-center text-center shadow-sm">
+        <div className="bg-white rounded-[20px] p-4 border border-slate-100 flex flex-col items-center text-center shadow-sm">
           <ChefHat className="w-4 h-4 text-amber-500 mb-1" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prep</span>
           <span className="text-xl font-black text-amber-600 mt-0.5">{stats.preparing}</span>
         </div>
 
-        <div className="bg-white rounded-2xl p-3 border border-slate-100 flex flex-col items-center text-center shadow-sm">
+        <div className="bg-white rounded-[20px] p-4 border border-slate-100 flex flex-col items-center text-center shadow-sm">
           <Truck className="w-4 h-4 text-blue-500 mb-1" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Picked</span>
           <span className="text-xl font-black text-blue-600 mt-0.5">{stats.pickedUp}</span>
         </div>
 
-        <div className="bg-white rounded-2xl p-3 border border-slate-100 flex flex-col items-center text-center shadow-sm">
+        <div className="bg-white rounded-[20px] p-4 border border-slate-100 flex flex-col items-center text-center shadow-sm">
           <CheckCircle className="w-4 h-4 text-emerald-500 mb-1" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deliv</span>
           <span className="text-xl font-black text-emerald-600 mt-0.5">{stats.delivered}</span>
@@ -201,7 +201,7 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
       </div>
 
       {/* Orders Scrollable List */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h2 className="text-sm font-bold text-slate-900 ml-1">Today's Delivery Batches</h2>
         
         {vendorOrders.length === 0 ? (
@@ -213,7 +213,7 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
             <p className="text-xs text-slate-400 mt-1">Daily subscriptions will populate here once active.</p>
           </div>
         ) : (
-          <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1 scrollbar-thin">
+          <div className="max-h-[380px] overflow-y-auto space-y-4 pr-1 scrollbar-thin pb-4">
             <AnimatePresence initial={false}>
               {vendorOrders.map((order, index) => (
                 <motion.div
@@ -222,7 +222,7 @@ export function TodayOrdersList({ vendorId }: TodayOrdersListProps) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.2, delay: index * 0.05 }}
-                  className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm flex items-center justify-between hover:border-brand/20 transition-all group"
+                  className="bg-white rounded-[24px] p-5 lg:p-6 border border-slate-100 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between hover:border-brand/20 transition-all group gap-4"
                 >
                   <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-2">
                     <div className="w-11 h-11 bg-slate-50 group-hover:bg-brand/5 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-brand transition-all shrink-0">
