@@ -62,6 +62,7 @@ export default function CustomerTrackPage() {
   const [order, setOrder] = useState<DeliveryOrder | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isReceiving, setIsReceiving] = useState(false);
 
   // Status index mapping
   const statusSteps: { key: DeliveryStatus; label: string; icon: any }[] = [
@@ -271,7 +272,7 @@ export default function CustomerTrackPage() {
 
           {/* Secure OTP proof-of-delivery notice */}
           {order.status !== 'delivered' && (
-            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
                 <div>
@@ -281,9 +282,18 @@ export default function CustomerTrackPage() {
                   <p className="text-[10px] text-slate-500 font-medium">Provide code to driver at door</p>
                 </div>
               </div>
-              <span className="text-lg font-black tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-100/40 px-3 py-1 rounded-xl">
-                {order.otp}
-              </span>
+              {!isReceiving ? (
+                <button
+                  onClick={() => setIsReceiving(true)}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-md transition-colors whitespace-nowrap active:scale-95"
+                >
+                  Receive Order
+                </button>
+              ) : (
+                <span className="text-lg font-black tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-100/40 px-3 py-1 rounded-xl text-center">
+                  {order.otp}
+                </span>
+              )}
             </div>
           )}
         </div>

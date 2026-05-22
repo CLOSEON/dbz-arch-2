@@ -44,6 +44,8 @@ export default function LoginPage() {
   const [newUserPhone, setNewUserPhone] = useState('');
   const [name, setName] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('user');
+  // True when an existing user is re-prompted to set a name (role already exists)
+  const [isExistingUserMissingName, setIsExistingUserMissingName] = useState(false);
 
   // Refs
   const otpInputRef = useRef<HTMLInputElement>(null);
@@ -91,11 +93,19 @@ export default function LoginPage() {
       );
 
       if (isNewUser) {
-        // Go to onboarding
         setNewUserId(firebaseUser.uid);
         setNewUserPhone(firebaseUser.phoneNumber || e164);
+        if (profile.role) {
+          // Existing user missing name — keep their role, just collect name
+          setSelectedRole(profile.role);
+          setIsExistingUserMissingName(true);
+          addToast('Welcome back! Please tell us your name 👋', 'info');
+        } else {
+          // Brand new user — full onboarding
+          setIsExistingUserMissingName(false);
+          addToast('Welcome to Dabzo! Set up your profile 🎉', 'success');
+        }
         setStep('onboarding');
-        addToast('Welcome! Set up your profile', 'success');
         return;
       }
 
@@ -385,6 +395,18 @@ export default function LoginPage() {
           {/* ── STEP 3: Onboarding ────────────────────────────────────────── */}
           {step === 'onboarding' && (
             <form onSubmit={handleOnboarding} className="space-y-6">
+              {/* Context header */}
+              <div className="text-center">
+                <p className="text-sm font-bold text-slate-600">
+                  {isExistingUserMissingName ? '👋 Almost there!' : '🎉 Welcome to Dabzo!'}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {isExistingUserMissingName
+                    ? 'Just tell us your name to continue'
+                    : 'Set up your account to get started'}
+                </p>
+              </div>
+
               {/* Name */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-2 block ml-1">
@@ -400,38 +422,40 @@ export default function LoginPage() {
                 />
               </div>
 
-              {/* Role selection */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3 block ml-1">
-                  I am a
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {([
-                    { role: 'user' as UserRole, emoji: '🍽️', label: 'Customer', desc: 'Order meals' },
-                    { role: 'vendor' as UserRole, emoji: '👨‍🍳', label: 'Vendor', desc: 'Sell meals' },
-                    { role: 'delivery' as UserRole, emoji: '🚴', label: 'Delivery', desc: 'Deliver meals' },
-                  ]).map(({ role, emoji, label, desc }) => (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => setSelectedRole(role)}
-                      className={`p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.97] ${
-                        selectedRole === role
-                          ? 'border-brand bg-brand/5 shadow-lg shadow-brand/10'
-                          : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
-                      }`}
-                    >
-                      <span className="text-2xl">{emoji}</span>
-                      <p className={`font-bold text-sm mt-2 ${selectedRole === role ? 'text-brand' : 'text-slate-700'}`}>
-                        {label}
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">{desc}</p>
-                    </button>
-                  ))}
+              {/* Role selection — only for brand new users */}
+              {!isExistingUserMissingName && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3 block ml-1">
+                    I am a
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {([
+                      { role: 'user' as UserRole, emoji: '🍽️', label: 'Customer', desc: 'Order meals' },
+                      { role: 'vendor' as UserRole, emoji: '👨‍🍳', label: 'Vendor', desc: 'Sell meals' },
+                      { role: 'delivery' as UserRole, emoji: '🚴', label: 'Delivery', desc: 'Deliver meals' },
+                    ]).map(({ role, emoji, label, desc }) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setSelectedRole(role)}
+                        className={`p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.97] ${
+                          selectedRole === role
+                            ? 'border-brand bg-brand/5 shadow-lg shadow-brand/10'
+                            : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
+                        }`}
+                      >
+                        <span className="text-2xl">{emoji}</span>
+                        <p className={`font-bold text-sm mt-2 ${selectedRole === role ? 'text-brand' : 'text-slate-700'}`}>
+                          {label}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {selectedRole === 'vendor' && (
+              {!isExistingUserMissingName && selectedRole === 'vendor' && (
                 <div className="bg-amber-50 border border-amber-200/50 rounded-xl px-4 py-3">
                   <p className="text-xs text-amber-700 font-semibold">
                     ⚠️ Vendor accounts require admin approval before they can list meals.
@@ -447,10 +471,10 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Creating account...</span>
+                    <span>{isExistingUserMissingName ? 'Saving...' : 'Creating account...'}</span>
                   </>
                 ) : (
-                  'Create Account'
+                  isExistingUserMissingName ? 'Save & Continue' : 'Create Account'
                 )}
               </button>
             </form>

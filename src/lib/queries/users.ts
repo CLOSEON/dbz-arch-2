@@ -44,6 +44,12 @@ export async function resolveUserProfile(
   if (userDoc.exists()) {
     const data = userDoc.data() as Partial<AppUser>;
     if (data.is_rejected) throw new Error('Account rejected.');
+    
+    // If the user hasn't set their name, treat them as a new user to trigger onboarding
+    if (!data.name || data.name.trim() === '') {
+      return { user: { id: uid, ...data } as AppUser, isNewUser: true };
+    }
+
     return { user: { id: uid, ...data } as AppUser, isNewUser: false };
   }
 
@@ -73,7 +79,7 @@ export async function completeOnboarding(
     userData.is_approved = false;
   }
 
-  await setDoc(doc(db, 'users', uid), userData);
+  await setDoc(doc(db, 'users', uid), userData, { merge: true });
   return { id: uid, ...userData } as AppUser;
 }
 

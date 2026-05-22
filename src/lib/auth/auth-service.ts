@@ -58,6 +58,11 @@ let _confirmationResult: ConfirmationResult | null = null;
 
 const isNative = Capacitor.isNativePlatform();
 
+function isTestAccount(phone: string): boolean {
+  const TEST_NUMBERS = ['+919000000001', '+919000000002', '+919000000003', '+919000000004'];
+  return TEST_NUMBERS.includes(phone);
+}
+
 // ─── reCAPTCHA Setup (Web Only) ──────────────────────────────────────────────
 
 function getRecaptchaVerifier(): RecaptchaVerifier {
@@ -130,7 +135,8 @@ export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
   console.log(`[Auth] Sending OTP to ${phoneNumber} (platform: ${isNative ? 'native' : 'web'})`);
 
   try {
-    if (isNative) {
+    // Force web flow for test numbers so JS SDK gets properly signed in
+    if (isNative && !isTestAccount(phoneNumber)) {
       return await sendOtpNative(phoneNumber);
     } else {
       return await sendOtpWeb(phoneNumber);
@@ -225,8 +231,8 @@ export async function verifyOtp(verificationId: string, code: string): Promise<V
   console.log('[Auth] Verifying OTP...');
 
   try {
-    if (!isNative && _confirmationResult) {
-      // Web path: use the stored ConfirmationResult
+    if (_confirmationResult) {
+      // Web path (used always on web, and used on native for test accounts)
       const result = await _confirmationResult.confirm(code);
       _confirmationResult = null;
       cleanupAuth();
