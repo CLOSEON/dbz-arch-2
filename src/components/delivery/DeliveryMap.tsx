@@ -1,12 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Delivery } from '@/types';
 
-// Fix for default marker icons in Leaflet with Next.js
 const customIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -14,15 +12,16 @@ const customIcon = new L.Icon({
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  shadowSize: [41, 41],
 });
 
-// A component to recenter the map when the user's location changes
 function RecenterAutomatically({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
+
   useEffect(() => {
-    map.setView([lat, lng]);
+    map.setView([lat, lng], 13);
   }, [lat, lng, map]);
+
   return null;
 }
 
@@ -42,39 +41,54 @@ interface DeliveryMapProps {
 }
 
 export default function DeliveryMap({ markers, centerLat, centerLng }: DeliveryMapProps) {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') {
+    return (
+      <div className="flex h-64 items-center justify-center rounded-[1.5rem] border border-slate-100 bg-slate-50 px-4 text-center">
+        <p className="text-sm font-semibold text-slate-500">Loading route map…</p>
+      </div>
+    );
+  }
 
-  // Default to New Delhi or a central location if no markers/center provided
-  const defaultLat = 28.6139; 
-  const defaultLng = 77.2090;
+  const validMarkers = markers.filter((m) => Number.isFinite(m.lat) && Number.isFinite(m.lng));
+  const defaultLat = 28.6139;
+  const defaultLng = 77.209;
 
-  // Use provided center, or the first marker, or default
-  const mapLat = centerLat || (markers.length > 0 ? markers[0].lat : defaultLat);
-  const mapLng = centerLng || (markers.length > 0 ? markers[0].lng : defaultLng);
+  const mapLat = Number.isFinite(centerLat) ? centerLat! : validMarkers[0]?.lat ?? defaultLat;
+  const mapLng = Number.isFinite(centerLng) ? centerLng! : validMarkers[0]?.lng ?? defaultLng;
+
+  if (!Number.isFinite(mapLat) || !Number.isFinite(mapLng)) {
+    return (
+      <div className="flex h-64 items-center justify-center rounded-[1.5rem] border border-slate-100 bg-slate-50 px-4 text-center">
+        <div>
+          <p className="text-sm font-bold text-slate-900">Map unavailable</p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            Location data is still syncing. Your route will appear automatically once it is available.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full h-64 rounded-3xl overflow-hidden shadow-sm border border-slate-100 z-0 relative">
-      <MapContainer 
-        center={[mapLat, mapLng]} 
-        zoom={13} 
-        scrollWheelZoom={false}
-        style={{ height: '100%', width: '100%' }}
-      >
+    <div className="relative h-64 w-full overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-sm">
+      <MapContainer center={[mapLat, mapLng]} zoom={13} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        
-        {centerLat && centerLng && (
-          <RecenterAutomatically lat={centerLat} lng={centerLng} />
+
+        {Number.isFinite(centerLat) && Number.isFinite(centerLng) && (
+          <RecenterAutomatically lat={centerLat!} lng={centerLng!} />
         )}
 
-        {markers.map(m => (
-          <Marker key={m.id} position={[m.lat, m.lng]} icon={customIcon}>
+        {validMarkers.map((marker) => (
+          <Marker key={marker.id} position={[marker.lat, marker.lng]} icon={customIcon}>
             <Popup>
               <div className="text-xs">
-                <p className={`font-bold ${m.isCurrentLocation ? 'text-brand' : 'text-slate-900'}`}>{m.title}</p>
-                {m.subtitle && <p className="text-slate-500 mt-1">{m.subtitle}</p>}
+                <p className={marker.isCurrentLocation ? 'font-bold text-brand' : 'font-bold text-slate-900'}>
+                  {marker.title}
+                </p>
+                {marker.subtitle && <p className="mt-1 text-slate-500">{marker.subtitle}</p>}
               </div>
             </Popup>
           </Marker>
