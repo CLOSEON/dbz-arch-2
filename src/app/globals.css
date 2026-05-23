@@ -55,14 +55,23 @@
   /* ── Page shell ── */
   .page-shell {
     @apply max-w-md mx-auto min-h-screen pb-32 px-5 pt-6;
+    background:
+      radial-gradient(1200px 280px at 0% -120px, rgba(255, 107, 53, 0.12), transparent 60%),
+      radial-gradient(900px 220px at 100% -100px, rgba(45, 49, 66, 0.06), transparent 55%);
   }
 
   .page-shell-admin {
     @apply max-w-5xl mx-auto min-h-screen px-6 py-8 md:px-10;
+    background:
+      radial-gradient(1400px 300px at 0% -140px, rgba(255, 107, 53, 0.08), transparent 60%),
+      radial-gradient(1100px 260px at 100% -120px, rgba(45, 49, 66, 0.05), transparent 58%);
   }
 
   .page-shell-vendor {
     @apply max-w-5xl mx-auto min-h-screen px-6 py-8 md:px-10;
+    background:
+      radial-gradient(1200px 280px at 0% -120px, rgba(255, 107, 53, 0.1), transparent 62%),
+      radial-gradient(900px 220px at 100% -100px, rgba(45, 49, 66, 0.05), transparent 58%);
   }
 
   /* ── Cards ── */

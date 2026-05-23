@@ -157,12 +157,24 @@ export default function OrdersPage() {
     <div className="animate-fade-in pb-20">
       {/* Header */}
       <div className="mt-4 mb-6 px-1">
-        <h1 className="text-[36px] font-black text-slate-900 tracking-tight leading-tight">
+        <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
           My Orders
         </h1>
         <p className="text-sm font-medium text-slate-400 mt-1">
           Manage your active plans & tracking
         </p>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-6 px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Total Plans: {orders.length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Active: {orders.filter(o => o.status !== 'cancelled').length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
+          History: {orders.filter(o => o.status === 'cancelled').length}
+        </span>
       </div>
 
       {/* Active Delivery Tracking */}

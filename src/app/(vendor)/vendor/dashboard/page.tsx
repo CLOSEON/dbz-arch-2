@@ -85,9 +85,9 @@ export default function VendorDashboard() {
   return (
     <div className="space-y-10 animate-fade-in pb-10">
       {/* Header */}
-      <div className="flex items-start justify-between mt-4 px-1">
+      <div className="flex items-start justify-between mt-4 px-1 gap-3">
         <div>
-          <h1 className="text-[36px] font-black text-slate-900 tracking-tight leading-tight">
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
             Dashboard
           </h1>
           <p className="text-sm font-medium text-slate-400 mt-1">
@@ -102,7 +102,19 @@ export default function VendorDashboard() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:gap-6">
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Subscribers: {user?.subscriberCount || 0}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Kitchen: Active
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-blue-50 text-blue-600">
+          On Route: {partnerLocations.length}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:gap-6">
         <div className="card">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Subscribers</p>
           <div className="flex items-end justify-between">

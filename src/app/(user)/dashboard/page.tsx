@@ -85,9 +85,9 @@ export default function UserDashboard() {
   return (
     <div className="animate-fade-in pb-20">
       {/* Header */}
-      <div className="flex items-start justify-between mb-10 px-1 pt-4">
+      <div className="flex items-start justify-between mb-8 px-1 pt-4 gap-3">
         <div>
-          <h1 className="text-[36px] font-black text-slate-900 tracking-tight leading-none">
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-none">
             Hey, {user?.name?.split(' ')[0] || 'Tiffin Lover'} 👋
           </h1>
           <p className="text-sm font-medium text-slate-400 mt-3">
@@ -100,6 +100,18 @@ export default function UserDashboard() {
         >
           <Logo size={40} className="group-hover:rotate-6 transition-transform" />
         </Link>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-6 px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Approved Kitchens: {vendors.length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
+          Showing: {filtered.length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Category: {activeCategory}
+        </span>
       </div>
 
       {/* Search Bar */}
