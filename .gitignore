@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,10 +20,15 @@
 
 # production
 /build
+**/build/
 
 # misc
 .DS_Store
 *.pem
+.continue/
+.firebase/
+releases/
+android/.gradle/
 
 # debug
 npm-debug.log*

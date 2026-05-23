@@ -216,7 +216,7 @@ export default function AdminDeliveryOversightPage() {
       if (!existingScript && gmapsKey) {
         const script = document.createElement('script');
         script.id = 'google-maps-js-sdk';
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&callback=initGoogleMap`;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&callback=initGoogleMap&loading=async`;
         script.async = true;
         script.defer = true;
         document.head.appendChild(script);

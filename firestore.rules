@@ -30,18 +30,29 @@ service cloud.firestore {
         !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAll(["role"])
       );
     }
+    function isDeliveryOrderParticipant(order) {
+      return request.auth != null && (
+        order.get('customerId', '') == request.auth.uid ||
+        order.get('user_id', '') == request.auth.uid ||
+        order.get('vendorId', '') == request.auth.uid ||
+        order.get('vendor_id', '') == request.auth.uid ||
+        order.get('driverId', '') == request.auth.uid ||
+        order.get('agentId', '') == request.auth.uid ||
+        isAdmin()
+      );
+    }
 
     match /deliveries/{deliveryId} {
       allow create, delete: if isAdmin();
       
       allow read: if isAdmin() ||
-                  (isCustomer() && resource.data.customerId == request.auth.uid) ||
-                  (isVendor() && resource.data.vendorId == request.auth.uid) ||
-                  (isDriver() && resource.data.agentId == request.auth.uid);
+                  (isCustomer() && (resource.data.get('customerId', '') == request.auth.uid || resource.data.get('user_id', '') == request.auth.uid)) ||
+                  (isVendor() && (resource.data.get('vendorId', '') == request.auth.uid || resource.data.get('vendor_id', '') == request.auth.uid)) ||
+                  (isDriver() && (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid));
 
       allow update: if isAdmin() ||
                     (isDriver() && 
-                     resource.data.agentId == request.auth.uid &&
+                     (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid) &&
                      (
                        // Status transition validations
                        (resource.data.status == "pending" && request.resource.data.status == "picked_up") ||
@@ -118,19 +129,31 @@ service cloud.firestore {
       // get: resource.data IS available for single-document reads
       allow get: if request.auth != null && (
         resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('user_id', '') == request.auth.uid ||
         resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
         resource.data.get('driverId', '') == request.auth.uid ||
+        resource.data.get('agentId', '') == request.auth.uid ||
         isAdmin()
       );
       // Allow creation client-side (e.g. rescheduling)
       allow create: if request.auth != null;
       allow update: if request.auth != null && (
         resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('user_id', '') == request.auth.uid ||
         resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
         resource.data.get('driverId', '') == request.auth.uid ||
+        resource.data.get('agentId', '') == request.auth.uid ||
         isAdmin()
       );
       allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/delivery_orders/$(orderId)).data);
+        allow create: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/delivery_orders/$(orderId)).data);
+        allow update, delete: if isAdmin();
+      }
     }
 
     // Rules for agent_payouts collection

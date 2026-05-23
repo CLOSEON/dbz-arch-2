@@ -1,6 +1,12 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import { initializeFirestore, getFirestore, persistentLocalCache, Firestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore,
+} from 'firebase/firestore';
 import { getFunctions, Functions } from 'firebase/functions';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
@@ -29,7 +35,9 @@ auth.useDeviceLanguage();
 let db: Firestore;
 try {
   db = initializeFirestore(app, {
-    localCache: persistentLocalCache(),
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
     ignoreUndefinedProperties: true,
   });
 } catch {
