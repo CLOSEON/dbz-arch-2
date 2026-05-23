@@ -38,8 +38,17 @@ export default function VendorSupportPage() {
   return (
     <div className="space-y-6 pb-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Support</h1>
+        <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">Support</h1>
         <p className="text-sm text-slate-500 mt-0.5">Need help? We're here for you.</p>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Response SLA: 2-4h
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Channel: Vendor Desk
+        </span>
       </div>
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
@@ -55,7 +64,7 @@ export default function VendorSupportPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label">Subject</label>
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subject</label>
             <input
               className="input"
               placeholder="What do you need help with?"
@@ -65,7 +74,7 @@ export default function VendorSupportPage() {
             />
           </div>
           <div>
-            <label className="label">Message</label>
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Message</label>
             <textarea
               className="input min-h-[120px] resize-none"
               placeholder="Describe your issue in detail…"

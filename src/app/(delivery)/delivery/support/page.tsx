@@ -38,8 +38,17 @@ export default function DeliverySupportPage() {
   return (
     <div className="space-y-6 pb-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Support</h1>
+        <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">Support</h1>
         <p className="text-sm text-slate-500 mt-0.5">Help for delivery partners</p>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Channel: Live Ops
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Priority: Delivery
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -69,7 +78,7 @@ export default function DeliverySupportPage() {
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label">Issue Type</label>
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Issue Type</label>
             <select 
               className="input appearance-none bg-slate-50"
               value={subject}
@@ -83,7 +92,7 @@ export default function DeliverySupportPage() {
             </select>
           </div>
           <div>
-            <label className="label">Details</label>
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Details</label>
             <textarea
               className="input min-h-[100px] resize-none"
               placeholder="Tell us more…"

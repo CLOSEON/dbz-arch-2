@@ -67,6 +67,20 @@ export default function ProfilePage() {
 
   return (
     <div className="animate-fade-in">
+      <div className="mb-5">
+        <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">My Profile</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Identity, account access, and quick links</p>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-5 px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Role: {roleLabel[user?.role ?? 'user'] ?? user?.role}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
+          Phone Verified
+        </span>
+      </div>
+
       {/* Profile Header */}
       <div className="flex items-center gap-4 bg-white rounded-3xl p-5 shadow-card mb-5">
         <div 
@@ -129,8 +143,8 @@ export default function ProfilePage() {
       </div>
 
       {/* Logout */}
-      <button onClick={handleLogout} className="btn-danger w-full py-3.5 font-semibold">
-        🚪 Sign Out
+      <button onClick={handleLogout} className="w-full py-3.5 font-semibold rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100 transition-colors">
+        Sign Out
       </button>
 
       <p className="text-center text-xs text-slate-400 mt-6">Dabzo v2.0 • Smart Meal Subscriptions</p>

@@ -400,7 +400,7 @@ export default function AdminDeliveryOversightPage() {
           <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
             Security & Fleet Operations
           </span>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight mt-2.5">
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight mt-2.5">
             Logistics Oversight
           </h1>
         </div>
@@ -429,8 +429,20 @@ export default function AdminDeliveryOversightPage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Fleet Online: {onlineDriversCount}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-amber-50 text-amber-700">
+          Pending Runs: {pendingCount}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-rose-50 text-rose-700">
+          Anomalies: {inactiveDriverAlerts.length + pickUpAnomalyAlerts.length}
+        </span>
+      </div>
+
       {/* 1. SUMMARY METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
             <Users className="w-6 h-6" />

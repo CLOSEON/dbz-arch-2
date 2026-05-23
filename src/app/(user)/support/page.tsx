@@ -47,11 +47,20 @@ export default function SupportPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Help & Support</h1>
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">Help & Support</h1>
           <p className="text-sm text-slate-500">We&apos;re here to help</p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-5 px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Open: {tickets.filter(t => t.status === 'open').length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          In Progress: {tickets.filter(t => t.status === 'in_progress').length}
+        </span>
       </div>
 
       {/* New Ticket Form */}
@@ -65,11 +74,11 @@ export default function SupportPage() {
         {formVisible && (
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="label">Subject</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subject</label>
               <input className="input" placeholder="What's the issue?" value={subject} onChange={(e) => setSubject(e.target.value)} />
             </div>
             <div>
-              <label className="label">Message</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Message</label>
               <textarea
                 className="input min-h-[100px] resize-none"
                 placeholder="Describe your problem in detail…"
@@ -85,7 +94,7 @@ export default function SupportPage() {
       </div>
 
       {/* Ticket List */}
-      <h2 className="section-title mb-3">My Tickets</h2>
+      <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-3">My Tickets</h2>
       {loading ? (
         <SkeletonList count={2} />
       ) : tickets.length === 0 ? (
