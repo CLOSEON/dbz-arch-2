@@ -118,22 +118,32 @@ export async function updateUser(id: string, data: Partial<AppUser>): Promise<vo
 }
 
 export async function getApprovedVendors(): Promise<Vendor[]> {
-  // Be resilient to legacy/mixed schemas:
-  // - role may be missing/capitalized/different string
-  // - older vendor docs may only have kitchen-specific fields
-  const snap = await getDocs(collection(db, 'users'));
-  return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() } as Vendor))
-    .filter((user) => {
-      const role = String((user as any).role ?? '').toLowerCase();
-      const hasVendorShape =
-        Boolean(user.kitchen_name) ||
-        Boolean(user.cuisine_type) ||
-        typeof user.rate_lunch === 'number' ||
-        typeof user.rate_dinner === 'number' ||
-        typeof user.rate_both === 'number';
-      const isVendorRole = role === 'vendor' || role === 'kitchen' || role === 'seller';
-      const isVisible = user.is_rejected !== true && user.is_approved !== false;
-      return isVisible && (isVendorRole || hasVendorShape);
-    });
+  // Read both `users` and legacy `vendors` collections, then normalize.
+  const [usersSnap, vendorsSnap] = await Promise.all([
+    getDocs(collection(db, 'users')),
+    getDocs(collection(db, 'vendors')),
+  ]);
+
+  const merged = [
+    ...usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)),
+    ...vendorsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)),
+  ];
+
+  const deduped = new Map<string, Vendor>();
+  merged.forEach((item) => {
+    deduped.set(item.id, { ...deduped.get(item.id), ...item });
+  });
+
+  return Array.from(deduped.values()).filter((user) => {
+    const role = String((user as any).role ?? '').toLowerCase();
+    const hasVendorShape =
+      Boolean(user.kitchen_name) ||
+      Boolean(user.cuisine_type) ||
+      typeof user.rate_lunch === 'number' ||
+      typeof user.rate_dinner === 'number' ||
+      typeof user.rate_both === 'number';
+    const isVendorRole = role === 'vendor' || role === 'kitchen' || role === 'seller';
+    const isVisible = user.is_rejected !== true && user.is_approved !== false;
+    return isVisible && (isVendorRole || hasVendorShape);
+  });
 }

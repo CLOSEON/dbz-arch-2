@@ -165,18 +165,6 @@ export default function OrdersPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-6 px-1">
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
-          Total Plans: {orders.length}
-        </span>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
-          Active: {orders.filter(o => o.status !== 'cancelled').length}
-        </span>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
-          History: {orders.filter(o => o.status === 'cancelled').length}
-        </span>
-      </div>
-
       {/* Active Delivery Tracking */}
       {activeDelivery && (
         <div className="mb-10">
