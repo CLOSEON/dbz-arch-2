@@ -118,11 +118,22 @@ export async function updateUser(id: string, data: Partial<AppUser>): Promise<vo
 }
 
 export async function getApprovedVendors(): Promise<Vendor[]> {
-  // Some legacy vendor docs do not contain `is_approved`.
-  // Treat missing approval as approved unless explicitly false/rejected.
-  const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
-  const snap = await getDocs(q);
+  // Be resilient to legacy/mixed schemas:
+  // - role may be missing/capitalized/different string
+  // - older vendor docs may only have kitchen-specific fields
+  const snap = await getDocs(collection(db, 'users'));
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() } as Vendor))
-    .filter((vendor) => vendor.is_rejected !== true && vendor.is_approved !== false);
+    .filter((user) => {
+      const role = String((user as any).role ?? '').toLowerCase();
+      const hasVendorShape =
+        Boolean(user.kitchen_name) ||
+        Boolean(user.cuisine_type) ||
+        typeof user.rate_lunch === 'number' ||
+        typeof user.rate_dinner === 'number' ||
+        typeof user.rate_both === 'number';
+      const isVendorRole = role === 'vendor' || role === 'kitchen' || role === 'seller';
+      const isVisible = user.is_rejected !== true && user.is_approved !== false;
+      return isVisible && (isVendorRole || hasVendorShape);
+    });
 }
