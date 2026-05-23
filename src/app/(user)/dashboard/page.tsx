@@ -102,18 +102,6 @@ export default function UserDashboard() {
         </Link>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-6 px-1">
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
-          Approved Kitchens: {vendors.length}
-        </span>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
-          Showing: {filtered.length}
-        </span>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
-          Category: {activeCategory}
-        </span>
-      </div>
-
       {/* Search Bar */}
       <div className="relative mb-8 group">
         <div className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-brand transition-colors">

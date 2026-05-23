@@ -118,8 +118,11 @@ export async function updateUser(id: string, data: Partial<AppUser>): Promise<vo
 }
 
 export async function getApprovedVendors(): Promise<Vendor[]> {
-  const q = query(collection(db, 'users'), where('role', '==', 'vendor'), where('is_approved', '==', true));
+  // Some legacy vendor docs do not contain `is_approved`.
+  // Treat missing approval as approved unless explicitly false/rejected.
+  const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Vendor))
+    .filter((vendor) => vendor.is_rejected !== true && vendor.is_approved !== false);
 }
-
