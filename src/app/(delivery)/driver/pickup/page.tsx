@@ -25,8 +25,6 @@ export default function DriverPickupPage() {
   
   const agentOrders = useDeliveryStore((s) => s.agentOrders);
   const setAgentOrders = useDeliveryStore((s) => s.setAgentOrders);
-  const isLoading = useDeliveryStore((s) => s.isLoading);
-  
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,6 +111,17 @@ export default function DriverPickupPage() {
       </div>
 
       <div className="px-6 space-y-6 max-w-md mx-auto mt-4">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+            Ready Meals: {totalBoxes}
+          </span>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-blue-50 text-blue-600">
+            Stops: {totalStops}
+          </span>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+            Est. {estimatedKm} km
+          </span>
+        </div>
         {/* Error Callout */}
         {error && (
           <div className="bg-rose-50 border border-rose-100 rounded-3xl p-4 flex items-start gap-3 text-rose-700 text-sm">
@@ -191,7 +200,7 @@ export default function DriverPickupPage() {
         </div>
 
         {/* Route Stats Summary */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Route Stops</p>
             <h4 className="text-2xl font-black text-slate-900 mt-1 leading-none">{totalStops} Stops</h4>
@@ -218,7 +227,7 @@ export default function DriverPickupPage() {
             whileTap={{ scale: 0.96 }}
             onClick={handleConfirmPickup}
             disabled={isConfirming}
-            className="w-full bg-brand text-white rounded-2xl py-4.5 text-xs font-black uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/20 disabled:opacity-50"
+            className="w-full bg-brand text-white rounded-2xl py-4.5 text-xs font-black uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/20 disabled:opacity-50 sticky bottom-4"
           >
             {isConfirming ? (
               <Loader2 className="w-4 h-4 animate-spin" />

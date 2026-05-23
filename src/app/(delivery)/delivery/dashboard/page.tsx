@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { AgentPayout, agentPayoutConverter } from '@/types/payout';
+import toast from 'react-hot-toast';
 
 // Dynamically import the map to prevent SSR issues with Leaflet
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
@@ -138,12 +139,14 @@ export default function DeliveryDashboard() {
   const pendingPayouts = dailyPayouts.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
   const completedDeliveries = dailyPayouts.length;
 
+  const activeRuns = agentOrders.filter(d => d.status !== 'delivered' && d.status !== 'failed_attempt');
+
   return (
     <div className="space-y-6 pb-6 animate-fade-in z-0">
       {/* Header */}
-      <div className="flex items-start justify-between mt-4 px-1">
+      <div className="flex items-start justify-between mt-4 px-1 gap-3">
         <div>
-          <h1 className="text-[36px] font-black text-slate-900 tracking-tight leading-tight">
+          <h1 className="text-[32px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
             Deliveries
           </h1>
           <p className="text-sm font-medium text-slate-400 mt-1">
@@ -198,6 +201,18 @@ export default function DeliveryDashboard() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1">
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+          Active Runs: {activeRuns.length}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+          Delivered: {completedDeliveries}
+        </span>
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-amber-50 text-amber-600">
+          Pending: ₹{pendingPayouts}
+        </span>
+      </div>
+
       {/* Map Integration */}
       <DeliveryMap 
         centerLat={currentLocation?.lat || undefined} 
@@ -241,7 +256,7 @@ export default function DeliveryDashboard() {
       </div>
 
       {/* Stats - Breakdown Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Today's Earnings</p>
@@ -282,7 +297,7 @@ export default function DeliveryDashboard() {
               <div key={i} className="h-32 bg-white rounded-3xl animate-pulse shadow-sm border border-slate-50" />
             ))}
           </div>
-        ) : agentOrders.filter(d => d.status !== 'delivered' && d.status !== 'failed_attempt').length === 0 ? (
+        ) : activeRuns.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 flex flex-col items-center text-center shadow-sm border border-slate-50">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
               <Truck className="w-8 h-8 text-slate-200" />
@@ -292,19 +307,19 @@ export default function DeliveryDashboard() {
           </div>
         ) : (
           <div className="space-y-3">
-            {agentOrders.filter(d => d.status !== 'delivered' && d.status !== 'failed_attempt').map((delivery) => (
+            {activeRuns.map((delivery) => (
               <div key={delivery.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 group">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex justify-between items-start gap-2 mb-4">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand flex items-center justify-center shadow-sm">
                       <Navigation className="w-5 h-5" />
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">Order: {delivery.id.slice(-6)}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{delivery.meal?.name || 'Meal'}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">Order: {delivery.id.slice(-6)}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight truncate">{delivery.meal?.name || 'Meal'}</p>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                  <span className={`shrink-0 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
                     delivery.status === 'picked_up' || delivery.status === 'out_for_delivery' ? 'bg-brand-50 text-brand' : 'bg-amber-50 text-amber-600'
                   }`}>
                     {delivery.status.replace('_', ' ')}
@@ -326,7 +341,17 @@ export default function DeliveryDashboard() {
                   <DeliveryActionBar orderId={delivery.id} status={delivery.status} />
                   <button 
                     onClick={() => {
-                      navigateTo(delivery.address?.line1 || '');
+                      const lat = delivery.address?.lat;
+                      const lng = delivery.address?.lng;
+                      if (typeof lat === 'number' && typeof lng === 'number') {
+                        navigateTo(`${lat},${lng}`);
+                        return;
+                      }
+                      if (delivery.address?.line1) {
+                        navigateTo(delivery.address.line1);
+                        return;
+                      }
+                      toast.error('No location found for this order');
                     }}
                     className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-brand-50 hover:text-brand transition-colors border border-slate-100"
                     title="GPS Navigation"

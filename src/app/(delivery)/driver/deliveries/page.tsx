@@ -28,8 +28,8 @@ import type { DeliveryOrder, DeliveryStatus } from '@/types/delivery';
 
 export default function DriverDeliveriesPage() {
   const user = useAuthStore((s) => s.user);
-  const vendorOrders = useDeliveryStore((s) => s.vendorOrders);
-  const setVendorOrders = useDeliveryStore((s) => s.setVendorOrders);
+  const agentOrders = useDeliveryStore((s) => s.agentOrders);
+  const setAgentOrders = useDeliveryStore((s) => s.setAgentOrders);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   
   const { navigateTo } = useDeliveryNavigation();
@@ -41,7 +41,7 @@ export default function DriverDeliveriesPage() {
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
 
   // Filter & setup subscriptions
-  const assignedOrders = vendorOrders.filter((o) => o.driverId === user?.id);
+  const assignedOrders = agentOrders.filter((o) => o.driverId === user?.id);
 
   // Monitor network connectivity changes
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function DriverDeliveriesPage() {
               : new Date(order.createdAt as any).getTime();
             return ms >= start.getTime() && ms <= end.getTime();
           });
-        setVendorOrders(list);
+        setAgentOrders(list);
       },
       (err) => {
         console.error('[Deliveries] Query subscription error:', err);
@@ -103,7 +103,7 @@ export default function DriverDeliveriesPage() {
       LocationTracker.stopTracking().catch(console.error);
       unsubscribe();
     };
-  }, [user?.id]);
+  }, [user?.id, setAgentOrders]);
 
   // Derived states
   const totalOrders = assignedOrders.length;
@@ -195,17 +195,17 @@ export default function DriverDeliveriesPage() {
 
       {/* Premium Tracking Header */}
       <div className="bg-gradient-to-b from-brand/10 to-slate-50 pt-8 pb-6 px-6 border-b border-slate-100">
-        <div className="flex justify-between items-center max-w-md mx-auto">
-          <div>
+        <div className="flex justify-between items-center gap-3 max-w-md mx-auto">
+          <div className="min-w-0">
             <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
               Live Deliveries Fleet
             </span>
-            <h1 className="text-[28px] font-black text-slate-900 tracking-tight mt-2.5">
+            <h1 className="text-[26px] sm:text-[28px] font-black text-slate-900 tracking-tight mt-2.5 truncate">
               Today's Route
             </h1>
           </div>
           
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <span className="text-sm font-black text-slate-800">
               {deliveredOrdersCount} <span className="text-slate-400">/ {totalOrders}</span>
             </span>
@@ -229,6 +229,18 @@ export default function DriverDeliveriesPage() {
       </div>
 
       <div className="px-6 space-y-4 max-w-md mx-auto mt-4">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
+            Total: {totalOrders}
+          </span>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600">
+            Delivered: {deliveredOrdersCount}
+          </span>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
+            Active: {Math.max(totalOrders - deliveredOrdersCount, 0)}
+          </span>
+        </div>
+
         {totalOrders === 0 ? (
           <div className="bg-gradient-to-b from-white to-slate-50 rounded-[2rem] p-10 text-center border border-slate-100 shadow-sm flex flex-col items-center justify-center min-h-[300px]">
             <div className="relative w-20 h-20 mb-6">
@@ -278,12 +290,12 @@ export default function DriverDeliveriesPage() {
                           #{order.id.slice(-6).toUpperCase()}
                         </h3>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5 truncate max-w-[120px] sm:max-w-[180px]">
-                          {order.meal.name}
+                          {order.meal?.name || 'Meal'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {getStatusBadge(order.status)}
                       {!isDelivered && (
                         <div className="text-slate-400">
@@ -313,7 +325,7 @@ export default function DriverDeliveriesPage() {
                             <p className="text-xs text-slate-700 font-black leading-relaxed mt-1">
                               {order.address.line1}
                             </p>
-                            {order.address.landmark && (
+                            {order.address?.landmark && (
                               <p className="text-[10px] text-brand font-bold bg-brand/5 px-2 py-0.5 rounded inline-block mt-1">
                                 Landmark: {order.address.landmark}
                               </p>
@@ -327,7 +339,13 @@ export default function DriverDeliveriesPage() {
                                 if (order.status !== 'out_for_delivery') {
                                   updateDeliveryStatus(order.id, 'out_for_delivery', user?.id).catch(console.error);
                                 }
-                                navigateTo(`${order.address.lat},${order.address.lng}`);
+                                const lat = order.address?.lat;
+                                const lng = order.address?.lng;
+                                if (typeof lat === 'number' && typeof lng === 'number') {
+                                  navigateTo(`${lat},${lng}`);
+                                } else {
+                                  toast.error('Location not available for this order');
+                                }
                               }}
                               className="w-full bg-slate-900 text-white rounded-2xl py-3 text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm"
                             >
@@ -335,13 +353,14 @@ export default function DriverDeliveriesPage() {
                               Navigate GPS
                             </button>
                             
-                            <a
-                              href="tel:+919999999999" // Fallback phone connection
+                            <button
+                              type="button"
+                              onClick={() => toast('Customer phone is not available yet', { icon: '📞' })}
                               className="w-full bg-white border border-slate-100 hover:border-slate-200 text-slate-600 rounded-2xl py-3 text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm"
                             >
                               <Phone className="w-3.5 h-3.5 text-slate-400" />
                               Call Customer
-                            </a>
+                            </button>
                           </div>
 
                           {/* OTP verification block */}
