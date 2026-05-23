@@ -118,15 +118,14 @@ export async function updateUser(id: string, data: Partial<AppUser>): Promise<vo
 }
 
 export async function getApprovedVendors(): Promise<Vendor[]> {
-  // Read both `users` and legacy `vendors` collections, then normalize.
-  const [usersSnap, vendorsSnap] = await Promise.all([
-    getDocs(collection(db, 'users')),
-    getDocs(collection(db, 'vendors')),
-  ]);
+  // Read `users` first because that is the canonical vendor source.
+  // The legacy `vendors` collection may not be allowed by rules, so keep it optional.
+  const usersSnap = await getDocs(collection(db, 'users'));
+  const vendorsSnap = await getDocs(collection(db, 'vendors')).catch(() => null);
 
   const merged = [
     ...usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)),
-    ...vendorsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)),
+    ...(vendorsSnap?.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)) ?? []),
   ];
 
   const deduped = new Map<string, Vendor>();

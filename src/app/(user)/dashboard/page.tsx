@@ -43,15 +43,18 @@ export default function UserDashboard() {
     try {
       const rawVendors = await getApprovedVendors();
 
-      // Enrich with subscriber counts
-      const subsSnap = await getDocs(
-        query(collection(db, 'subscriptions'), where('status', '==', 'active'))
-      );
       const countMap: Record<string, number> = {};
-      subsSnap.forEach((d) => {
-        const s = d.data();
-        if (s.vendor_id) countMap[s.vendor_id] = (countMap[s.vendor_id] ?? 0) + 1;
-      });
+      try {
+        const subsSnap = await getDocs(
+          query(collection(db, 'subscriptions'), where('status', '==', 'active'))
+        );
+        subsSnap.forEach((d) => {
+          const s = d.data();
+          if (s.vendor_id) countMap[s.vendor_id] = (countMap[s.vendor_id] ?? 0) + 1;
+        });
+      } catch {
+        // Normal users may not be allowed to list all subscriptions.
+      }
 
       const enriched: Vendor[] = rawVendors.map((v) => ({
         ...v,
