@@ -262,10 +262,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm animate-fade-in">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div className="flex items-center mb-6">
-            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={80} height={48} priority />
+          <div className="flex items-center justify-center mb-4 w-28 h-28 rounded-full bg-white shadow-[0_20px_50px_rgba(255,59,48,0.12)] border border-brand/10">
+            <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={96} height={96} priority className="object-contain rounded-full" />
           </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Welcome to Dabzo</h2>
+          <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">
             Smart Meal Subscriptions
           </p>
         </div>

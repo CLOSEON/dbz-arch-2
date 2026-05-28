@@ -98,11 +98,11 @@ export default function UserDashboard() {
         </div>
         <Link 
           href="/profile"
-          className="h-12 px-3 rounded-[1rem] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex items-center justify-center border border-slate-50 hover:scale-[1.03] active:scale-[0.97] transition-all duration-300 group"
+          className="w-11 h-11 rounded-full bg-brand/10 border-2 border-brand/20 flex items-center justify-center hover:scale-[1.05] active:scale-[0.97] transition-all duration-300 shrink-0"
         >
-          <div className="flex items-center">
-            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={72} height={44} priority className="group-hover:rotate-2 transition-transform" />
-          </div>
+          <span className="text-[18px] font-black text-brand">
+            {user?.name?.charAt(0)?.toUpperCase() || '?'}
+          </span>
         </Link>
       </div>
 
@@ -152,8 +152,8 @@ export default function UserDashboard() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={
-            <div className="flex items-center">
-              <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={80} height={48} priority />
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-brand/10">
+              <span className="text-3xl">🍱</span>
             </div>
           }
           title="No vendors found"

@@ -10,7 +10,7 @@ interface LogoProps {
 export function Logo({ className = '', size = 40 }: { className?: string, size?: number }) {
   return (
     <div className={`flex items-center ${className}`}>
-      <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={size} height={size * 0.6} priority />
+      <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={size} height={size * 0.6} priority />
     </div>
   );
 }
