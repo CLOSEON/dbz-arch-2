@@ -248,7 +248,7 @@ export default function DeliveryDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="card">
           <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Today&apos;s earnings</p>
@@ -269,7 +269,7 @@ export default function DeliveryDashboard() {
           <p className="mt-4 text-3xl font-black text-slate-900">{completedDeliveries}</p>
         </div>
 
-        <div className="card">
+        <div className="card col-span-2">
           <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Pending payout</p>
             <div className="rounded-xl bg-amber-50 p-2 text-amber-600 shrink-0">
