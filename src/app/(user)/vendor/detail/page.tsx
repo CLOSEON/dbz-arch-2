@@ -182,7 +182,7 @@ export default function VendorDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-32 animate-fade-in">
+    <div className="pb-32 animate-fade-in">
       {/* Premium Hero */}
       <div className="relative h-72 w-full bg-slate-200">
         {vendor.image ? (

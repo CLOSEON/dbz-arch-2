@@ -142,7 +142,7 @@ export default function CustomerTrackPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 pb-24">
+      <div className="flex items-center justify-center py-24 animate-fade-in">
         <div className="flex flex-col items-center gap-3 text-center">
           <Loader2 className="w-8 h-8 text-brand animate-spin" />
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
@@ -155,7 +155,7 @@ export default function CustomerTrackPage() {
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-slate-50 px-6 pt-16 pb-24">
+      <div className="pt-16 pb-24 animate-fade-in">
         <div className="bg-white rounded-[2rem] p-10 text-center border border-slate-100 shadow-sm flex flex-col items-center justify-center max-w-md mx-auto">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mb-4">
             <Clock className="w-8 h-8 text-slate-300" />
@@ -174,7 +174,7 @@ export default function CustomerTrackPage() {
   const driverLoc = order.driverLocation;
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-28 animate-fade-in">
+    <div className="pb-28 animate-fade-in">
       {/* Title */}
       <div className="pt-8 pb-4 px-6 max-w-md mx-auto">
         <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
@@ -443,6 +443,6 @@ export default function CustomerTrackPage() {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
