@@ -101,7 +101,7 @@ export default function DriverPickupPage() {
           </div>
         )}
 
-        <div className="card p-4">
+        <div className="card">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vendor partner</p>
@@ -151,11 +151,11 @@ export default function DriverPickupPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="card p-4">
+          <div className="card">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Route stops</p>
             <p className="mt-2 text-2xl font-black text-slate-900">{totalStops}</p>
           </div>
-          <div className="card p-4">
+          <div className="card">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Distance</p>
             <p className="mt-2 text-2xl font-black text-slate-900">{estimatedKm} km</p>
           </div>

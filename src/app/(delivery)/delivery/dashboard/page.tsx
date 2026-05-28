@@ -249,30 +249,30 @@ export default function DeliveryDashboard() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
+        <div className="card">
+          <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Today&apos;s earnings</p>
-            <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
+            <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600 shrink-0">
               <CheckCircle2 className="h-4 w-4" />
             </div>
           </div>
           <p className="mt-4 text-3xl font-black text-emerald-600">₹{totalEarnings}</p>
         </div>
 
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
+        <div className="card">
+          <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Deliveries</p>
-            <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
+            <div className="rounded-xl bg-blue-50 p-2 text-blue-600 shrink-0">
               <Truck className="h-4 w-4" />
             </div>
           </div>
           <p className="mt-4 text-3xl font-black text-slate-900">{completedDeliveries}</p>
         </div>
 
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
+        <div className="card">
+          <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Pending payout</p>
-            <div className="rounded-xl bg-amber-50 p-2 text-amber-600">
+            <div className="rounded-xl bg-amber-50 p-2 text-amber-600 shrink-0">
               <Clock className="h-4 w-4" />
             </div>
           </div>
@@ -303,7 +303,7 @@ export default function DeliveryDashboard() {
         ) : (
           <div className="space-y-3">
             {activeRuns.map((delivery) => (
-              <div key={delivery.id} className="card p-4">
+              <div key={delivery.id} className="card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="rounded-[1.1rem] bg-brand/10 p-2.5 text-brand">
