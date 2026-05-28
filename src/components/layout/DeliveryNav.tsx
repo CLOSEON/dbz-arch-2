@@ -59,7 +59,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
                 href={item.href}
                 className={cn(
                   'flex flex-col items-center justify-center rounded-[1.2rem] px-2 py-2.5 transition-all',
-                  active ? 'bg-brand/10 text-brand' : 'text-slate-400'
+                  active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
                 )}
               >
                 <item.icon className={cn('h-5 w-5', active ? 'text-brand' : 'text-slate-400')} />

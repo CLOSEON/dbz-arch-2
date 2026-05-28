@@ -3,48 +3,28 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Home, MapPin, Package, UserCircle } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
     href: '/dashboard',
     label: 'Home',
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
+    icon: Home,
   },
   {
     href: '/orders',
     label: 'Orders',
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-        <path d="M21 8V21a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8" />
-        <path d="M17 11V3a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v8" />
-        <path d="M14 11h-4" />
-      </svg>
-    ),
+    icon: Package,
   },
   {
     href: '/profile',
     label: 'Profile',
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
+    icon: UserCircle,
   },
   {
     href: '/track',
     label: 'Track',
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-        <path d="M12 2a10 10 0 0 0-10 10c0 5.25 10 10 10 10s10-4.75 10-10a10 10 0 0 0-10-10z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    ),
+    icon: MapPin,
   },
 ];
 
@@ -68,9 +48,9 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 font-bold text-sm relative',
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
                 active 
-                  ? 'bg-white text-slate-900 shadow-[0_10px_25px_rgba(0,0,0,0.04)] scale-[1.02]' 
+                  ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
                   : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
               )}
             >
@@ -78,10 +58,10 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
                 <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full" />
               )}
               <div className={cn(
-                "transition-transform duration-300",
-                active ? "scale-110" : "group-hover:scale-105"
+                "transition-all duration-300",
+                active ? "text-brand" : "text-slate-400 group-hover:text-slate-600"
               )}>
-                {item.icon(active)}
+                <item.icon className="h-5 w-5" strokeWidth={2.4} />
               </div>
               <span className="relative z-10">{item.label}</span>
             </Link>
@@ -92,7 +72,7 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-t border-slate-100/50 px-6 py-3 pb-safe animate-fade-in shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/70 bg-white/90 px-4 py-2 shadow-[0_-16px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl pb-safe animate-fade-in">
       <div className="max-w-3xl mx-auto flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
           const isHome = item.href === '/dashboard';
@@ -104,18 +84,13 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center py-1 gap-1 transition-all duration-200 outline-none select-none touch-none',
-                active ? 'text-brand' : 'text-slate-400'
+                'flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1 transition-all duration-200 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
+                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
               )}
             >
-              <div className={cn(
-                "transition-transform duration-200",
-                active ? "scale-110" : ""
-              )}>
-                {item.icon(active)}
-              </div>
+              <item.icon className="h-5 w-5" strokeWidth={2.4} />
               <span className={cn(
-                'text-[10px] font-black uppercase tracking-widest transition-opacity duration-200',
+                'text-[10px] font-black uppercase tracking-[0.08em] transition-opacity duration-200',
                 active ? 'opacity-100' : 'opacity-60'
               )}>
                 {item.label}

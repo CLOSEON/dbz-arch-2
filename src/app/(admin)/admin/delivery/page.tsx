@@ -393,22 +393,22 @@ export default function AdminDeliveryOversightPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto pb-28 md:pb-8">
+    <div className="mx-auto max-w-7xl space-y-5 pb-28 md:space-y-6 md:pb-8">
       {/* Header Info */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
+        <div className="min-w-0">
+          <span className="inline-flex max-w-full text-[10px] font-black uppercase tracking-[0.16em] text-brand bg-brand/10 px-3 py-1 rounded-full">
             Security & Fleet Operations
           </span>
-          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight mt-2.5">
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight mt-2.5 break-words">
             Logistics Oversight
           </h1>
         </div>
-        <div className="flex items-center gap-2 self-start">
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 sm:flex sm:w-auto sm:items-center sm:self-start">
           <button
             onClick={handleGenerateOrders}
             disabled={generating}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-brand text-white rounded-2xl hover:bg-brand/90 text-xs font-black transition-all shadow-sm shadow-brand/25 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl bg-brand px-4 py-2.5 text-center text-xs font-black text-white shadow-sm shadow-brand/25 transition-all hover:bg-brand/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {generating ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -421,7 +421,7 @@ export default function AdminDeliveryOversightPage() {
             onClick={() => {
               toast.success('Stats re-synced from live nodes!');
             }}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-100 rounded-2xl hover:border-slate-200 text-slate-600 text-xs font-bold transition-all shadow-sm active:scale-95"
+            className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border border-slate-100 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-slate-200 active:scale-95"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Force Sync
@@ -429,7 +429,7 @@ export default function AdminDeliveryOversightPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1">
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
         <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
           Fleet Online: {onlineDriversCount}
         </span>
@@ -442,44 +442,56 @@ export default function AdminDeliveryOversightPage() {
       </div>
 
       {/* 1. SUMMARY METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
-            <Users className="w-6 h-6" />
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
+          <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand sm:mb-0 sm:h-12 sm:w-12">
+            <Users className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Online Riders</p>
-            <h4 className="text-xl font-black text-slate-900 mt-0.5">{onlineDriversCount} Active</h4>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center shrink-0">
-            <Package className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Deliveries</p>
-            <h4 className="text-xl font-black text-slate-900 mt-0.5">{totalDeliveries} Orders</h4>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Online Riders</p>
+            <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
+              {onlineDriversCount}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Active</span>
+            </h4>
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
+        <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
+          <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 sm:mb-0 sm:h-12 sm:w-12">
+            <Package className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Meal Delivered</p>
-            <h4 className="text-xl font-black text-slate-900 mt-0.5">{deliveredCount} Done</h4>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Total Deliveries</p>
+            <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
+              {totalDeliveries}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Orders</span>
+            </h4>
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6" />
+        <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
+          <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-500 sm:mb-0 sm:h-12 sm:w-12">
+            <CheckCircle2 className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending Runs</p>
-            <h4 className="text-xl font-black text-slate-900 mt-0.5">{pendingCount} Remaining</h4>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Meal Delivered</p>
+            <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
+              {deliveredCount}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Done</span>
+            </h4>
+          </div>
+        </div>
+
+        <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
+          <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 sm:mb-0 sm:h-12 sm:w-12">
+            <Clock className="w-5 h-5 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Pending Runs</p>
+            <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
+              {pendingCount}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Left</span>
+            </h4>
           </div>
         </div>
       </div>
@@ -487,7 +499,7 @@ export default function AdminDeliveryOversightPage() {
       {/* 2. MAP SECTION AND ANOMALIES CONTAINER */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Map Canvas */}
-        <div className="lg:col-span-2 bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 space-y-4">
+        <div className="lg:col-span-2 bg-white rounded-[1.5rem] md:rounded-[2rem] p-4 shadow-sm border border-slate-100 space-y-4">
           <div className="flex items-center justify-between px-2">
             <div>
               <h3 className="text-sm font-black text-slate-900 leading-tight">Live Fleet Map</h3>
@@ -498,7 +510,7 @@ export default function AdminDeliveryOversightPage() {
             <span className="w-2 h-2 rounded-full bg-brand animate-ping" />
           </div>
 
-          <div className="w-full h-96 rounded-2xl border border-slate-100 overflow-hidden relative bg-slate-50 flex items-center justify-center">
+          <div className="w-full h-[320px] sm:h-96 rounded-2xl border border-slate-100 overflow-hidden relative bg-slate-50 flex items-center justify-center">
             {process.env.NEXT_PUBLIC_GMAPS_KEY ? (
               <>
                 {/* The isolated map target (prevents React DOM removeChild crashes) */}
@@ -739,7 +751,7 @@ export default function AdminDeliveryOversightPage() {
       </div>
 
       {/* 3. DRIVER OVERVIEW TABLE */}
-      <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4">
+      <div className="bg-white rounded-[1.5rem] md:rounded-[2rem] p-4 md:p-6 shadow-sm border border-slate-100 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-black text-slate-900 leading-tight">Active Fleet Performance</h3>

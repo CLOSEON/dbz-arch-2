@@ -1,6 +1,5 @@
 import { AuthGuard } from '@/lib/auth';
 import { AdminNav } from '@/components/layout/AdminNav';
-import { Toaster } from '@/components/shared/Toaster';
 import Image from 'next/image';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -8,8 +7,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <AuthGuard allowedRoles={['admin']}>
       <div className="min-h-screen bg-ivory flex flex-col md:flex-row">
         {/* Desktop Sidebar */}
-        <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white/80 backdrop-blur-xl border-r border-slate-100/50 z-50">
-          <div className="p-6 flex items-center">
+        <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white/90 backdrop-blur-xl border-r border-slate-200/70 z-50 shadow-[12px_0_40px_rgba(15,23,42,0.04)]">
+          <div className="p-6 flex items-center border-b border-slate-100">
             <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={120} height={72} priority className="object-contain" />
           </div>
           <AdminNav variant="sidebar" />

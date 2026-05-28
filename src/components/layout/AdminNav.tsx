@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Settings, Truck, Package } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -38,6 +38,10 @@ const NAV_ITEMS = [
   },
 ];
 
+const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
+  ['Overview', 'Vendors', 'Logistics', 'Subs'].includes(item.label)
+);
+
 interface AdminNavProps {
   variant?: 'bottom' | 'sidebar';
 }
@@ -48,7 +52,7 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   if (variant === 'sidebar') {
     return (
       <nav className="flex flex-col gap-1.5 px-4">
-        {NAV_ITEMS.map((item) => {
+        {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
           const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
           return (
@@ -56,9 +60,9 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 font-bold text-sm relative',
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
                 active 
-                  ? 'bg-white text-slate-900 shadow-[0_10px_25px_rgba(0,0,0,0.04)] scale-[1.02]' 
+                  ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
                   : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
               )}
             >
@@ -80,9 +84,9 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-t border-slate-100/50 safe-area-pb">
-      <div className="max-w-3xl mx-auto flex items-center justify-around">
-        {NAV_ITEMS.map((item) => {
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/70 bg-white/95 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+        {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
           const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
           return (
@@ -90,12 +94,12 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center flex-1 py-3 gap-1 transition-all',
-                active ? 'text-brand' : 'text-slate-400'
+                'flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-1 transition-all focus-visible:ring-4 focus-visible:ring-brand/10',
+                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
               )}
             >
               {item.icon(active)}
-              <span className={cn('text-[10px] font-bold uppercase tracking-wider', active ? 'text-brand' : 'text-slate-400')}>
+              <span className={cn('max-w-full truncate text-[10px] font-black leading-none tracking-normal', active ? 'text-brand' : 'text-slate-400')}>
                 {item.label}
               </span>
             </Link>

@@ -58,9 +58,9 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 font-bold text-sm relative',
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
                 active 
-                  ? 'bg-white text-slate-900 shadow-[0_10px_25px_rgba(0,0,0,0.04)] scale-[1.02]' 
+                  ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
                   : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
               )}
             >
@@ -87,7 +87,7 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
   );
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-t border-slate-100/50 px-2 py-3 pb-safe animate-fade-in shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/70 bg-white/90 px-3 py-2 shadow-[0_-16px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl pb-safe animate-fade-in">
       <div className="max-w-3xl mx-auto flex items-center justify-around">
         {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.includes('dashboard');
@@ -99,8 +99,8 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center flex-1 py-1 gap-0.5 transition-all duration-300 outline-none select-none touch-none',
-                active ? 'text-brand' : 'text-slate-400'
+                'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
+                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
               )}
             >
               <div className={cn(
@@ -110,8 +110,8 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
                 {item.icon(active)}
               </div>
               <span className={cn(
-                'text-[10px] font-bold tracking-wide transition-all duration-300 overflow-hidden whitespace-nowrap',
-                active ? 'opacity-100 max-h-4' : 'opacity-0 max-h-0'
+                'overflow-hidden whitespace-nowrap text-[10px] font-black uppercase tracking-[0.08em] transition-all duration-300',
+                active ? 'max-h-4 opacity-100' : 'max-h-0 opacity-0'
               )}>
                 {item.label}
               </span>
