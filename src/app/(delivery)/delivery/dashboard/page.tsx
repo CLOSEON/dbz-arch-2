@@ -184,14 +184,12 @@ export default function DeliveryDashboard() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="relative h-12 w-12 overflow-hidden rounded-[1.2rem] bg-gradient-to-br from-brand to-brand-600 shadow-[0_16px_30px_rgba(255,107,53,0.25)]"
+            className="relative w-14 h-14 overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-slate-50 flex items-center justify-center hover:scale-[1.05] active:scale-[0.97] transition-all duration-300 shrink-0"
           >
             {user?.image ? (
               <Image src={getImageUrl(user.image)} alt={user.name || 'Profile'} fill className="object-cover" />
             ) : (
-              <span className="flex h-full w-full items-center justify-center text-lg font-black text-white">
-                {user?.name?.[0]?.toUpperCase() ?? '?'}
-              </span>
+              <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={48} height={48} priority className="object-contain" />
             )}
 
             <span className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-200 group-hover:opacity-100">

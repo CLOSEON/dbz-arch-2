@@ -47,7 +47,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 backdrop-blur-xl">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100/50 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto max-w-md px-2 pb-[env(safe-area-inset-bottom)] pt-2">
         <div className="grid grid-cols-4 gap-1">
           {NAV_ITEMS.map((item) => {

@@ -9,7 +9,7 @@ export default function DeliveryLayout({ children }: { children: React.ReactNode
       <div className="min-h-screen bg-[linear-gradient(180deg,#fff9f5_0%,#f8fafc_100%)]">
         <NetworkBanner />
         <ErrorBoundary>
-          <main className="page-shell pt-3 pb-[9rem] flex-1">
+          <main className="page-shell pt-4 flex-1">
             {children}
           </main>
         </ErrorBoundary>

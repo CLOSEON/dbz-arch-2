@@ -87,7 +87,7 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
   );
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-2 py-3 pb-safe animate-fade-in shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-t border-slate-100/50 px-2 py-3 pb-safe animate-fade-in shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
       <div className="max-w-3xl mx-auto flex items-center justify-around">
         {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.includes('dashboard');

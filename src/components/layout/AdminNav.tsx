@@ -80,7 +80,7 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-100 safe-area-pb">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-xl border-t border-slate-100/50 safe-area-pb">
       <div className="max-w-3xl mx-auto flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
