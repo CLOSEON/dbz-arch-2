@@ -98,11 +98,9 @@ export default function UserDashboard() {
         </div>
         <Link 
           href="/profile"
-          className="w-11 h-11 rounded-full bg-brand/10 border-2 border-brand/20 flex items-center justify-center hover:scale-[1.05] active:scale-[0.97] transition-all duration-300 shrink-0"
+          className="w-14 h-14 rounded-2xl bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex items-center justify-center border border-slate-50 hover:scale-[1.05] active:scale-[0.97] transition-all duration-300 shrink-0 overflow-hidden"
         >
-          <span className="text-[18px] font-black text-brand">
-            {user?.name?.charAt(0)?.toUpperCase() || '?'}
-          </span>
+          <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={48} height={48} priority className="object-contain" />
         </Link>
       </div>
 
