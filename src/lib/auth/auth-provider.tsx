@@ -16,7 +16,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useNetworkStore } from '@/store/networkStore';
 import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@/types';
-import { Logo } from '@/components/shared/Logo';
+import Image from 'next/image';
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -159,7 +159,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-14 h-14">
             <div className="absolute inset-0 rounded-2xl bg-brand/20 animate-ping" />
-            <Logo size={56} className="relative z-10" />
+            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={90} height={54} priority className="relative z-10" />
           </div>
           <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em]">Loading Dabzo...</p>
         </div>

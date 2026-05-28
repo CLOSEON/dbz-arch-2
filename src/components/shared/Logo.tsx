@@ -7,16 +7,10 @@ interface LogoProps {
   size?: number;
 }
 
-export function Logo({ className = '', size = 40 }: LogoProps) {
+export function Logo({ className = '', size = 40 }: { className?: string, size?: number }) {
   return (
-    <div className={`relative ${className}`} style={{ width: size, height: size }}>
-      <Image
-        src="/logo.png"
-        alt="Dabzo Logo"
-        fill
-        className="object-contain"
-        priority
-      />
+    <div className={`flex items-center ${className}`}>
+      <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={size} height={size * 0.6} priority />
     </div>
   );
 }

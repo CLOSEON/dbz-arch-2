@@ -1,6 +1,7 @@
 import { AuthGuard } from '@/lib/auth';
 import { AdminNav } from '@/components/layout/AdminNav';
 import { Toaster } from '@/components/shared/Toaster';
+import Image from 'next/image';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,8 +9,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="min-h-screen bg-ivory flex flex-col md:flex-row">
         {/* Desktop Sidebar */}
         <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white border-r border-slate-100 z-50">
-          <div className="p-6">
-            <h2 className="text-xl font-black text-brand tracking-tighter">Dabzo Admin</h2>
+          <div className="p-6 flex items-center">
+            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={80} height={48} priority />
           </div>
           <AdminNav variant="sidebar" />
         </aside>

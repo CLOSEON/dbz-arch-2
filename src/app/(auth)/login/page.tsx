@@ -13,7 +13,7 @@ import {
   completeOnboarding,
 } from '@/lib/queries/users';
 import type { UserRole } from '@/types';
-import { Logo } from '@/components/shared/Logo';
+import Image from 'next/image';
 
 // ─── Step Types ──────────────────────────────────────────────────────────────
 
@@ -262,12 +262,9 @@ export default function LoginPage() {
       <div className="w-full max-w-sm animate-fade-in">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div className="relative mb-6">
-            <Logo size={64} />
+          <div className="flex items-center mb-6">
+            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={80} height={48} priority />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-            Dabzo
-          </h1>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">
             Smart Meal Subscriptions
           </p>

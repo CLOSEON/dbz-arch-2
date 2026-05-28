@@ -12,7 +12,6 @@ import { db } from '@/lib/firebase';
 import { VendorCard } from '@/components/vendor/VendorCard';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { Logo } from '@/components/shared/Logo';
 import type { Vendor } from '@/types';
 
 const CATEGORIES = [
@@ -99,9 +98,11 @@ export default function UserDashboard() {
         </div>
         <Link 
           href="/profile"
-          className="w-14 h-14 rounded-[1.25rem] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex items-center justify-center border border-slate-50 hover:scale-110 active:scale-95 transition-all duration-300 group"
+          className="h-12 px-3 rounded-[1rem] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex items-center justify-center border border-slate-50 hover:scale-[1.03] active:scale-[0.97] transition-all duration-300 group"
         >
-          <Logo size={40} className="group-hover:rotate-6 transition-transform" />
+          <div className="flex items-center">
+            <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={72} height={44} priority className="group-hover:rotate-2 transition-transform" />
+          </div>
         </Link>
       </div>
 
@@ -150,7 +151,11 @@ export default function UserDashboard() {
         <SkeletonList count={3} hasImage />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={<Logo size={60} />}
+          icon={
+            <div className="flex items-center">
+              <Image src="/assets/dabzo-logo.svg" alt="Dabzo" width={80} height={48} priority />
+            </div>
+          }
           title="No vendors found"
           description="Try a different search or category"
         />
