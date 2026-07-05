@@ -60,46 +60,25 @@ export async function requestSwap(
   }
 
   // 0b. Check 4-hour constraint
-  let requestDelRef;
-  const isProjected = typeof deliveryId === 'string' && deliveryId.startsWith('projected_');
-  let realDeliveryId = deliveryId;
-  let requestDelData: any = null;
-
-  if (isProjected && deliveryObj) {
-    // Materialize projected order instantly
-    requestDelRef = doc(collection(db, 'delivery_orders'));
-    realDeliveryId = requestDelRef.id;
-    const deliveryDate = deliveryObj.createdAt?.toDate ? deliveryObj.createdAt.toDate() : new Date();
-    await setDoc(requestDelRef, {
-      subscriptionId: deliveryObj.subscriptionId,
-      customerId: userId,
-      vendorId: deliveryObj.vendorId,
-      status: 'pending',
-      otp: String(Math.floor(1000 + Math.random() * 9000)),
-      otpVerified: false,
-      meal: deliveryObj.meal,
-      scheduledSlot: deliveryObj.scheduledSlot,
-      createdAt: deliveryObj.createdAt, 
-      updatedAt: serverTimestamp()
-    });
-    requestDelData = deliveryObj;
-  } else {
-    requestDelRef = doc(db, 'delivery_orders', deliveryId);
-    const requestDelSnap = await getDoc(requestDelRef);
-    if (!requestDelSnap.exists()) {
-      throw new Error('Delivery order not found.');
-    }
-    requestDelData = requestDelSnap.data();
+  const requestDelRef = doc(db, 'orders', deliveryId);
+  const requestDelSnap = await getDoc(requestDelRef);
+  if (!requestDelSnap.exists()) {
+    throw new Error('Order not found.');
   }
+  const requestDelData = requestDelSnap.data();
+  const realDeliveryId = deliveryId;
+  
   const now = new Date();
   let requestDelDate = new Date();
-  if (requestDelData.createdAt?.toDate) {
+  if (requestDelData.date) {
+    requestDelDate = new Date(requestDelData.date); // canonical order uses YYYY-MM-DD
+  } else if (requestDelData.createdAt?.toDate) {
     requestDelDate = requestDelData.createdAt.toDate();
   }
-  if (requestDelData.scheduledSlot === '8am') requestDelDate.setHours(8, 0, 0, 0);
-  else if (requestDelData.scheduledSlot === '11am') requestDelDate.setHours(11, 0, 0, 0);
-  else if (requestDelData.scheduledSlot === '8pm') requestDelDate.setHours(20, 0, 0, 0);
-  else if (requestDelData.meal?.type === 'lunch') requestDelDate.setHours(13, 0, 0, 0); // Legacy fallback
+  
+  if (requestDelData.delivery_slot === '8am') requestDelDate.setHours(8, 0, 0, 0);
+  else if (requestDelData.delivery_slot === '11am') requestDelDate.setHours(11, 0, 0, 0);
+  else if (requestDelData.delivery_slot === '8pm') requestDelDate.setHours(20, 0, 0, 0);
   else requestDelDate.setHours(20, 0, 0, 0);
 
   const hoursRemaining = (requestDelDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -157,7 +136,7 @@ export async function requestSwap(
     initiator_user_id: userId,
     initiator_subscription_id: subscriptionId,
     meal_id: mealId,
-    delivery_id: realDeliveryId, // Keep track of the actual delivery being swapped
+    order_id: realDeliveryId, // Keep track of the actual order being swapped
     status: 'broadcasted',
     is_paid,
     payment_amount: 50,
@@ -166,23 +145,25 @@ export async function requestSwap(
 
   // 3. Broadcast to nearby users with a DIFFERENT meal type today
   const delQ = query(
-    collection(db, 'deliveries'),
-    where('status', '==', 'pending')
+    collection(db, 'orders'),
+    where('status', 'in', ['created', 'vendor_ready', 'vendor_notified'])
   );
   const deliverySnap = await getDocs(delQ);
   
   // Find candidates
   for (const d of deliverySnap.docs) {
-    const delivery = d.data() as Delivery;
+    const delivery = d.data() as any; // canonical Order schema
     
     // Ignore self, ignore same meal types, ignore colluders
     if (delivery.user_id === userId) continue;
     if (delivery.meal_type === myMealType) continue; // They must have the opposite meal
     if (excludedUsers.has(delivery.user_id)) continue;
-    if (!delivery.lat || !delivery.lng) continue;
+    
+    // Use delivery_address snapshot
+    if (!delivery.delivery_address?.lat || !delivery.delivery_address?.lng) continue;
 
     // Check distance
-    const dist = getDistance(myLat, myLng, delivery.lat, delivery.lng);
+    const dist = getDistance(myLat, myLng, delivery.delivery_address.lat, delivery.delivery_address.lng);
     if (dist <= 2.0) { // 2km radius
       // Create broadcast entry
       const bRef = doc(collection(db, 'swap_broadcasts'));
@@ -190,7 +171,7 @@ export async function requestSwap(
         id: bRef.id,
         swap_request_id: reqRef.id,
         recipient_user_id: delivery.user_id,
-        recipient_delivery_id: delivery.id, // the delivery B has
+        recipient_order_id: delivery.order_id || d.id, // the order B has
         distance_km: parseFloat(dist.toFixed(2)),
         meal_snapshot: myMealSnapshot,
         response: 'pending',
@@ -199,7 +180,7 @@ export async function requestSwap(
     }
   }
 
-  await createAuditLog('swap_initiated', userId, undefined, is_paid ? 50 : 0, { mealId, deliveryId: realDeliveryId, reqId: reqRef.id });
+  await createAuditLog('swap_initiated', userId, undefined, is_paid ? 50 : 0, { mealId, orderId: realDeliveryId, reqId: reqRef.id });
 
   return reqRef.id;
 }
@@ -207,40 +188,20 @@ export async function requestSwap(
 export async function requestVendorSwap(
   userId: string,
   subscriptionId: string,
-  deliveryObj: any, // The current delivery order to swap
+  deliveryObj: any, // The current canonical order to swap
   targetVendorId: string,
   targetVendorName: string
 ): Promise<string> {
   // 1. Instant update of initiator's delivery to the new vendor
-  const isProjected = typeof deliveryObj.id === 'string' && deliveryObj.id.startsWith('projected_');
-  let realDeliveryId = deliveryObj.id;
-  let requestDelRef;
-  const originalVendorId = deliveryObj.vendorId;
+  const realDeliveryId = deliveryObj.id;
+  const originalVendorId = deliveryObj.vendor_id;
 
-  if (isProjected) {
-    requestDelRef = doc(collection(db, 'delivery_orders'));
-    realDeliveryId = requestDelRef.id;
-    const deliveryDate = deliveryObj.createdAt?.toDate ? deliveryObj.createdAt.toDate() : new Date();
-    await setDoc(requestDelRef, {
-      subscriptionId: deliveryObj.subscriptionId,
-      customerId: userId,
-      vendorId: targetVendorId,
-      status: 'pending',
-      otp: String(Math.floor(1000 + Math.random() * 9000)),
-      otpVerified: false,
-      meal: { ...deliveryObj.meal, name: `${targetVendorName}'s ${deliveryObj.meal.type === 'dinner' ? 'Dinner' : 'Lunch'}` },
-      scheduledSlot: deliveryObj.scheduledSlot,
-      createdAt: Timestamp.fromDate(deliveryDate),
-      updatedAt: serverTimestamp()
-    });
-  } else {
-    requestDelRef = doc(db, 'delivery_orders', deliveryObj.id);
-    await updateDoc(requestDelRef, {
-      vendorId: targetVendorId,
-      meal: { ...deliveryObj.meal, name: `${targetVendorName}'s ${deliveryObj.meal.type === 'dinner' ? 'Dinner' : 'Lunch'}` },
-      updatedAt: serverTimestamp()
-    });
-  }
+  const requestDelRef = doc(db, 'orders', deliveryObj.id);
+  await updateDoc(requestDelRef, {
+    vendor_id: targetVendorId,
+    meal_type: deliveryObj.meal_type,
+    updated_at: serverTimestamp()
+  });
 
   // 2. Create SwapRequest
   const reqRef = doc(collection(db, 'swap_requests'));
@@ -249,7 +210,7 @@ export async function requestVendorSwap(
     initiator_user_id: userId,
     initiator_subscription_id: subscriptionId,
     meal_id: realDeliveryId,
-    delivery_id: realDeliveryId,
+    order_id: realDeliveryId,
     target_vendor_id: targetVendorId,
     status: 'broadcasted',
     is_paid: true,
@@ -272,44 +233,34 @@ export async function requestVendorSwap(
     const subData = sub.data();
     if (subData.user_id === userId) continue; // Don't broadcast to self
     
-    // Check if subscriber actually has a delivery for this slot
-    // We can just query delivery_orders for this user_id and vendor_id on this day
-    const dayStart = new Date(deliveryObj.createdAt?.toDate ? deliveryObj.createdAt.toDate() : now);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setHours(23, 59, 59, 999);
+    // Check if subscriber actually has an order for this slot
+    const targetDateStr = deliveryObj.date || now.toISOString().split('T')[0];
     
     const delQ = query(
-      collection(db, 'delivery_orders'),
-      where('customerId', '==', subData.user_id),
-      where('vendorId', '==', targetVendorId),
-      where('createdAt', '>=', Timestamp.fromDate(dayStart)),
-      where('createdAt', '<=', Timestamp.fromDate(dayEnd))
+      collection(db, 'orders'),
+      where('user_id', '==', subData.user_id),
+      where('vendor_id', '==', targetVendorId),
+      where('date', '==', targetDateStr)
     );
     const delSnap = await getDocs(delQ);
-    let recipientDeliveryId = null;
     
-    if (!delSnap.empty) {
-      recipientDeliveryId = delSnap.docs[0].id;
-    } else {
-      // It might be projected for them too! Just pass 'projected' and their sub id
-      recipientDeliveryId = `projected_${dayStart.toLocaleDateString('en-CA')}_${deliveryObj.meal.type}_${sub.id}`;
-    }
+    if (delSnap.empty) continue; // Skip if they don't have an order
+    const recipientDeliveryId = delSnap.docs[0].id;
 
     const bRef = doc(collection(db, 'swap_broadcasts'));
     await setDoc(bRef, {
       id: bRef.id,
       swap_request_id: reqRef.id,
       recipient_user_id: subData.user_id,
-      recipient_delivery_id: recipientDeliveryId, // What the recipient is offering up (their meal from target vendor)
+      recipient_order_id: recipientDeliveryId, // What the recipient is offering up
       distance_km: 0,
-      meal_snapshot: { ...deliveryObj.meal, original_vendor_id: originalVendorId }, // The meal the initiator is giving up
+      meal_snapshot: { type: deliveryObj.meal_type, original_vendor_id: originalVendorId },
       response: 'pending',
       created_at: serverTimestamp()
     });
   }
 
-  await createAuditLog('swap_initiated', userId, undefined, 50, { reqId: reqRef.id });
+  await createAuditLog('swap_initiated', userId, undefined, 50, { reqId: reqRef.id, orderId: realDeliveryId });
   return reqRef.id;
 }
 
@@ -318,7 +269,7 @@ export async function cancelSwapRequest(deliveryId: string, userId: string): Pro
   const q = query(
     collection(db, 'swap_requests'),
     where('initiator_user_id', '==', userId),
-    where('delivery_id', '==', deliveryId),
+    where('order_id', '==', deliveryId),
     where('status', '==', 'broadcasted')
   );
   const snap = await getDocs(q);
@@ -392,40 +343,49 @@ export async function acceptSwap(broadcastId: string, recipientUserId: string): 
       created_at: serverTimestamp()
     });
 
-    // Swap deliveries: The recipient gives up their targetVendor meal and gets the initiator's original vendor meal
+    // Swap deliveries: The recipient gives up their current meal and gets the initiator's meal.
     const originalVendorId = broadcastData.meal_snapshot?.original_vendor_id;
-    let recipientDeliveryRef;
+    const recipientOrderRef = doc(db, 'orders', broadcastData.recipient_order_id);
     
-    // Handle projected recipient delivery
-    if (broadcastData.recipient_delivery_id.startsWith('projected_')) {
-      const parts = broadcastData.recipient_delivery_id.split('_');
-      // projected_YYYY-MM-DD_type_subId
-      const subId = parts[3];
-      const targetDate = new Date(parts[1]);
-      
-      recipientDeliveryRef = doc(collection(db, 'delivery_orders'));
-      transaction.set(recipientDeliveryRef, {
-        subscriptionId: subId,
-        customerId: recipientUserId,
-        vendorId: originalVendorId,
-        status: 'pending',
-        otp: String(Math.floor(1000 + Math.random() * 9000)),
-        otpVerified: false,
-        meal: { type: parts[2], name: 'Swapped Meal' }, // Would ideally fetch actual vendor name
-        scheduledSlot: parts[2] === 'lunch' ? '11am' : '8pm',
-        createdAt: Timestamp.fromDate(targetDate),
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      recipientDeliveryRef = doc(db, 'delivery_orders', broadcastData.recipient_delivery_id);
-      transaction.update(recipientDeliveryRef, {
-        vendorId: originalVendorId,
-        updatedAt: serverTimestamp()
-      });
-    }
+    // We update the recipient's order to reflect the new vendor.
+    // In a fully robust system we might mark the old one 'swapped_out' and create a new one 'swapped_in'.
+    // For now, we update the existing one and mark its status as 'swapped_in' to match the authoritative lifecycle.
+    transaction.update(recipientOrderRef, {
+      vendor_id: originalVendorId || 'unknown_vendor',
+      status: 'swapped_in',
+      updated_at: serverTimestamp()
+    });
+
+    // Create an order status log for the recipient
+    const logRef = doc(collection(db, 'order_status_logs'));
+    transaction.set(logRef, {
+      id: logRef.id,
+      order_id: broadcastData.recipient_order_id,
+      from_status: 'created', // Assumed from_status
+      to_status: 'swapped_in',
+      actor: recipientUserId,
+      timestamp: serverTimestamp()
+    });
+
+    // If this was a C2C swap (where initiator didn't get an instant swap via vendor swap), 
+    // we would also update the initiator's order to 'swapped_out'. 
+    // The previous logic relied on the initiator's order already being updated in requestVendorSwap.
+    // For requestSwap (C2C), we must update the initiator's order as well!
+    const initiatorOrderRef = doc(db, 'orders', reqData.order_id);
+    transaction.update(initiatorOrderRef, {
+      status: 'swapped_out',
+      updated_at: serverTimestamp()
+    });
     
-    // The initiator ALREADY got their swap instantly when they clicked "Swap", 
-    // so we don't need to modify the initiator's delivery here!
+    const initLogRef = doc(collection(db, 'order_status_logs'));
+    transaction.set(initLogRef, {
+      id: initLogRef.id,
+      order_id: reqData.order_id,
+      from_status: 'created', 
+      to_status: 'swapped_out',
+      actor: recipientUserId,
+      timestamp: serverTimestamp()
+    });
 
     success = true;
   });

@@ -5,215 +5,167 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import { useUiStore } from '@/store/uiStore';
-import { Users, CheckCircle, Navigation, CalendarClock } from 'lucide-react';
+import { Users, CheckCircle, Navigation, CalendarClock, ChefHat, PackageCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { VendorProfileCard } from '@/components/vendor/VendorProfileCard';
 import { VendorReviews } from '@/components/vendor/VendorReviews';
-import { getVendorDeliveries } from '@/lib/queries/delivery';
-import { getActiveDeliveryPartners } from '@/lib/queries/admin';
 import dynamic from 'next/dynamic';
-import { Capacitor } from '@capacitor/core';
+import type { Batch, BatchStatus } from '@/types';
 
 const RiderTrackingCard = dynamic(
   () => import('@/components/delivery/RiderTrackingCard').then(m => ({ default: m.RiderTrackingCard })),
   { ssr: false }
 );
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const SLOT_SORT: Record<string, number> = { '8am': 0, '11am': 1, '8pm': 2 };
+
+const BATCH_STATUS_DISPLAY: Record<BatchStatus, { label: string; color: string; bg: string }> = {
+  pending:           { label: 'Pending',          color: 'text-slate-500', bg: 'bg-slate-50' },
+  notified:          { label: 'Awaiting Prep',    color: 'text-amber-600', bg: 'bg-amber-50' },
+  preparing:         { label: 'Preparing',         color: 'text-blue-600',  bg: 'bg-blue-50' },
+  ready:             { label: 'Ready',             color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  pickup_in_progress:{ label: 'Pickup In Progress',color: 'text-purple-600', bg: 'bg-purple-50' },
+  completed:         { label: 'Completed',         color: 'text-slate-400', bg: 'bg-slate-50' },
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function VendorDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+
+  // Data state
+  const [batches, setBatches] = useState<(Batch & { id: string })[]>([]);
   const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
   const [activePickups, setActivePickups] = useState<any[]>([]);
   const [fleetLocations, setFleetLocations] = useState<any[]>([]);
-  const [prepSchedule, setPrepSchedule] = useState<any[]>([]);
-  const [isMarkingReady, setIsMarkingReady] = useState<string | null>(null);
-  const [selectedDateDetails, setSelectedDateDetails] = useState<{ dateKey: string, displayDate: string, details: any[] } | null>(null);
-
-  const [ordersStore, setOrdersStore] = useState<any[]>([]);
   const [subsStore, setSubsStore] = useState<any[]>([]);
 
+  // UI state
+  const [isMarkingReady, setIsMarkingReady] = useState<string | null>(null);
 
-  // Computed state for the map
-  const partnerLocations = fleetLocations.filter(p => 
+  // Computed
+  const partnerLocations = fleetLocations.filter(p =>
     activeDeliveries.some(d => d.assigned_to === p.id && d.status === 'picked_up')
   );
 
+  // ── Subscriptions ─────────────────────────────────────────────────────────
   useEffect(() => {
-    let unsubscribeDeliveries: (() => void) | undefined;
-    let unsubscribeFleet: (() => void) | undefined;
-    let unsubscribeUpcoming: (() => void) | undefined;
-    let unsubscribeSubs: (() => void) | undefined;
+    if (!user?.id) return;
 
-    if (user?.id) {
-          
-          // 1. Listen to vendor's live deliveries
-          const qDel = query(collection(db, 'deliveries'), where('vendor_id', '==', user.id));
-          unsubscribeDeliveries = onSnapshot(qDel, (snap) => {
-            setActiveDeliveries(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
-          });
+    // 1. Listen to today's + tomorrow's batches for this vendor
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-          // 1.5 Listen to active pickups where rider is assigned but not yet picked up
-          const qPickups = query(
-            collection(db, 'rider_trips'),
-            where('vendorIds', 'array-contains', user.id),
-            where('status', '==', 'pickup_pending')
-          );
-          const unsubscribePickups = onSnapshot(qPickups, (snap) => {
-            const pickups = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-            setActivePickups(pickups);
-          });
+    const qBatches = query(
+      collection(db, 'batches'),
+      where('vendor_id', '==', user.id),
+      where('date', 'in', [todayStr, tomorrowStr])
+    );
+    const unsubBatches = onSnapshot(qBatches, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Batch & { id: string }));
+      docs.sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        return (SLOT_SORT[a.slot] ?? 99) - (SLOT_SORT[b.slot] ?? 99);
+      });
+      setBatches(docs);
+    });
 
-          // 2. Listen to all fleet locations
-          const qFleet = query(collection(db, 'users'), where('role', '==', 'delivery'));
-          unsubscribeFleet = onSnapshot(qFleet, (snap) => {
-            const fleet = snap.docs
-              .map(d => ({ id: d.id, ...d.data() } as any))
-              .filter(u => u.location && u.location.lat && u.location.lng);
-            setFleetLocations(fleet);
-          });
+    // 2. Live deliveries (existing)
+    const qDel = query(collection(db, 'deliveries'), where('vendor_id', '==', user.id));
+    const unsubDel = onSnapshot(qDel, (snap) => {
+      setActiveDeliveries(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
 
-          // 3. Listen to upcoming delivery orders for prep schedule
-          const qUpcoming = query(
-            collection(db, 'delivery_orders'),
-            where('vendorId', '==', user.id),
-            where('status', 'in', ['pending', 'preparing', 'ready'])
-          );
-          unsubscribeUpcoming = onSnapshot(qUpcoming, (snap) => {
-            const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setOrdersStore(orders);
-          });
+    // 3. Active pickups (existing)
+    const qPickups = query(
+      collection(db, 'rider_trips'),
+      where('vendorIds', 'array-contains', user.id),
+      where('status', '==', 'pickup_pending')
+    );
+    const unsubPickups = onSnapshot(qPickups, (snap) => {
+      setActivePickups(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
 
-          // 4. Listen to active subscriptions to project future prep schedule
-          const qSubs = query(
-            collection(db, 'subscriptions'),
-            where('vendor_id', '==', user.id),
-            where('status', '==', 'active')
-          );
-          unsubscribeSubs = onSnapshot(qSubs, (snap) => {
-            const subs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setSubsStore(subs);
-          });
-    }
+    // 4. Fleet locations
+    const qFleet = query(collection(db, 'users'), where('role', '==', 'delivery'));
+    const unsubFleet = onSnapshot(qFleet, (snap) => {
+      setFleetLocations(
+        snap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(u => u.location?.lat)
+      );
+    });
+
+    // 5. Active subscriptions (for Estimated Prep section)
+    const qSubs = query(
+      collection(db, 'subscriptions'),
+      where('vendor_id', '==', user.id),
+      where('status', '==', 'active')
+    );
+    const unsubSubs = onSnapshot(qSubs, (snap) => {
+      setSubsStore(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 
     return () => {
-      if (unsubscribeDeliveries) unsubscribeDeliveries();
-      if (unsubscribeFleet) unsubscribeFleet();
-      if (unsubscribeUpcoming) unsubscribeUpcoming();
-      if (unsubscribeSubs) unsubscribeSubs();
+      unsubBatches();
+      unsubDel();
+      unsubPickups();
+      unsubFleet();
+      unsubSubs();
     };
   }, [user?.id]);
 
-  useEffect(() => {
-    const grouped: any = {};
-    const exactDays = new Set<string>();
+  // ── Estimated Prep (projection) ───────────────────────────────────────────
+  // Build a lightweight 7-day forecast from subscriptions for days that don't
+  // have a confirmed batch yet. No order-level detail exposed.
+  const estimatedPrep = (() => {
     const now = new Date();
+    const confirmedKeys = new Set(batches.map(b => `${b.date}_${b.slot}`));
+    const rows: { dateKey: string; displayDate: string; slot: string; count: number }[] = [];
 
-    // 1. Process explicit delivery orders (which represent today/tomorrow typically)
-    ordersStore.forEach((o: any) => {
-      const d = o.createdAt?.toDate ? o.createdAt.toDate() : new Date();
-      const dateKey = d.toLocaleDateString('en-CA'); // YYYY-MM-DD local
-      const displayDate = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const mealType = o.meal?.type || 'lunch';
-      const slot = o.scheduledSlot || 'Standard Time';
-      const key = `${dateKey}_${mealType}_${slot}`;
-      
-      exactDays.add(dateKey);
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const dateKey = d.toISOString().split('T')[0];
+      const displayDate = d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
 
-      if (!grouped[key]) {
-        grouped[key] = { 
-          dateKey, 
-          displayDate, 
-          dateObj: d, 
-          sortDate: d.getTime(), 
-          mealType, 
-          slot, 
-          count: 0, 
-          readyCount: 0, 
-          isProjected: false 
-        };
-      }
-      grouped[key].count++;
-      if (o.status === 'ready') grouped[key].readyCount++;
-    });
-
-    // 2. Project subscriptions for the next 30 days
-    for (let i = 0; i <= 30; i++) {
-      const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const dateKey = targetDate.toLocaleDateString('en-CA');
-      const displayDate = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      
-      if (exactDays.has(dateKey)) continue;
-
+      const slotCounts: Record<string, number> = {};
       subsStore.forEach((sub: any) => {
-        const addProjected = (mealType: string, slot: string) => {
-          const key = `${dateKey}_${mealType}_${slot}`;
-          if (!grouped[key]) {
-            grouped[key] = { 
-              dateKey, 
-              displayDate, 
-              dateObj: targetDate, 
-              sortDate: targetDate.getTime(), 
-              mealType, 
-              slot, 
-              count: 0, 
-              readyCount: 0, 
-              isProjected: true 
-            };
+        const slots = [];
+        if (sub.meal_type === 'lunch' || sub.meal_type === 'both') slots.push(sub.deliveryPreference || '11am');
+        if (sub.meal_type === 'dinner' || sub.meal_type === 'both') slots.push('8pm');
+        slots.forEach(slot => {
+          if (!confirmedKeys.has(`${dateKey}_${slot}`)) {
+            slotCounts[slot] = (slotCounts[slot] || 0) + 1;
           }
-          grouped[key].count++;
-        };
-        if (sub.meal_type === 'lunch' || sub.meal_type === 'both') {
-          addProjected('lunch', sub.deliveryPreference || '11am');
-        }
-        if (sub.meal_type === 'dinner' || sub.meal_type === 'both') {
-          addProjected('dinner', '8pm');
-        }
+        });
+      });
+
+      Object.entries(slotCounts).forEach(([slot, count]) => {
+        rows.push({ dateKey, displayDate, slot, count });
       });
     }
+    return rows.sort((a, b) => a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : (SLOT_SORT[a.slot] ?? 99) - (SLOT_SORT[b.slot] ?? 99));
+  })();
 
-    const scheduleArray = Object.values(grouped).sort((a: any, b: any) => a.sortDate - b.sortDate);
-    setPrepSchedule(scheduleArray);
-  }, [ordersStore, subsStore]);
+  // ── Actions ───────────────────────────────────────────────────────────────
+  const handleMarkReady = async (batch: Batch & { id: string }) => {
+    if (!confirm(`Mark ${batch.total_count} tiffins ready for the ${batch.slot} batch? This will notify riders.`)) return;
 
-  if (user?.role === 'vendor' && !user.is_approved) {
-    return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-        <div className="w-24 h-24 bg-amber-50 rounded-[2.5rem] flex items-center justify-center mb-6 text-4xl shadow-xl shadow-amber-100">
-          ⏳
-        </div>
-        <h1 className="text-2xl font-black text-slate-900 mb-2">Registration Pending</h1>
-        <p className="text-slate-500 max-w-xs mb-8 font-medium">
-          Your kitchen profile is under review. Our team will verify your details and approve you within 24 hours.
-        </p>
-        <button
-          onClick={logout}
-          className="btn-outline w-auto px-8"
-        >
-          Logout & Wait
-        </button>
-      </div>
-    );
-  }
-
-  const handleMarkReady = async (prep: any) => {
-    const batchKey = `${prep.date}_${prep.slot}`;
-    if (!confirm(`Are you sure you want to mark ${prep.count} tiffins ready for ${prep.slot}? This will automatically assign riders.`)) return;
-
-    setIsMarkingReady(batchKey);
+    setIsMarkingReady(batch.id);
     try {
       const functions = getFunctions();
       const markBatchReady = httpsCallable(functions, 'markBatchReady');
       const assignRiderTrips = httpsCallable(functions, 'assignRiderTrips');
 
-      // 1. Mark ready (lock)
-      const res = await markBatchReady({ dateStr: prep.date, slot: prep.slot }) as any;
+      const res = await markBatchReady({ batch_id: batch.id }) as any;
       if (res.data?.success) {
-        toast.success('Batch marked ready. Assigning riders...');
-        // 2. Trigger rider assignment
-        const matchRes = await assignRiderTrips({ vendorId: user?.id, slot: prep.slot }) as any;
-        toast.success(matchRes.data?.message || 'Riders assigned!');
+        toast.success('Batch marked ready! Assigning riders…');
+        await assignRiderTrips({ vendorId: user?.id, slot: batch.slot });
       } else {
         toast.error(res.data?.message || 'Failed to mark ready.');
       }
@@ -238,26 +190,34 @@ export default function VendorDashboard() {
     }
   };
 
+  // ── Approval Gate ─────────────────────────────────────────────────────────
+  if (user?.role === 'vendor' && !user.is_approved) {
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+        <div className="w-24 h-24 bg-amber-50 rounded-[2.5rem] flex items-center justify-center mb-6 text-4xl shadow-xl shadow-amber-100">⏳</div>
+        <h1 className="text-2xl font-black text-slate-900 mb-2">Registration Pending</h1>
+        <p className="text-slate-500 max-w-xs mb-8 font-medium">
+          Your kitchen profile is under review. Our team will verify your details and approve you within 24 hours.
+        </p>
+        <button onClick={logout} className="btn-outline w-auto px-8">Logout &amp; Wait</button>
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-10 animate-fade-in pb-10">
+
       {/* Header */}
       <div className="flex items-start justify-between mt-4 px-1 gap-3">
         <div>
-          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
-            Dashboard
-          </h1>
-          <p className="text-sm font-medium text-slate-400 mt-1">
-            Manage your kitchen & daily operations
-          </p>
+          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">Dashboard</h1>
+          <p className="text-sm font-medium text-slate-400 mt-1">Manage your kitchen &amp; daily operations</p>
         </div>
-        <button
-          onClick={logout}
-          className="btn-outline"
-        >
-          Logout
-        </button>
+        <button onClick={logout} className="btn-outline">Logout</button>
       </div>
 
+      {/* Stats bar */}
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1">
         <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
           Subscribers: {user?.subscriberCount || 0}
@@ -270,6 +230,7 @@ export default function VendorDashboard() {
         </span>
       </div>
 
+      {/* Metric cards */}
       <div className="grid grid-cols-2 gap-3 md:gap-6">
         <div className="card">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Subscribers</p>
@@ -294,22 +255,87 @@ export default function VendorDashboard() {
         </div>
       </div>
 
-      {/* Active Pickups (Rider Incoming) */}
+      {/* ── TODAY'S BATCHES ──────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h3 className="font-bold text-slate-900 flex items-center gap-2">
+          <ChefHat className="w-5 h-5 text-brand" />
+          Today's Batches
+        </h3>
+
+        {batches.filter(b => b.date === new Date().toISOString().split('T')[0]).length === 0 ? (
+          <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-8 text-center">
+            <div className="text-3xl mb-2">🍱</div>
+            <p className="text-sm font-bold text-slate-400">No batches confirmed yet today</p>
+            <p className="text-xs text-slate-400 mt-1">Batches appear 4 hours before each delivery slot</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {batches
+              .filter(b => b.date === new Date().toISOString().split('T')[0])
+              .map((batch) => {
+                const disp = BATCH_STATUS_DISPLAY[batch.status] ?? BATCH_STATUS_DISPLAY.pending;
+                const canMarkReady = !['ready', 'pickup_in_progress', 'completed'].includes(batch.status);
+
+                return (
+                  <div key={batch.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-4">
+                    {/* Batch header */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          {batch.slot} Batch
+                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-4xl font-black text-slate-900 leading-none">{batch.total_count}</span>
+                          <span className="text-sm font-bold text-slate-500">tiffins</span>
+                        </div>
+                      </div>
+                      <span className={`text-[11px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full ${disp.bg} ${disp.color}`}>
+                        {disp.label}
+                      </span>
+                    </div>
+
+                    {/* Mark Ready CTA */}
+                    {canMarkReady && (
+                      <button
+                        id={`mark-ready-${batch.id}`}
+                        onClick={() => handleMarkReady(batch)}
+                        disabled={isMarkingReady === batch.id}
+                        className="w-full py-3 rounded-2xl font-bold text-sm bg-brand text-white hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <PackageCheck className="w-4 h-4" />
+                        {isMarkingReady === batch.id ? 'Marking Ready…' : `Mark ${batch.total_count} Tiffins Ready`}
+                      </button>
+                    )}
+
+                    {batch.status === 'ready' && (
+                      <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm justify-center">
+                        <CheckCircle className="w-4 h-4" />
+                        Batch marked ready — riders are being assigned
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Batch ID: {batch.id}
+                    </p>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* ── INCOMING PICKUPS ─────────────────────────────────────────────────── */}
       {activePickups.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              Incoming Riders for Pickup
-            </h3>
-          </div>
+          <h3 className="font-bold text-slate-900 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+            Incoming Riders for Pickup
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {activePickups.map((trip) => {
               const myStop = trip.pickupStops?.find((s: any) => s.vendorId === user?.id);
               if (!myStop || myStop.status === 'completed') return null;
-
               const rider = fleetLocations.find(p => p.id === trip.riderId);
-
               return (
                 <div key={trip.id} className="bg-amber-50 rounded-3xl p-5 border border-amber-200">
                   <div className="flex justify-between items-start">
@@ -346,7 +372,7 @@ export default function VendorDashboard() {
         </div>
       )}
 
-      {/* Active Deliveries — Blinkit-style per-rider tracking */}
+      {/* ── LIVE DELIVERIES ──────────────────────────────────────────────────── */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -391,6 +417,36 @@ export default function VendorDashboard() {
         )}
       </div>
 
+      {/* ── ESTIMATED PREP (next 7 days) ─────────────────────────────────────── */}
+      {estimatedPrep.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-slate-400" />
+              Estimated Prep — Next 7 Days
+            </h3>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full uppercase tracking-wide">
+              Projected
+            </span>
+          </div>
+          <div className="space-y-2">
+            {estimatedPrep.map((row) => (
+              <div key={`${row.dateKey}_${row.slot}`} className="flex items-center justify-between bg-white rounded-2xl px-5 py-4 border border-slate-100">
+                <div>
+                  <p className="text-sm font-bold text-slate-700">{row.displayDate}</p>
+                  <p className="text-xs font-medium text-slate-400">{row.slot} slot</p>
+                </div>
+                <span className="text-xl font-black text-slate-900">{row.count} <span className="text-sm font-bold text-slate-400">tiffins</span></span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 text-center font-medium px-4">
+            Estimates based on active subscriptions. Confirmed batches appear 4 hours before each slot.
+          </p>
+        </div>
+      )}
+
+      {/* ── KITCHEN MANAGEMENT ───────────────────────────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         <div className="space-y-6">
           <TodayMenuCard />
@@ -401,6 +457,7 @@ export default function VendorDashboard() {
           {user?.id && <VendorReviews vendorId={user.id} />}
         </div>
       </div>
+
     </div>
   );
 }

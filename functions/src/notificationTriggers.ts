@@ -88,7 +88,15 @@ export const onSystemEventCreated = onDocumentCreated('system_events/{eventId}',
         break;
         
       // VENDOR EVENTS
-      case 'tiffin_count_confirmed':
+      case 'batch_created':
+        title = '📋 Prepare Your Tiffins';
+        body = `Prepare ${event.payload.count || 0} tiffins for the ${event.payload.slot || 'upcoming slot'} today. (Batch: ${event.payload.batch_id || ''})`;
+        break;
+      case 'batch_count_updated':
+        title = '🔄 Updated Tiffin Count';
+        body = `Updated count for ${event.payload.slot || 'your slot'}: now ${event.payload.new_count ?? 0} tiffins.`;
+        break;
+      case 'tiffin_count_confirmed': // Legacy — kept for backward compatibility
         title = '📋 Tiffin Count Confirmed';
         body = `Prepare ${event.payload.count || 0} tiffins for the upcoming ${event.payload.slot || 'slot'}.`;
         break;

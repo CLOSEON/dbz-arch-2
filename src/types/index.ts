@@ -160,7 +160,69 @@ export interface DiscountCode {
   created_at: FirestoreTimestamp;
 }
 
-// ─── Deliveries ──────────────────────────────────────────────────────────────
+// ─── Orders (Canonical DBZ V2 Schema - Prompt 1) ──────────────────────────────
+
+export type OrderStatus = 
+  | 'created' 
+  | 'vendor_notified' 
+  | 'vendor_preparing' 
+  | 'vendor_ready' 
+  | 'rider_assigned' 
+  | 'rider_en_route_pickup' 
+  | 'picked_up' 
+  | 'out_for_delivery' 
+  | 'delivered' 
+  | 'skipped' 
+  | 'swapped_out' 
+  | 'swapped_in' 
+  | 'failed' 
+  | 'completed';
+
+export interface Order {
+  id: string;                  // format: ORD-{date}-{sequence}
+  user_id: string;
+  date: string;                // YYYY-MM-DD
+  meal_type: MealType;
+  delivery_slot: string;       // '8am', '11am', '8pm'
+  vendor_id?: string;          // Nullable until batch assignment
+  batch_id?: string;           // Nullable until batch assignment, FK to Batch
+  delivery_address: string;    // Snapshot at order creation
+  status: OrderStatus;
+  swap_ref?: string;           // Nullable, FK to SwapRequest
+  skip_ref?: string;           // Nullable, FK to SkipRecord
+  rider_trip_id?: string;      // Nullable, FK once assigned
+  legacy_order_id?: string;    // Traceability for migration
+  created_at: FirestoreTimestamp;
+  updated_at: FirestoreTimestamp;
+}
+
+export interface OrderStatusLog {
+  id: string;
+  order_id: string;
+  from_status?: OrderStatus;
+  to_status: OrderStatus;
+  actor: string;               // e.g., 'system', user_id, vendor_id, driver_id
+  timestamp: FirestoreTimestamp;
+}
+
+// ─── Batches (Order Grouping) ────────────────────────────────────────────────
+
+export type BatchStatus = 'pending' | 'notified' | 'preparing' | 'ready' | 'pickup_in_progress' | 'completed';
+
+export interface Batch {
+  id: string;                   // Format: BATCH-{vendor_id}-{date}-{slot}
+  vendor_id: string;
+  date: string;                 // YYYY-MM-DD
+  slot: string;                 // '8am', '11am', '8pm'
+  order_ids: string[];          // Array of FKs to Order
+  status: BatchStatus;
+  total_count: number;          // Active (non-skipped) meal count
+  last_notified_count: number;  // Tracks skip updates for debounced vendor notifications
+  created_at: FirestoreTimestamp;
+  updated_at: FirestoreTimestamp;
+}
+
+// ─── Deliveries (Legacy - Deprecated) ────────────────────────────────────────
 export type DeliveryStatus = 'pending' | 'picked_up' | 'delivered' | 'cancelled';
 
 export interface Delivery {

@@ -514,59 +514,80 @@ export const markBatchReady = onCall(async (request) => {
   }
   
   const vendorId = auth.uid;
-  const { dateStr, slot } = data as any;
-  if (!dateStr || !slot) {
-    throw new HttpsError('invalid-argument', 'Missing dateStr or slot');
+  const { batch_id } = data as any;
+  if (!batch_id) {
+    throw new HttpsError('invalid-argument', 'Missing batch_id');
   }
 
-  const batchId = `${vendorId}_${dateStr}_${slot}`;
-  const batchRef = admin.firestore().collection('vendor_batches').doc(batchId);
+  const db = admin.firestore();
+  const batchRef = db.collection('batches').doc(batch_id);
 
-  return await admin.firestore().runTransaction(async (t) => {
+  return await db.runTransaction(async (t) => {
     const batchDoc = await t.get(batchRef);
-    if (batchDoc.exists) {
-      return { success: false, message: 'Batch already marked ready' };
+    if (!batchDoc.exists) {
+      throw new HttpsError('not-found', `Batch ${batch_id} not found`);
     }
 
-    const ordersQuery = admin.firestore().collection('delivery_orders')
-      .where('vendorId', '==', vendorId)
-      .where('scheduledSlot', '==', slot)
-      .where('status', 'in', ['pending', 'preparing']);
+    const batch = batchDoc.data()!;
 
-    const ordersSnap = await t.get(ordersQuery);
+    // Auth check: ensure the calling vendor owns this batch
+    if (batch.vendor_id !== vendorId) {
+      throw new HttpsError('permission-denied', 'This batch does not belong to you');
+    }
     
-    // Perform updates
-    let updatedCount = 0;
-    ordersSnap.docs.forEach(doc => {
-      const orderData = doc.data();
-      const oDateStr = orderData.createdAt?.toDate ? orderData.createdAt.toDate().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      
-      if (oDateStr === dateStr) {
-        t.update(doc.ref, { status: 'ready', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-        updatedCount++;
-        
-        // Publish event for customer
-        publishEvent(
-          'meal_prep_started',
-          orderData.customerId,
-          'customer',
-          `meal_prep_started_${doc.id}`,
-          { mealType: orderData.meal?.name || 'meal' }
-        ).catch(e => console.error(e));
-      }
-    });
+    if (batch.status === 'ready' || batch.status === 'completed') {
+      return { success: false, message: `Batch is already in status: ${batch.status}` };
+    }
 
-    // Save batch lock
-    t.set(batchRef, {
-      vendorId,
-      date: dateStr,
-      slot,
+    // 1. Transition Batch to ready
+    t.update(batchRef, {
       status: 'ready',
-      updatedCount,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    return { success: true, message: `Batch marked ready. ${updatedCount} orders updated.` };
+    // 2. Cascade to every non-skipped order in the batch
+    const orderIds: string[] = batch.order_ids || [];
+    let cascadeCount = 0;
+
+    for (const orderId of orderIds) {
+      const orderRef = db.collection('orders').doc(orderId);
+      const orderDoc = await t.get(orderRef);
+      if (!orderDoc.exists) continue;
+
+      const order = orderDoc.data()!;
+      // Only update orders that are in an active state (not skipped/failed/completed)
+      const skipStatuses = ['skipped', 'swapped_out', 'failed', 'completed'];
+      if (skipStatuses.includes(order.status)) continue;
+
+      t.update(orderRef, {
+        status: 'vendor_ready',
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 3. Write OrderStatusLog for each order
+      const logRef = db.collection('order_status_logs').doc();
+      t.set(logRef, {
+        id: logRef.id,
+        order_id: orderId,
+        from_status: order.status,
+        to_status: 'vendor_ready',
+        actor: vendorId,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 4. Notify the customer that meal prep is complete
+      publishEvent(
+        'meal_prep_started',
+        order.user_id,
+        'customer',
+        `meal_prep_${orderId}`,
+        { mealType: order.meal_type || 'meal' }
+      ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
+
+      cascadeCount++;
+    }
+
+    return { success: true, message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.` };
   });
 });
 
