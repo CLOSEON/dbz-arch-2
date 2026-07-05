@@ -13,10 +13,23 @@ export interface AppUser {
   is_rejected?: boolean;
   push_tokens?: string[];
   location?: { lat: number; lng: number; updated_at: number }; // For live tracking
+  address?: string;
+  deliveryPreference?: '8am' | '11am'; // For lunch delivery slot
   // Vendor-specific
   kitchen_name?: string;
   bio?: string;
   cuisine_type?: string;
+  // One-time: flat price per meal (no lunch/dinner distinction)
+  rate_onetime?: number;
+  // Weekly subscription rates per meal type
+  rate_lunch_weekly?: number;
+  rate_dinner_weekly?: number;
+  rate_both_weekly?: number;
+  // Monthly subscription rates per meal type
+  rate_lunch_monthly?: number;
+  rate_dinner_monthly?: number;
+  rate_both_monthly?: number;
+  // Legacy fields kept for backward compat
   rate_lunch?: number;
   rate_dinner?: number;
   rate_both?: number;
@@ -24,6 +37,8 @@ export interface AppUser {
   review_count?: number;
   rating_avg?: number;
   subscriberCount?: number;
+  capacity?: number; // max tiffin capacity, null for unlimited
+  capacityUnlimited?: boolean; // true if vendor chooses no limit
   created_at?: FirestoreTimestamp;
   updated_at?: FirestoreTimestamp;
 }
@@ -46,14 +61,19 @@ export interface Vendor extends AppUser {
 export type SubscriptionStatus = 'active' | 'cancelled';
 export type MealType = 'lunch' | 'dinner' | 'both';
 
+export type SubscriptionFrequency = 'one-time' | 'weekly' | 'monthly';
+
 export interface Subscription {
   id: string;
   user_id: string;
   vendor_id: string;
   plan_id: string;
   meal_type: MealType;
+  frequency?: SubscriptionFrequency;
   status: SubscriptionStatus;
+  price?: number; // current rate in ₹ — set when vendor updates meal rates
   created_at: FirestoreTimestamp;
+  next_billing_date?: FirestoreTimestamp;
   cancelled_at?: FirestoreTimestamp;
   cancelled_by?: string;
 }
@@ -168,4 +188,75 @@ export interface Toast {
   id: string;
   message: string;
   type: ToastType;
+}
+
+// ─── Swaps & Credits ─────────────────────────────────────────────────────────
+
+export type SwapRequestStatus = 'broadcasted' | 'matched' | 'expired' | 'company_fulfilled';
+
+export interface SwapRequest {
+  id: string;
+  initiator_user_id: string;
+  initiator_subscription_id: string;
+  meal_id: string; // The specific day's tiffin meal ID
+  status: SwapRequestStatus;
+  is_paid: boolean;
+  payment_amount?: number; // e.g., default 50
+  created_at: FirestoreTimestamp;
+  matched_with_user_id?: string;
+  matched_at?: FirestoreTimestamp;
+  target_vendor_id?: string; // NEW: the vendor selected for instant swap
+}
+
+export type SwapRecipientResponse = 'pending' | 'accepted' | 'declined' | 'expired';
+
+export interface SwapBroadcastRecipient {
+  id: string;
+  swap_request_id: string;
+  recipient_user_id: string;
+  distance_km: number;
+  meal_snapshot: any; // Full details of the meal being broadcasted
+  response: SwapRecipientResponse;
+  responded_at?: FirestoreTimestamp;
+}
+
+export type UserCreditSource = 'swap_accept' | 'cancellation';
+
+export interface UserCredit {
+  id: string;
+  user_id: string;
+  credit_amount: number; // Decimal (e.g., 0.3, 0.5, 1.0)
+  source: UserCreditSource;
+  source_reference_id: string; // swap_request_id or cancellation_id
+  created_at: FirestoreTimestamp;
+  redeemed: boolean;
+  redeemed_at?: FirestoreTimestamp;
+}
+
+export interface SubscriptionSwapAllowance {
+  id: string;
+  subscription_id: string;
+  plan_type: 'lunch_only' | 'lunch_dinner';
+  free_swaps_total: number; // 1 for lunch_only, 2 for lunch_dinner
+  free_swaps_used: number;
+}
+
+export interface FreeMealVoucher {
+  id: string;
+  user_id: string;
+  status: 'available' | 'used';
+  created_at: FirestoreTimestamp;
+  used_at?: FirestoreTimestamp;
+}
+
+export type AuditLogType = 'swap_initiated' | 'swap_matched' | 'credit_earned' | 'credit_redeemed' | 'delivery_cancelled';
+
+export interface AuditLog {
+  id: string;
+  type: AuditLogType;
+  user_id: string;
+  target_user_id?: string;
+  amount?: number;
+  metadata?: any;
+  created_at: FirestoreTimestamp;
 }

@@ -16,6 +16,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import toast from 'react-hot-toast';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { FCM_TOKEN_STORAGE_KEY } from './constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ interface PushSetupOptions {
 /**
  * Persists (or replaces) the FCM token on the user's Firestore document.
  * Uses `setDoc` with merge so the document is created if somehow absent.
+ * Also caches the token in localStorage so signOut() can remove it from
+ * Firestore, preventing notification leaks to other users on the same device.
  */
 async function persistToken(uid: string, token: string): Promise<void> {
   try {
@@ -37,11 +40,16 @@ async function persistToken(uid: string, token: string): Promise<void> {
       { fcmToken: token, fcmTokenUpdatedAt: new Date().toISOString() },
       { merge: true }
     );
+    // Cache for signOut cleanup
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(FCM_TOKEN_STORAGE_KEY, token);
+    }
     console.log('[pushInit] FCM token persisted for user:', uid);
   } catch (err) {
     console.error('[pushInit] Failed to persist FCM token:', err);
   }
 }
+
 
 // ─── Listener Setup ───────────────────────────────────────────────────────────
 

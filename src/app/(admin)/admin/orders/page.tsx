@@ -26,27 +26,99 @@ export default function AdminOrdersTrackingPage() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showOTPModal, setShowOTPModal] = useState(false);
 
-  // Load orders for today
+  // Load orders for today and active subscriptions for projection
   useEffect(() => {
     if (!isHydrated || !user || user.role !== 'admin') return;
 
-    const start = new Date();
+    const now = new Date();
+    const start = new Date(now);
     start.setHours(0, 0, 0, 0);
-    const end = new Date();
+    const end = new Date(now);
+    end.setDate(end.getDate() + 2);
     end.setHours(23, 59, 59, 999);
 
-    const q = query(
+    const qOrders = query(
       collection(db, 'delivery_orders'),
       where('createdAt', '>=', Timestamp.fromDate(start)),
       where('createdAt', '<=', Timestamp.fromDate(end))
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder));
-      setOrders(list.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
+    const qSubs = query(
+      collection(db, 'subscriptions'),
+      where('status', '==', 'active')
+    );
+
+    let realOrdersList: DeliveryOrder[] = [];
+    let subsList: any[] = [];
+
+    const toMs = (ts: any) => {
+      if (!ts) return 0;
+      if (typeof ts.toMillis === 'function') return ts.toMillis();
+      if (ts.seconds) return ts.seconds * 1000;
+      return 0;
+    };
+
+    const mergeAndSet = () => {
+      // 1. Map real orders by slot to avoid projecting over them
+      const slotMap = new Set<string>();
+      realOrdersList.forEach(o => {
+        const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date());
+        slotMap.add(`${d.toLocaleDateString('en-CA')}_${o.customerId}_${o.meal?.type || 'lunch'}`);
+      });
+
+      // 2. Project future orders from active subscriptions
+      const projectedOrders: any[] = [];
+      for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+        const dateKey = targetDate.toLocaleDateString('en-CA');
+        
+        subsList.forEach((sub) => {
+          const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+          mealTypes.forEach((mealType) => {
+            if (slotMap.has(`${dateKey}_${sub.user_id}_${mealType}`)) return; // Already exists as real order
+            
+            // Assume preference from sub if available, else default
+            const scheduledSlot: string = mealType === 'lunch' ? '11am' : '8pm'; 
+            const slotHour = scheduledSlot === '8am' ? 8 : scheduledSlot === '11am' ? 11 : 20;
+            const slotDate = new Date(targetDate);
+            slotDate.setHours(slotHour, 0, 0, 0);
+            
+            if (slotDate.getTime() < now.getTime()) return; // Skip past slots
+
+            projectedOrders.push({
+              id: `projected_${dateKey}_${mealType}_${sub.id}`,
+              subscriptionId: sub.id,
+              customerId: sub.user_id,
+              vendorId: sub.vendor_id,
+              status: 'pending',
+              meal: { type: mealType, name: mealType === 'lunch' ? 'Lunch (Projected)' : 'Dinner (Projected)' },
+              scheduledSlot,
+              address: { line1: 'From active subscription' },
+              createdAt: { toDate: () => targetDate, seconds: targetDate.getTime() / 1000 },
+              isProjected: true
+            });
+          });
+        });
+      }
+
+      const combined = [...realOrdersList, ...projectedOrders];
+      setOrders(combined.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt)));
+    };
+
+    const unsubOrders = onSnapshot(qOrders, (snap) => {
+      realOrdersList = snap.docs.map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder));
+      mergeAndSet();
     });
 
-    return () => unsubscribe();
+    const unsubSubs = onSnapshot(qSubs, (snap) => {
+      subsList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      mergeAndSet();
+    });
+
+    return () => {
+      unsubOrders();
+      unsubSubs();
+    };
   }, [isHydrated, user]);
 
   // Load active drivers
@@ -182,15 +254,15 @@ export default function AdminOrdersTrackingPage() {
                   <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-4">
                       <p className="font-black text-slate-900">#{order.id.slice(-6).toUpperCase()}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{order.meal.name}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{order.meal?.name ?? '—'}</p>
                     </td>
                     <td className="p-4">
-                      <p className="font-bold text-slate-800">Cust: {order.customerId.slice(0,6).toUpperCase()}</p>
-                      <p className="text-[10px] text-slate-500 max-w-[150px] truncate" title={order.address.line1}>
-                        {order.address.line1}
+                      <p className="font-bold text-slate-800">Cust: {order.customerId?.slice(0,6).toUpperCase() ?? '—'}</p>
+                      <p className="text-[10px] text-slate-500 max-w-[150px] truncate" title={order.address?.line1}>
+                        {order.address?.line1 ?? '—'}
                       </p>
                     </td>
-                    <td className="p-4 font-bold text-slate-800">Vend: {order.vendorId.slice(0,6).toUpperCase()}</td>
+                    <td className="p-4 font-bold text-slate-800">Vend: {order.vendorId?.slice(0,6).toUpperCase() ?? '—'}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         {order.driverId ? (

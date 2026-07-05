@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { DeliveryOrder, DriverProfile } from '@/types/delivery';
+import type { DeliveryOrder, DriverProfile, RiderTrip } from '@/types/delivery';
 
 interface DeliveryState {
   /** The current active delivery order for the customer role */
@@ -10,6 +10,8 @@ interface DeliveryState {
   vendorOrders: DeliveryOrder[];
   /** Active list of delivery orders assigned to the delivery agent */
   agentOrders: DeliveryOrder[];
+  /** Active RiderTrip for the delivery agent */
+  activeTrip: RiderTrip | null;
   /** Active online delivery drivers in the logistics fleet for tracking */
   activeDrivers: DriverProfile[];
   /** Administrator statistical overview of delivery states */
@@ -32,6 +34,8 @@ interface DeliveryState {
   setVendorOrders: (orders: DeliveryOrder[]) => void;
   /** Sets the list of orders assigned to the delivery agent */
   setAgentOrders: (orders: DeliveryOrder[]) => void;
+  /** Sets the active RiderTrip */
+  setActiveTrip: (trip: RiderTrip | null) => void;
   /** Sets the list of online active drivers for layout map plots */
   setActiveDrivers: (drivers: DriverProfile[]) => void;
   /** Sets the dashboard metrics statistics object for the admin panel */
@@ -55,6 +59,7 @@ export const useDeliveryStore = create<DeliveryState>((set) => ({
   myDelivery: null,
   vendorOrders: [],
   agentOrders: [],
+  activeTrip: null,
   activeDrivers: [],
   adminOverview: {
     preparing: 0,
@@ -69,6 +74,7 @@ export const useDeliveryStore = create<DeliveryState>((set) => ({
   setMyDelivery: (order) => set({ myDelivery: order }),
   setVendorOrders: (orders) => set({ vendorOrders: orders }),
   setAgentOrders: (orders) => set({ agentOrders: orders }),
+  setActiveTrip: (trip) => set({ activeTrip: trip }),
   setActiveDrivers: (drivers) => set({ activeDrivers: drivers }),
   setAdminOverview: (overview) => set({ adminOverview: overview }),
   setLoading: (isLoading) => set({ isLoading }),
@@ -79,6 +85,7 @@ export const useDeliveryStore = create<DeliveryState>((set) => ({
       myDelivery: null,
       vendorOrders: [],
       agentOrders: [],
+      activeTrip: null,
       activeDrivers: [],
       adminOverview: {
         preparing: 0,

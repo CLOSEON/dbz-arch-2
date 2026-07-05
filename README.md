@@ -9,12 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CLOSEON/dbz-arch-2/raw/main/releases/dabzo-v2-debug.apk">
-    <img src="https://img.shields.io/badge/Download-Latest%20APK-green?style=for-the-badge&logo=android" alt="Download APK" />
-  </a>
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" alt="React" />
   <img src="https://img.shields.io/badge/Capacitor-8-blue?style=for-the-badge&logo=capacitor" alt="Capacitor" />
@@ -26,7 +20,7 @@
 
 ## 🚀 Overview
 
-Dabzo v2.0 is a complete architectural overhaul of the original marketplace, transitioned from a legacy vanilla JS stack to a cutting-edge **Next.js 16 (App Router)** and **React 19** foundation. 
+Dabzo v2.0 is a complete architectural overhaul of the original marketplace, transitioned from a legacy vanilla JS stack to a cutting-edge **Next.js 16 (App Router)** and **React 19** foundation.
 
 Designed as a high-fidelity **Single Page Application (SPA)**, it leverages **Capacitor 8** to provide a seamless, native mobile experience on both Android and iOS. The app bridges the gap between home chefs (Vendors) and customers through a robust subscription-based model.
 
@@ -40,6 +34,12 @@ Designed as a high-fidelity **Single Page Application (SPA)**, it leverages **Ca
 - **Subscription Management**: Weekly/Monthly plans for Lunch, Dinner, or Both.
 - **Real-time Menus**: View daily menus updated by vendors.
 - **Rating System**: Leave feedback and rate vendors to maintain quality.
+- **Skip a Day**: Skip any scheduled delivery for +0.5 credit (up to 4h before delivery).
+- **Swap a Day**: Swap a scheduled meal with another active subscriber.
+- **Cancel Skip**: Undo a skip before delivery time — deducts 1 subscription day, refunds 0.5 credit.
+- **Upcoming Schedule**: Auto-projected delivery cards for the next 2 days, merged with real orders.
+- **Countdown Timers**: Live countdown on each card showing time remaining to skip/swap/cancel skip.
+- **Track Today's Order**: One-tap banner linking to the live delivery tracking page.
 
 ### 👩‍🍳 Vendor Management
 - **Smart Dashboard**: Track active subscribers, revenue, and pending deliveries.
@@ -95,6 +95,10 @@ Designed as a high-fidelity **Single Page Application (SPA)**, it leverages **Ca
     ├── components/      # Atomic UI components and layout wrappers
     ├── hooks/           # Custom React hooks for Firebase & UI logic
     ├── lib/             # Shared utilities, Firebase config, and API wrappers
+    │   └── queries/     # Firestore data-access layer
+    │       ├── delivery.ts   # Skip, Cancel Skip, Swap logic
+    │       ├── swaps.ts      # Swap matching and cancellation
+    │       └── subscriptions.ts
     ├── store/           # Zustand stores (Auth, UI, Vendor context)
     └── types/           # Centralized TypeScript interfaces
 ```
@@ -125,27 +129,49 @@ NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=dabzofb
 ```
 
-### Dabzo v2.0 | Meal Subscription Marketplace
+### 4. Run Development Server
+```bash
+npm run dev
+```
 
-A premium, mobile-first marketplace for daily tiffin services, built with Next.js, Capacitor, and Firebase.
+### 5. Mobile (Capacitor)
+```bash
+npm run build
+npx cap sync android
+npx cap open android
+```
 
-### 📚 Full Documentation
-For deep technical details, feature lists, and architecture overviews, see:
-**[DOCUMENTATION.md](./DOCUMENTATION.md)**
+---
 
-### 🚀 Quick Start
-1. `npm install`
-2. `npm run dev`
-3. `npx cap sync android` (for mobile)
-4. `npx cap open android`
+## 🔄 Skip / Cancel Skip Business Logic
+
+> **IMPORTANT — Do not change this logic without reviewing the full flow.**
+
+### Skipping a Delivery (+0.5 credit)
+- User can skip any scheduled delivery up to **4 hours before** the delivery slot.
+- A `delivery_orders` Firestore doc is created with `status: 'skipped'`.
+- The user is awarded **0.5 credit** (`user_credits` doc with `source: 'cancellation'`, `source_reference_id: deliveryDoc.id`).
+
+### Cancelling a Skip (–1 subscription day, +0.5 credit refund)
+- User can cancel a skip any time **before the delivery slot time** passes.
+- **Step 1**: The `delivery_orders` doc is restored to `status: 'pending'`.
+- **Step 2**: The original 0.5 skip credit is **deleted** (matched by `source_reference_id === delivery.id`, with date-based fallback).
+- **Step 3**: The active subscription's `next_billing_date` is **decremented by 1 day** (penalty for reversing).
+- **Step 4**: A new **0.5 credit** (`source: 'cancel_skip_refund'`) is added back — the "half that stays".
+
+**Net effect**: User loses 1 subscription day, retains 0.5 credit, and delivery is resumed.
+
+### Anti-abuse protection
+- The subscription day is **always deducted** regardless of whether the original credit was redeemed. This prevents skip-cancel cycling for free meals.
+- Ghost/orphan skipped orders (no active `subscriptionId` or `vendorId`) are filtered out of the UI automatically.
 
 ---
 
 ## 📱 Mobile Builds (APK)
 
-The latest debug APK is available in the [releases](./releases) folder. 
+The latest debug APK is available in the [releases](./releases) folder.
 
-**To update the APK link:**
+**To update the APK:**
 1. Generate a new build in Android Studio (`Build > Build Bundle(s) / APK(s) > Build APK(s)`).
 2. Copy the generated `.apk` from `android/app/build/outputs/apk/debug/` to the `releases/` folder.
 3. Commit and push the changes.
@@ -154,6 +180,7 @@ The latest debug APK is available in the [releases](./releases) folder.
 > For production distribution, consider using GitHub Releases or the Play Store Console.
 
 ---
+
 ## 🏗 Architecture & Design Patterns
 
 - **Static Export Flow**: Since Capacitor requires static assets, the project uses `output: 'export'` in `next.config.ts`. All routing is handled client-side via the Next.js router.
@@ -161,13 +188,15 @@ The latest debug APK is available in the [releases](./releases) folder.
 - **Role-Based Access**: Security is enforced at two levels:
   1. **Frontend**: Middleware and Auth Guards redirect users based on their `role` stored in the Auth Store.
   2. **Database**: Firestore Security Rules prevent unauthorized read/writes based on UID and Role attributes.
+- **Projected Orders**: The upcoming schedule is generated client-side by projecting active subscriptions into delivery cards for the next 2 days. Real Firestore docs (created on skip/swap) take priority over projections via slot deduplication.
 
 ---
 
 ## 🛡 Security & Deployment
 
 - **Vendor Onboarding**: Vendors are created with `is_approved: false`. Access to the marketplace is blocked until an Admin manually updates their status.
-- **Notification Engine**: The `broadcastNotificationV1` Cloud Function ensures that only authenticated Admins can trigger system-wide alerts, preventing token leakage.
+- **Notification Engine**: The `broadcastNotificationV1` Cloud Function ensures that only authenticated Admins can trigger system-wide alerts.
+- **Firestore Rules**: Delivery orders can only be created/updated by the `customerId`, `vendorId`, or `agentId`. Delete is admin-only.
 - **Production Builds**: The project is optimized for deployment on Vercel (Web) and via Play Store/App Store (Mobile).
 
 ---
@@ -175,4 +204,3 @@ The latest debug APK is available in the [releases](./releases) folder.
 <p align="center">
   Developed with ❤️ by the Dabzo Team.
 </p>
-

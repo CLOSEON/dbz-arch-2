@@ -57,3 +57,73 @@ export const agentPayoutConverter = {
     };
   },
 };
+
+// ─── Rider Trip Payment ───────────────────────────────────────────────────────
+
+/**
+ * Server-computed payment record created when a RiderTrip transitions to 'completed'.
+ * All values are authoritative — never recalculate client-side.
+ *
+ * Distance used: sum of optimized route segment distances (pickup + drop stops),
+ * with gpsDistanceKm stored as a fraud-detection cross-check field.
+ *
+ * Firestore path: rider_payments/{paymentId}
+ */
+export interface RiderPayment {
+  /** Auto-generated Firestore document ID */
+  id: string;
+  /** ID of the completed RiderTrip this payment is for */
+  riderTripId: string;
+  /** UID of the rider who completed the trip */
+  riderId: string;
+  /**
+   * Authoritative distance in km: sum of all pickupStop.distanceKm + dropStop.distanceKm
+   * computed server-side from real vendor/customer GPS coordinates.
+   */
+  totalDistanceKm: number;
+  /**
+   * GPS-accumulated distance in km, tracked in real-time via the device's location watcher.
+   * Stored for fraud-detection cross-checking against the route distance.
+   */
+  gpsDistanceKm: number;
+  /** Base pay = totalDistanceKm × ₹10 */
+  basePayment: number;
+  /**
+   * Per-tiffin bonus: ₹7 × max(0, deliveredCount - 14).
+   * Zero if fewer than 15 tiffins were delivered.
+   */
+  tiffinBonus: number;
+  /** Total delivered tiffin count in this trip */
+  deliveredCount: number;
+  /** Total payment = basePayment + tiffinBonus */
+  totalPayment: number;
+  /** Timestamp when this record was computed */
+  calculatedAt: Timestamp;
+  /** Processing state — starts 'pending' until admin disburses */
+  status: PayoutStatus;
+}
+
+export const riderPaymentConverter = {
+  toFirestore(p: RiderPayment) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...data } = p;
+    return data;
+  },
+  fromFirestore(snapshot: { id: string; data: () => Record<string, unknown> }): RiderPayment {
+    const data = snapshot.data();
+    return {
+      id: snapshot.id,
+      riderTripId: data.riderTripId as string,
+      riderId: data.riderId as string,
+      totalDistanceKm: data.totalDistanceKm as number,
+      gpsDistanceKm: data.gpsDistanceKm as number,
+      basePayment: data.basePayment as number,
+      tiffinBonus: data.tiffinBonus as number,
+      deliveredCount: data.deliveredCount as number,
+      totalPayment: data.totalPayment as number,
+      calculatedAt: data.calculatedAt as Timestamp,
+      status: data.status as PayoutStatus,
+    };
+  },
+};
+

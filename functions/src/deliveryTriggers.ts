@@ -1,13 +1,8 @@
-import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onDocumentUpdated, onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
-import {
-  sendPushNotification,
-  orderPickedUpPayload,
-  orderDeliveredPayload,
-  deliveryFailedPayload,
-  deliveryFailedAdminPayload,
-} from './utils/notifications';
+import { publishEvent } from './utils/events';
 
 /**
  * Cloud Function triggered on every updates in a delivery order document.
@@ -56,7 +51,10 @@ export const onDeliveryStatusChange = onDocumentUpdated('delivery_orders/{orderI
         ? (vendorSnap.data()?.name || 'Dabzo Partner Kitchen')
         : 'Dabzo Partner Kitchen';
       
-      const eta = afterData.meal?.type === 'lunch' ? '1:30 PM' : '8:30 PM';
+      let eta = '1:30 PM';
+      if (afterData.scheduledSlot === '8am') eta = '8:30 AM';
+      else if (afterData.scheduledSlot === '11am') eta = '11:30 AM';
+      else if (afterData.scheduledSlot === '8pm' || afterData.meal?.type === 'dinner') eta = '8:30 PM';
 
       await sendFCMToUser(customerId, {
         title: 'Your tiffin is on the way!',
@@ -270,21 +268,45 @@ export const updateDeliveryStatus = onCall(async (request) => {
 
     if (newStatus === 'picked_up') {
       // Customer: meal is on its way
-      await sendPushNotification(customerId, orderPickedUpPayload(orderId));
+      await publishEvent(
+        'meal_picked_up',
+        customerId,
+        'customer',
+        `meal_picked_up_${orderId}`,
+        { orderId }
+      );
 
     } else if (newStatus === 'delivered') {
       // Customer: order delivered
-      await sendPushNotification(customerId, orderDeliveredPayload(orderId));
+      await publishEvent(
+        'meal_delivered',
+        customerId,
+        'customer',
+        `meal_delivered_${orderId}`,
+        { orderId }
+      );
 
     } else if (newStatus === 'failed_attempt') {
       // Customer: delivery attempt failed
-      await sendPushNotification(customerId, deliveryFailedPayload(orderId, reason ?? ''));
+      await publishEvent(
+        'delivery_failed',
+        customerId,
+        'customer',
+        `delivery_failed_${orderId}`,
+        { orderId, reason: reason ?? '' }
+      );
 
       // All admins: alert for manual follow-up
       const adminSnap = await db.collection('users').where('role', '==', 'admin').get();
       await Promise.all(
         adminSnap.docs.map((adminDoc) =>
-          sendPushNotification(adminDoc.id, deliveryFailedAdminPayload(orderId, reason ?? ''))
+          publishEvent(
+            'delivery_failed',
+            adminDoc.id,
+            'admin',
+            `delivery_failed_admin_${orderId}_${adminDoc.id}`,
+            { orderId, reason: reason ?? '' }
+          )
         )
       );
     }
@@ -305,21 +327,7 @@ export const updateDeliveryStatus = onCall(async (request) => {
  * Callable function to generate today's deliveries from active subscriptions.
  * Enforces admin role check.
  */
-export const generateTodayDeliveries = onCall(async (request) => {
-  const { auth } = request;
-  
-  if (!auth) {
-    throw new HttpsError('unauthenticated', 'Must be authenticated');
-  }
-  
-  if (auth.token.role !== 'admin') {
-    // Fallback: check Firestore users collection
-    const userDoc = await admin.firestore().collection('users').doc(auth.uid).get();
-    if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-      throw new HttpsError('permission-denied', 'Must be an admin to generate orders');
-    }
-  }
-
+async function processDailyDeliveries(force: boolean = false) {
   const db = admin.firestore();
   const result = { created: 0, skipped: 0, errors: 0, details: [] as any[] };
 
@@ -333,22 +341,24 @@ export const generateTodayDeliveries = onCall(async (request) => {
 
   if (subsSnap.empty) return result;
 
-  // 2. Fetch today's already-existing delivery_orders
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  const existingSnap = await db.collection('delivery_orders')
-    .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-    .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
-    .get();
-
+  // 2. Fetch today's already-existing delivery_orders (skipped when force=true)
   const existingSubIds = new Set<string>();
-  existingSnap.forEach(d => {
-    const data = d.data();
-    if (data.subscriptionId) existingSubIds.add(data.subscriptionId);
-  });
+  if (!force) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const existingSnap = await db.collection('delivery_orders')
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+      .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
+      .get();
+
+    existingSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => {
+      const docData = d.data();
+      if (docData.subscriptionId) existingSubIds.add(docData.subscriptionId);
+    });
+  }
 
   // 3. Process each subscription
   const batch = db.batch();
@@ -379,52 +389,67 @@ export const generateTodayDeliveries = onCall(async (request) => {
         continue;
       }
 
-      const mealTypeMap: Record<string, string> = {
-        lunch: 'Lunch',
-        dinner: 'Dinner',
-        both: 'Lunch + Dinner',
-      };
-      const mealName = mealTypeMap[sub.meal_type] || sub.meal_type || 'Daily Meal';
-      const mealType = sub.meal_type === 'dinner' ? 'dinner' : 'lunch';
+      const mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
 
       const userLat = user.location?.lat ?? 18.5204;
       const userLng = user.location?.lng ?? 73.8567;
-      const otp = String(Math.floor(1000 + Math.random() * 9000));
 
-      const assignedDriverId = driverIds.length > 0 ? driverIds[currentDriverIndex++ % driverIds.length] : null;
+      for (const mealType of mealTypesToGenerate) {
+        const mealName = mealType === 'dinner' ? 'Dinner' : 'Lunch';
+        const otp = String(Math.floor(1000 + Math.random() * 9000));
+        const assignedDriverId = driverIds.length > 0 ? driverIds[currentDriverIndex++ % driverIds.length] : null;
 
-      const newOrderRef = db.collection('delivery_orders').doc();
-      batch.set(newOrderRef, {
-        subscriptionId: subId,
-        customerId: sub.user_id,
-        vendorId: sub.vendor_id,
-        driverId: assignedDriverId,
-        status: 'preparing',
-        otp,
-        otpVerified: false,
-        meal: {
-          name: `${vendor.kitchen_name || vendor.name}'s ${mealName}`,
-          type: mealType,
-        },
-        address: {
-          line1: user.address || `${user.name}'s Location`,
-          landmark: '',
-          lat: userLat,
-          lng: userLng,
-        },
-        driverLocation: null,
-        timestamps: {
-          preparedAt: null,
-          pickedAt: null,
-          outAt: null,
-          deliveredAt: null,
-        },
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
 
-      batchCount++;
-      result.created++;
-      result.details.push({ subId, userName: user.name || sub.user_id, status: 'created' });
+        const newOrderRef = db.collection('delivery_orders').doc();
+        batch.set(newOrderRef, {
+          subscriptionId: subId,
+          customerId: sub.user_id,
+          customerPhone: user.phone || user.phoneNumber || '',
+          vendorId: sub.vendor_id,
+          vendorPhone: vendor.phone || vendor.phoneNumber || '',
+          driverId: assignedDriverId,
+          status: 'preparing',
+          otp,
+          otpVerified: false,
+          meal: {
+            name: `${vendor.kitchen_name || vendor.name}'s ${mealName}`,
+            type: mealType, // 'lunch' or 'dinner'
+          },
+          address: {
+            line1: user.address || `${user.name}'s Location`,
+            landmark: '',
+            lat: userLat,
+            lng: userLng,
+          },
+          driverLocation: null,
+          scheduledSlot: scheduledSlot,
+          timestamps: {
+            preparedAt: null,
+            pickedAt: null,
+            outAt: null,
+            deliveredAt: null,
+          },
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Customer: Order Confirmed
+        publishEvent(
+          'order_confirmed',
+          sub.user_id,
+          'customer',
+          `order_confirmed_${newOrderRef.id}`,
+          { 
+            mealType: mealName,
+            slot: scheduledSlot
+          }
+        ).catch(err => console.error('Error publishing order_confirmed:', err));
+
+        batchCount++;
+      }
+
+      result.created += mealTypesToGenerate.length;
+      result.details.push({ subId, userName: user.name || sub.user_id, status: 'created', generatedOrders: mealTypesToGenerate.length });
 
       if (batchCount >= 490) {
         await batch.commit();
@@ -441,4 +466,255 @@ export const generateTodayDeliveries = onCall(async (request) => {
   }
 
   return result;
+}
+
+/**
+ * Callable function to generate today's deliveries from active subscriptions.
+ * Enforces admin role check.
+ */
+export const generateTodayDeliveries = onCall(async (request) => {
+  const { auth, data } = request;
+  
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+  
+  if (auth.token.role !== 'admin') {
+    const userDoc = await admin.firestore().collection('users').doc(auth.uid).get();
+    if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Must be an admin to generate orders');
+    }
+  }
+
+  const force = (data as any)?.force === true;
+  return await processDailyDeliveries(force);
+});
+
+/**
+ * Automated daily background job to generate delivery orders from active subscriptions.
+ * Runs every day at 1:00 AM IST.
+ */
+export const autoGenerateDailyDeliveries = onSchedule({
+  schedule: '0 1 * * *',
+  timeZone: 'Asia/Kolkata'
+}, async (event) => {
+  console.log('[autoGenerateDailyDeliveries] Starting scheduled order generation...');
+  const result = await processDailyDeliveries(false);
+  console.log(`[autoGenerateDailyDeliveries] Completed. Created: ${result.created}, Skipped: ${result.skipped}, Errors: ${result.errors}`);
+});
+
+/**
+ * Marks a specific vendor's batch of orders for a given date/slot as 'ready'.
+ * Uses a transaction to ensure idempotency.
+ */
+export const markBatchReady = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+  
+  const vendorId = auth.uid;
+  const { dateStr, slot } = data as any;
+  if (!dateStr || !slot) {
+    throw new HttpsError('invalid-argument', 'Missing dateStr or slot');
+  }
+
+  const batchId = `${vendorId}_${dateStr}_${slot}`;
+  const batchRef = admin.firestore().collection('vendor_batches').doc(batchId);
+
+  return await admin.firestore().runTransaction(async (t) => {
+    const batchDoc = await t.get(batchRef);
+    if (batchDoc.exists) {
+      return { success: false, message: 'Batch already marked ready' };
+    }
+
+    const ordersQuery = admin.firestore().collection('delivery_orders')
+      .where('vendorId', '==', vendorId)
+      .where('scheduledSlot', '==', slot)
+      .where('status', 'in', ['pending', 'preparing']);
+
+    const ordersSnap = await t.get(ordersQuery);
+    
+    // Perform updates
+    let updatedCount = 0;
+    ordersSnap.docs.forEach(doc => {
+      const orderData = doc.data();
+      const oDateStr = orderData.createdAt?.toDate ? orderData.createdAt.toDate().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      
+      if (oDateStr === dateStr) {
+        t.update(doc.ref, { status: 'ready', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        updatedCount++;
+        
+        // Publish event for customer
+        publishEvent(
+          'meal_prep_started',
+          orderData.customerId,
+          'customer',
+          `meal_prep_started_${doc.id}`,
+          { mealType: orderData.meal?.name || 'meal' }
+        ).catch(e => console.error(e));
+      }
+    });
+
+    // Save batch lock
+    t.set(batchRef, {
+      vendorId,
+      date: dateStr,
+      slot,
+      status: 'ready',
+      updatedCount,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: `Batch marked ready. ${updatedCount} orders updated.` };
+  });
+});
+
+/**
+ * Triggers when a subscription document is created OR re-activated.
+ * Uses onDocumentWritten because setDoc with a deterministic ID overwrites
+ * existing docs (no create event fires on resubscription).
+ * Immediately generates 3 days of delivery_orders.
+ */
+export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', async (event) => {
+  const before = event.data?.before;
+  const after = event.data?.after;
+
+  if (!after?.exists) return;
+
+  const afterData = after.data();
+  if (!afterData || afterData.status !== 'active') return;
+
+  // Only act when status becomes active (new doc or re-activation)
+  const beforeData = before?.exists ? before.data() : null;
+  if (beforeData && beforeData.status === 'active') return; // Was already active, skip
+  const db = admin.firestore();
+
+  const sub = afterData;
+  const subId = event.params.subId;
+
+  const [userSnap, vendorSnap] = await Promise.all([
+    db.collection('users').doc(sub.user_id).get(),
+    db.collection('users').doc(sub.vendor_id).get(),
+  ]);
+
+  const user = userSnap.exists ? userSnap.data() : null;
+  const vendor = vendorSnap.exists ? vendorSnap.data() : null;
+
+  if (!user || !vendor) {
+    console.error(`[onSubscriptionCreated] User or vendor not found for sub ${subId}`);
+    return;
+  }
+
+  const driversSnap = await db.collection('users').where('role', 'in', ['delivery', 'delivery_agent']).get();
+  const driverIds = driversSnap.docs.map(d => d.id);
+
+  const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+  const userLat = user.location?.lat ?? 18.5204;
+  const userLng = user.location?.lng ?? 73.8567;
+
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + istOffset);
+  const istHour = istNow.getUTCHours();
+
+  // First, cancel any existing pending orders for this sub (clean slate on reactivation)
+  const existingSnap = await db.collection('delivery_orders')
+    .where('subscriptionId', '==', subId)
+    .where('status', '==', 'pending')
+    .get();
+  const cleanBatch = db.batch();
+  existingSnap.docs.forEach(d => cleanBatch.delete(d.ref));
+  if (!existingSnap.empty) await cleanBatch.commit();
+
+  const batch = db.batch();
+  let driverIdx = 0;
+  let ordersCreated = 0;
+
+  for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
+    for (const mealType of mealTypes) {
+      if (dayOffset === 0) {
+        if (mealType === 'lunch' && istHour >= 10) continue;
+        if (mealType === 'dinner' && istHour >= 19) continue;
+      }
+
+      const mealName = mealType === 'dinner' ? 'Dinner' : 'Lunch';
+      const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
+      const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+      const assignedDriverId = driverIds.length > 0 ? driverIds[driverIdx++ % driverIds.length] : null;
+      const otp = String(Math.floor(1000 + Math.random() * 9000));
+
+      const newOrderRef = db.collection('delivery_orders').doc();
+      batch.set(newOrderRef, {
+        subscriptionId: subId,
+        customerId: sub.user_id,
+        customerPhone: user.phone || user.phoneNumber || '',
+        vendorId: sub.vendor_id,
+        vendorPhone: vendor.phone || vendor.phoneNumber || '',
+        driverId: assignedDriverId,
+        status: 'pending',
+        otp,
+        otpVerified: false,
+        meal: {
+          name: `${vendor.kitchen_name || vendor.name}'s ${mealName}`,
+          type: mealType,
+        },
+        address: {
+          line1: user.address || `${user.name}'s Location`,
+          landmark: '',
+          lat: userLat,
+          lng: userLng,
+        },
+        driverLocation: null,
+        scheduledSlot,
+        timestamps: { preparedAt: null, pickedAt: null, outAt: null, deliveredAt: null },
+        createdAt: admin.firestore.Timestamp.fromDate(orderDate),
+      });
+      ordersCreated++;
+    }
+  }
+
+  if (ordersCreated > 0) await batch.commit();
+  console.log(`[onSubscriptionCreated] Generated ${ordersCreated} delivery orders for sub ${subId}`);
+});
+
+/**
+ * Triggers when a subscription is updated.
+ * If status changes to 'cancelled' → immediately cancel all pending/preparing delivery_orders.
+ */
+export const onSubscriptionCancelled = onDocumentUpdated('subscriptions/{subId}', async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+
+  if (!before || !after) return;
+
+  // Only act when status transitions to cancelled
+  if (before.status === after.status || after.status !== 'cancelled') return;
+
+  const subId = event.params.subId;
+  const db = admin.firestore();
+
+  console.log(`[onSubscriptionCancelled] Cancelling future delivery orders for sub ${subId}`);
+
+  // Find all pending/preparing orders for this subscription
+  const ordersSnap = await db.collection('delivery_orders')
+    .where('subscriptionId', '==', subId)
+    .where('status', 'in', ['pending', 'preparing'])
+    .get();
+
+  if (ordersSnap.empty) {
+    console.log(`[onSubscriptionCancelled] No pending orders found for sub ${subId}`);
+    return;
+  }
+
+  const batch = db.batch();
+  ordersSnap.docs.forEach(doc => {
+    batch.update(doc.ref, {
+      status: 'cancelled',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  await batch.commit();
+  console.log(`[onSubscriptionCancelled] Cancelled ${ordersSnap.size} delivery orders for sub ${subId}`);
 });

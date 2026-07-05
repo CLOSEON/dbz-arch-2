@@ -13,6 +13,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuthStore } from '@/store/authStore';
+import { DabzoLoadingScreen } from '@/components/ui/loading';
 import { useNetworkStore } from '@/store/networkStore';
 import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@/types';
@@ -154,19 +155,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [setUser, logout, setHydrated]);
 
   if (initializing) {
-    return (
-      <div className="min-h-screen bg-ivory flex items-center justify-center">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative flex items-center justify-center">
-            <div className="absolute w-36 h-36 rounded-full bg-brand/10 animate-ping" />
-            <div className="relative z-10 w-28 h-28 rounded-full bg-white shadow-xl flex items-center justify-center border-2 border-brand/10">
-              <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={88} height={88} priority className="object-contain rounded-full" />
-            </div>
-          </div>
-          <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em]">Loading Dabzo...</p>
-        </div>
-      </div>
-    );
+    return <DabzoLoadingScreen />;
   }
 
   return <>{children}</>;

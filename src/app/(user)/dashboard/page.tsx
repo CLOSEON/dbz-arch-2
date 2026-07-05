@@ -90,7 +90,6 @@ export default function UserDashboard() {
       {/* Header */}
       <div className="flex items-start justify-between mb-7 px-1 pt-4 gap-3">
         <div>
-          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-brand">Fresh subscriptions</p>
           <h1 className="text-[30px] sm:text-[36px] font-black text-slate-950 tracking-tight leading-none">
             Hey, {user?.name?.split(' ')[0] || 'Tiffin Lover'} 👋
           </h1>

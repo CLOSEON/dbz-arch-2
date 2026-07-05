@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, Tag, MessageSquare, UserCircle, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, Tag, MessageSquare, UserCircle, ClipboardList, CalendarClock } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -15,6 +15,11 @@ const NAV_ITEMS = [
     href: '/vendor/orders',
     label: 'Orders',
     icon: (active: boolean) => <ClipboardList className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/vendor/schedule',
+    label: 'Schedule',
+    icon: (active: boolean) => <CalendarClock className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/vendor/subscribers',
@@ -81,9 +86,9 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
     );
   }
 
-  // Mobile Bottom Nav - Only show essential 4 items to prevent clutter
+  // Mobile Bottom Nav - Show 5 items
   const MOBILE_NAV_ITEMS = NAV_ITEMS.filter(item => 
-    ['Dashboard', 'Orders', 'Subscribers', 'Profile'].includes(item.label)
+    ['Dashboard', 'Orders', 'Schedule', 'Subscribers', 'Profile'].includes(item.label)
   );
 
   return (

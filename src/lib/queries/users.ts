@@ -17,6 +17,18 @@ import {
 import { db, auth } from '@/lib/firebase';
 import type { AppUser, UserRole, Vendor } from '@/types';
 
+// ─── Module-level TTL cache ──────────────────────────────────────────────────
+// Prevents hammering Firestore with repeated full-collection reads on every
+// page navigation. TTL = 60 s; invalidated on explicit writes.
+const CACHE_TTL_MS = 60_000;
+let _allUsersCache: { data: AppUser[]; ts: number } | null = null;
+let _vendorsCache: { data: Vendor[]; ts: number } | null = null;
+
+export function invalidateUserCache() {
+  _allUsersCache = null;
+  _vendorsCache = null;
+}
+
 /**
  * DABZO USER PROFILE & DATA SERVICE
  */
@@ -98,12 +110,19 @@ export async function loginWithEmailPassword(
 }
 
 export async function getAllUsers(): Promise<AppUser[]> {
+  const now = Date.now();
+  if (_allUsersCache && now - _allUsersCache.ts < CACHE_TTL_MS) {
+    return _allUsersCache.data;
+  }
   const snap = await getDocs(collection(db, 'users'));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppUser));
+  const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppUser));
+  _allUsersCache = { data, ts: now };
+  return data;
 }
 
 export async function setVendorApproval(id: string, approved: boolean): Promise<void> {
   await updateDoc(doc(db, 'users', id), { is_approved: approved });
+  invalidateUserCache();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,34 +134,23 @@ export async function getUserById(id: string): Promise<AppUser | null> {
 
 export async function updateUser(id: string, data: Partial<AppUser>): Promise<void> {
   await updateDoc(doc(db, 'users', id), { ...data, updated_at: Timestamp.now() });
+  invalidateUserCache();
 }
 
 export async function getApprovedVendors(): Promise<Vendor[]> {
-  // Read `users` first because that is the canonical vendor source.
-  // The legacy `vendors` collection may not be allowed by rules, so keep it optional.
-  const usersSnap = await getDocs(collection(db, 'users'));
-  const vendorsSnap = await getDocs(collection(db, 'vendors')).catch(() => null);
+  const now = Date.now();
+  if (_vendorsCache && now - _vendorsCache.ts < CACHE_TTL_MS) {
+    return _vendorsCache.data;
+  }
 
-  const merged = [
-    ...usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)),
-    ...(vendorsSnap?.docs.map((d) => ({ id: d.id, ...d.data() } as Vendor)) ?? []),
-  ];
+  // Only query users with role === 'vendor' — no need to fetch the entire collection
+  const vendorQ = query(collection(db, 'users'), where('role', '==', 'vendor'));
+  const usersSnap = await getDocs(vendorQ);
 
-  const deduped = new Map<string, Vendor>();
-  merged.forEach((item) => {
-    deduped.set(item.id, { ...deduped.get(item.id), ...item });
-  });
+  const results: Vendor[] = usersSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Vendor))
+    .filter((v) => v.is_rejected !== true && v.is_approved !== false);
 
-  return Array.from(deduped.values()).filter((user) => {
-    const role = String((user as any).role ?? '').toLowerCase();
-    const hasVendorShape =
-      Boolean(user.kitchen_name) ||
-      Boolean(user.cuisine_type) ||
-      typeof user.rate_lunch === 'number' ||
-      typeof user.rate_dinner === 'number' ||
-      typeof user.rate_both === 'number';
-    const isVendorRole = role === 'vendor' || role === 'kitchen' || role === 'seller';
-    const isVisible = user.is_rejected !== true && user.is_approved !== false;
-    return isVisible && (isVendorRole || hasVendorShape);
-  });
+  _vendorsCache = { data: results, ts: now };
+  return results;
 }

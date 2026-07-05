@@ -1,4 +1,4 @@
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, increment, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { updateDriverLocation } from '@/lib/queries/delivery';
 import { Geolocation } from '@capacitor/geolocation';
@@ -6,6 +6,7 @@ import { Geolocation } from '@capacitor/geolocation';
 class LocationTrackerService {
   private watchId: string | null = null;
   private currentDriverId: string | null = null;
+  private activeSubscribers: number = 0;
   
   // Throttle states
   private lastWriteTime = 0;
@@ -62,8 +63,15 @@ class LocationTrackerService {
   ): Promise<void> {
     if (typeof window === 'undefined') return;
 
-    if (this.watchId !== null || this.isStarting) {
-      console.warn('[LocationTracker] Tracking is already active or starting.');
+    this.activeSubscribers++;
+
+    if (this.currentDriverId === driverId && (this.watchId !== null || this.isStarting)) {
+      if (onUpdate) {
+        this.onLocationUpdate = onUpdate;
+        if (this.lastWriteCoords) {
+           onUpdate(this.lastWriteCoords.lat, this.lastWriteCoords.lng);
+        }
+      }
       return;
     }
 
@@ -104,7 +112,7 @@ class LocationTrackerService {
         },
         async (position, err) => {
           if (err) {
-            console.error('[LocationTracker] Geolocation error:', err);
+            console.warn('[LocationTracker] Geolocation error (watchPosition):', err.message || JSON.stringify(err));
             return;
           }
           if (!position) return;
@@ -137,11 +145,37 @@ class LocationTrackerService {
           }
 
           if (shouldWrite) {
+            const distanceTraveled = this.lastWriteCoords
+              ? this.haversineDistance(
+                  this.lastWriteCoords.lat,
+                  this.lastWriteCoords.lng,
+                  latitude,
+                  longitude
+                )
+              : 0;
+
             this.lastWriteCoords = { lat: latitude, lng: longitude };
             this.lastWriteTime = now;
 
             try {
               await updateDriverLocation(driverId, latitude, longitude);
+
+              // Accumulate GPS distance on the active rider_trip (fraud-resistant, server-side cross-check)
+              if (distanceTraveled > 0 && driverId) {
+                const tripSnap = await getDocs(
+                  query(
+                    collection(db, 'rider_trips'),
+                    where('riderId', '==', driverId),
+                    where('status', 'in', ['picking_up', 'pickup_complete', 'dropping'])
+                  )
+                );
+                if (!tripSnap.empty) {
+                  const tripRef = doc(db, 'rider_trips', tripSnap.docs[0].id);
+                  await updateDoc(tripRef, {
+                    gpsDistanceKm: increment(distanceTraveled / 1000), // convert m → km
+                  });
+                }
+              }
             } catch (err) {
               console.error('[LocationTracker] Update failed:', err);
             }
@@ -157,8 +191,14 @@ class LocationTrackerService {
     }
   }
 
-  public async stopTracking(): Promise<void> {
+  public async stopTracking(force: boolean = false): Promise<void> {
     if (typeof window === 'undefined') return;
+
+    this.activeSubscribers--;
+    if (!force && this.activeSubscribers > 0) {
+      return; // Still in use by another mounted component
+    }
+    this.activeSubscribers = 0; // Prevent negative
 
     if (this.watchId !== null) {
       try {

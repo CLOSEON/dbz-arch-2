@@ -50,6 +50,14 @@
         { "fieldPath": "role", "order": "ASCENDING" },
         { "fieldPath": "is_approved", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "rider_payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "riderId", "order": "ASCENDING" },
+        { "fieldPath": "calculatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

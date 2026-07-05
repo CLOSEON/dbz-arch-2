@@ -3,39 +3,41 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import type { UserRole } from '@/types';
+import { Capacitor } from '@capacitor/core';
+import { DabzoLoadingScreen } from '@/components/ui/loading';
 
-const ROLE_PATHS: Record<string, string> = {
+const ROLE_DASHBOARDS: Record<UserRole, string> = {
   admin: '/admin/dashboard',
   vendor: '/vendor/dashboard',
   delivery: '/delivery/dashboard',
+  user: '/dashboard',
 };
 
-export default function RootPage() {
+export default function RootRedirect() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
   useEffect(() => {
+    // Wait for the auth store to hydrate from local storage
     if (!isHydrated) return;
 
-    if (!user) {
-      router.replace('/login');
+    if (user) {
+      // If the user is logged in, redirect them to their dashboard
+      const target = ROLE_DASHBOARDS[user.role] || '/dashboard';
+      router.replace(target);
     } else {
-      router.replace(ROLE_PATHS[user.role] || '/dashboard');
+      // First-time users or logged-out users get redirected to the landing page
+      // In native apps (APK/iOS), we skip the landing page and go straight to login
+      if (Capacitor.isNativePlatform()) {
+        router.replace('/login');
+      } else {
+        router.replace('/main');
+      }
     }
   }, [user, isHydrated, router]);
 
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-ivory">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <div className="absolute inset-0 rounded-2xl bg-brand/20 animate-ping" />
-          <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center shadow-lg shadow-brand/30">
-            <span className="text-2xl">🍱</span>
-          </div>
-        </div>
-        <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em]">Entering Dabzo...</p>
-      </div>
-    </div>
-  );
+  // Show a simple loading state while figuring out where to route them
+  return <DabzoLoadingScreen />;
 }

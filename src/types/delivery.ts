@@ -2,7 +2,7 @@ import { Timestamp } from 'firebase/firestore';
 
 /**
  */
-export type DeliveryStatus = "pending" | "preparing" | "picked_up" | "out_for_delivery" | "delivered" | "failed" | "failed_attempt";
+export type DeliveryStatus = "pending" | "preparing" | "ready" | "picked_up" | "out_for_delivery" | "delivered" | "failed" | "failed_attempt";
 /**
  * Detailed information about a single delivery order in the system.
  */
@@ -13,8 +13,12 @@ export interface DeliveryOrder {
   subscriptionId: string;
   /** Reference to the customer's user account identifier */
   customerId: string;
+  /** Customer's phone number */
+  customerPhone?: string;
   /** Reference to the vendor kitchen's user account identifier */
   vendorId: string;
+  /** Vendor's phone number */
+  vendorPhone?: string;
   /** Reference to the assigned delivery driver's user account, or null if unassigned */
   driverId: string | null;
   /** The current delivery lifecycle status */
@@ -23,6 +27,8 @@ export interface DeliveryOrder {
   otp: string;
   /** Flag showing whether the customer's delivery OTP has been verified by the driver */
   otpVerified: boolean;
+  /** Scheduled delivery time slot */
+  scheduledSlot?: string;
   /** Details about the specific meal being transported */
   meal: {
     /** The display name or description of the meal package */
@@ -63,6 +69,12 @@ export interface DeliveryOrder {
   };
   /** The creation timestamp when the delivery record was initially generated */
   createdAt: Timestamp;
+  /** Assigned delivery agent's display name (optional, populated at assignment time) */
+  agentName?: string;
+  /** Assigned delivery agent's phone number */
+  agentPhone?: string;
+  /** Rider's vehicle registration number */
+  vehicleNumber?: string;
 }
 
 /**
@@ -111,4 +123,44 @@ export interface DeliveryNotification {
   message: string;
   /** Timestamp when the notification record was generated */
   createdAt: Timestamp;
+}
+
+export interface PickupStop {
+  vendorId: string;
+  location: { lat: number; lng: number };
+  /** 1-indexed order in the optimised route */
+  sequence: number;
+  /** Straight-line distance from the previous stop (or rider start), in km */
+  distanceKm: number;
+  status: 'pending' | 'completed';
+  pickupOTP?: string;
+}
+
+export interface DropStop {
+  orderId: string;
+  customerId: string;
+  location: { lat: number; lng: number };
+  address: string;
+  landmark?: string;
+  /** 1-indexed position in the optimised drop route */
+  sequence: number;
+  /** Straight-line distance from the previous drop (or last pickup), in km */
+  distanceKm: number;
+  status: 'pending' | 'completed';
+}
+
+export interface RiderTrip {
+  id: string;
+  riderId: string;
+  assignedOrderIds: string[];
+  vendorIds: string[];
+  /** Nearest-neighbour ordered pickup stops */
+  pickupStops: PickupStop[];
+  /** Nearest-neighbour ordered drop stops — populated when pickup_complete */
+  dropStops?: DropStop[];
+  status: 'pickup_pending' | 'picking_up' | 'pickup_complete' | 'dropping' | 'completed';
+  gpsDistanceKm?: number;
+  isPartialLoad: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

@@ -5,17 +5,16 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { subscribeToAgentDeliveries } from '@/lib/queries/delivery';
 import { useDeliveryStore } from '@/store/deliveryStore';
-import { DeliveryActionBar } from '@/components/delivery/DeliveryActionBar';
 import { useDeliveryNavigation } from '@/hooks/useDeliveryNavigation';
 import { Camera, CheckCircle2, Clock, Loader2, MapPinOff, Navigation, Sparkles, Truck } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
-import { Geolocation } from '@capacitor/geolocation';
+import { LocationTracker } from '@/lib/delivery/locationTracker';
 import dynamic from 'next/dynamic';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
-import { agentPayoutConverter, AgentPayout } from '@/types/payout';
+import { agentPayoutConverter, AgentPayout, riderPaymentConverter, RiderPayment } from '@/types/payout';
 import toast from 'react-hot-toast';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), {
@@ -45,6 +44,7 @@ export default function DeliveryDashboard() {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'checking' | 'active' | 'unavailable'>('checking');
   const [dailyPayouts, setDailyPayouts] = useState<AgentPayout[]>([]);
+  const [todayTripPayments, setTodayTripPayments] = useState<RiderPayment[]>([]);
 
   const { navigateTo } = useDeliveryNavigation();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,39 +63,48 @@ export default function DeliveryDashboard() {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
+    // Fetch payouts by agentId only to avoid composite index requirement, filter date client-side
     const payoutsQuery = query(
       collection(db, 'agent_payouts').withConverter(agentPayoutConverter),
-      where('agentId', '==', user.id),
-      where('date', '>=', Timestamp.fromDate(start)),
-      where('date', '<=', Timestamp.fromDate(end))
+      where('agentId', '==', user.id)
     );
 
     const unsubscribePayouts = onSnapshot(payoutsQuery, (snap) => {
-      setDailyPayouts(snap.docs.map((doc) => doc.data()));
+      const todayPayouts = snap.docs
+        .map((doc) => doc.data())
+        .filter((payout) => {
+          const payoutDate = payout.date.toDate();
+          return payoutDate >= start && payoutDate <= end;
+        });
+      setDailyPayouts(todayPayouts);
     });
 
-    let watchId: string | null = null;
+    // Also subscribe to trip-level rider_payments for today
+    const tripPaymentsQuery = query(
+      collection(db, 'rider_payments').withConverter(riderPaymentConverter),
+      where('riderId', '==', user.id)
+    );
+    const unsubscribeTripPayments = onSnapshot(tripPaymentsQuery, (snap) => {
+      const todayPayments = snap.docs
+        .map((doc) => doc.data())
+        .filter((p) => {
+          const d = p.calculatedAt?.toDate();
+          return d && d >= start && d <= end;
+        });
+      setTodayTripPayments(todayPayments);
+    });
 
     const startGPS = async () => {
       try {
-        const permission = await Geolocation.checkPermissions();
-        if (permission.location !== 'granted') {
-          const request = await Geolocation.requestPermissions();
-          if (request.location !== 'granted') {
-            setGpsStatus('unavailable');
-            return;
+        setGpsStatus('active');
+        await LocationTracker.startTracking(
+          user.id,
+          user.name,
+          user.phone,
+          (lat, lng) => {
+            setCurrentLocation({ lat, lng });
           }
-        }
-
-        watchId = await Geolocation.watchPosition({ enableHighAccuracy: true }, (position, err) => {
-          if (err || !position) {
-            setGpsStatus('unavailable');
-            return;
-          }
-
-          setGpsStatus('active');
-          setCurrentLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-        });
+        );
       } catch (error) {
         console.error('[DeliveryDashboard] GPS error', error);
         setGpsStatus('unavailable');
@@ -107,9 +116,8 @@ export default function DeliveryDashboard() {
     return () => {
       unsubscribeDeliveries();
       unsubscribePayouts();
-      if (watchId !== null) {
-        Geolocation.clearWatch({ id: watchId });
-      }
+      unsubscribeTripPayments();
+      LocationTracker.stopTracking();
     };
   }, [setAgentOrders, setLastSynced, user?.id]);
 
@@ -133,9 +141,20 @@ export default function DeliveryDashboard() {
     }
   }
 
-  const totalEarnings = dailyPayouts.reduce((sum, payout) => sum + payout.amount, 0);
-  const pendingPayouts = dailyPayouts.filter((payout) => payout.status === 'pending').reduce((sum, payout) => sum + payout.amount, 0);
-  const completedDeliveries = dailyPayouts.length;
+  // Prefer trip-level payments (new system); fall back to legacy agent_payouts
+  const hasTripPayments = todayTripPayments.length > 0;
+  const totalEarnings = hasTripPayments
+    ? todayTripPayments.reduce((sum, p) => sum + p.totalPayment, 0)
+    : dailyPayouts.reduce((sum, p) => sum + p.amount, 0);
+  const totalBaseEarnings = todayTripPayments.reduce((sum, p) => sum + p.basePayment, 0);
+  const totalTiffinBonus = todayTripPayments.reduce((sum, p) => sum + p.tiffinBonus, 0);
+  const totalDistanceKm = todayTripPayments.reduce((sum, p) => sum + p.totalDistanceKm, 0);
+  const pendingPayouts = hasTripPayments
+    ? todayTripPayments.filter((p) => p.status === 'pending').reduce((sum, p) => sum + p.totalPayment, 0)
+    : dailyPayouts.filter((p) => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
+  const completedDeliveries = hasTripPayments
+    ? todayTripPayments.reduce((sum, p) => sum + p.deliveredCount, 0)
+    : dailyPayouts.length;
   const activeRuns = agentOrders.filter((order) => order.status !== 'delivered' && order.status !== 'failed_attempt');
 
   const validMarkers = [
@@ -256,7 +275,7 @@ export default function DeliveryDashboard() {
               <CheckCircle2 className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-4 text-3xl font-black text-emerald-600">₹{totalEarnings}</p>
+          <p className="mt-4 text-3xl font-black text-emerald-600">₹{totalEarnings.toFixed(2)}</p>
         </div>
 
         <div className="card">
@@ -269,6 +288,27 @@ export default function DeliveryDashboard() {
           <p className="mt-4 text-3xl font-black text-slate-900">{completedDeliveries}</p>
         </div>
 
+        {/* Earnings breakdown — shown only when trip payments exist (no placeholders) */}
+        {hasTripPayments && (
+          <div className="card col-span-2 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Earnings breakdown</p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Base pay ({totalDistanceKm.toFixed(2)} km × ₹10)</span>
+              <span className="font-black text-slate-900">₹{totalBaseEarnings.toFixed(2)}</span>
+            </div>
+            {totalTiffinBonus > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Tiffin bonus (&gt;14 tiffins)</span>
+                <span className="font-black text-emerald-600">+₹{totalTiffinBonus.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-sm">
+              <span className="font-black text-slate-900">Total</span>
+              <span className="font-black text-emerald-600">₹{totalEarnings.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
         <div className="card col-span-2">
           <div className="flex items-start justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Pending payout</p>
@@ -276,99 +316,11 @@ export default function DeliveryDashboard() {
               <Clock className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-4 text-3xl font-black text-amber-600">₹{pendingPayouts}</p>
+          <p className="mt-4 text-3xl font-black text-amber-600">₹{pendingPayouts.toFixed(2)}</p>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-black text-slate-900">Current tasks</h2>
-          <span className="text-[10px] font-bold text-slate-400">{activeRuns.length} active</span>
-        </div>
 
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2].map((item) => (
-              <div key={item} className="card h-28 animate-pulse" />
-            ))}
-          </div>
-        ) : activeRuns.length === 0 ? (
-          <div className="card p-8 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
-              <Truck className="h-7 w-7 text-slate-300" />
-            </div>
-            <p className="mt-4 text-sm font-black text-slate-900">All caught up</p>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">No pending deliveries are assigned right now. New pickups will appear here automatically.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {activeRuns.map((delivery) => (
-              <div key={delivery.id} className="card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-[1.1rem] bg-brand/10 p-2.5 text-brand">
-                      <Navigation className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-slate-900">Order {delivery.id.slice(-6).toUpperCase()}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{delivery.meal?.name || 'Meal'}</p>
-                    </div>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
-                      delivery.status === 'picked_up' || delivery.status === 'out_for_delivery'
-                        ? 'bg-brand/10 text-brand'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}
-                  >
-                    {delivery.status.replace('_', ' ')}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-2 text-sm text-slate-500">
-                  <div className="flex items-start gap-2">
-                    <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                    <span className="leading-relaxed">{delivery.address?.line1 || 'Pickup address pending'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 shrink-0 text-slate-300" />
-                    <span>{delivery.meal?.type === 'lunch' ? 'Lunch slot' : 'Dinner slot'}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <div className="flex-1">
-                    <DeliveryActionBar orderId={delivery.id} status={delivery.status} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const lat = delivery.address?.lat;
-                      const lng = delivery.address?.lng;
-
-                      if (typeof lat === 'number' && typeof lng === 'number') {
-                        navigateTo(`${lat},${lng}`);
-                        return;
-                      }
-
-                      if (delivery.address?.line1) {
-                        navigateTo(delivery.address.line1);
-                        return;
-                      }
-
-                      toast.error('No location found for this order');
-                    }}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.2rem] border border-slate-200 bg-slate-50 text-slate-500"
-                    aria-label="Open navigation"
-                  >
-                    <Navigation className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

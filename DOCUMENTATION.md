@@ -39,24 +39,42 @@ Dabzo connects local food vendors with customers looking for consistent, high-qu
 - **Phone-Only Registration**: Zero-friction onboarding using mobile OTP.
 - **Vendor Discovery**: Browse local kitchens with rating and price filters.
 - **Smart Subscriptions**: Subscribe to Lunch, Dinner, or Both with automated renewal tracking.
-- **Live Order Tracking**: View real-time location of the delivery partner carrying your daily meal via an integrated interactive map.
+- **Live Order Tracking**: View real-time location of the delivery partner via an integrated interactive map (`/track` page).
+- **Track Today's Order button**: A gradient banner on the Orders page that links to `/track` whenever today has an active/scheduled delivery. Turns green when the driver is live.
 - **Profile Management**: Update personal info and profile pictures directly from the native gallery.
+
+#### Skip / Swap / Cancel Skip System
+- **Skip a Day** (`cancelScheduledTiffin`): Skip any scheduled delivery up to 4 hours before the delivery slot. Earns 0.5 credit. Projects are materialized into real Firestore docs on skip.
+- **Cancel Skip** (`undoSkipScheduledTiffin`): Undo a skip before the delivery time passes.
+  - Restores delivery to `pending`
+  - Deletes original skip credit
+  - Deducts 1 day from subscription `next_billing_date` (penalty)
+  - Awards 0.5 `cancel_skip_refund` credit back to user
+- **Swap a Day** (`requestSwap` / `cancelSwapRequest`): Exchange a scheduled delivery slot with another subscriber.
+- **Countdown Timers**: Each card shows a live countdown to the action deadline (4h cutoff for skip/swap, delivery time for cancel skip).
+
+#### Upcoming Schedule (Orders Page)
+- Merges real `delivery_orders` (Firestore) with **projected** delivery cards generated from active subscriptions.
+- Projected cards fill in gaps for the next 2 days where no real doc exists.
+- Deduplicates per slot (keeps newest real doc).
+- Filters orphan/ghost skipped orders: must have `subscriptionId` matching an active sub AND `vendorId` matching that sub's vendor.
+- Sorted ascending by exact delivery slot time (8am → 11am → 8pm across days).
 
 ### 👩‍🍳 Vendor (Partner)
 - **Digital Storefront**: Manage kitchen details, bio, and pricing.
-- **Daily Menu Management**: Update what’s cooking today with instant subscriber notifications.
-- **Active Deliveries Map**: Track the location of all assigned delivery partners en route with your orders in real-time.
+- **Daily Menu Management**: Update what's cooking today with instant subscriber notifications.
+- **Active Deliveries Map**: Track the location of all assigned delivery partners in real-time.
 - **Subscriber Insights**: Track active customers and subscription trends.
-- **Account Stability**: Session-hardened dashboard that remembers the vendor even after app restarts.
+- **Account Stability**: Session-hardened dashboard that remembers the vendor after app restarts.
 
 ### 🚛 Delivery (Logistics)
 - **Task Management**: Real-time list of pickups and deliveries.
-- **Continuous Background Tracking**: Leverages Capacitor Geolocation to continuously broadcast live GPS coordinates to Firebase.
+- **Continuous Background Tracking**: Capacitor Geolocation broadcasts live GPS to Firebase.
 - **Interactive Navigation**: In-app map rendering current location and assigned tasks.
-- **Status Updates**: Simple, one-tap delivery confirmation (Pending → Delivered).
+- **Status Updates**: One-tap delivery confirmation (Pending → Delivered).
 
 ### 🛡 Admin (Superuser)
-- **Fleet Tracking System**: A master map view displaying the live locations of all active delivery personnel across the city.
+- **Fleet Tracking System**: Master map view of all active delivery personnel.
 - **User Oversight**: Full control over user accounts and roles.
 - **Vendor Approval**: Manually approve or reject new kitchen partners.
 - **Support System**: Centralized ticketing for resolving customer/vendor issues.
@@ -71,58 +89,119 @@ src/
 ├── app/          # Next.js App Router (Pages & Layouts)
 ├── components/   # UI System (Shadcn-like components)
 │   ├── layout/   # Persistent navigation & headers
-│   ├── shared/   # Reusable UI (Cards, Pills, Toasts)
-│   ├── vendor/   # Vendor-specific dashboards
+│   ├── shared/   # Reusable UI (Cards, Pills, Toasts, SwapVendorModal)
+│   ├── delivery/ # DeliveryMap, RiderTrackingCard
 │   └── ui/       # Atom-level components (Buttons, Inputs)
 ├── lib/          # Core Logic
 │   ├── auth/     # Native/Web Auth bridging service
 │   ├── queries/  # Firestore data-access layer
+│   │   ├── delivery.ts       # Skip, Cancel Skip, Undo Skip, Batch ops
+│   │   ├── swaps.ts          # Swap request, cancel, matching
+│   │   └── subscriptions.ts  # Subscribe, cancel, credits
 │   └── storage/  # Hardened image upload logic
-├── store/        # Zustand state (AuthStore, UiStore)
-└── types/        # Global TypeScript interfaces
+├── store/        # Zustand: authStore, uiStore
+└── types/        # TypeScript interfaces (delivery, subscription, swap)
 ```
 
-### 🔐 Mobile Auth Persistence (The "Bridge")
-One of the most complex parts of the app is the **Auth Bridge**. When the app opens on mobile:
-1. The **Capacitor Firebase Auth** plugin checks the phone's native keychain for a session.
-2. If found, it instantly hydrates the **Zustand AuthStore**.
-3. It then signals the **Firebase Web SDK** to ensure the database and storage calls have the correct security tokens.
+### 🔄 Data Flow: Skip → Cancel Skip
 
-### 📸 Hardened Image Uploads
-To ensure 100% reliability on Android/iOS, we use a custom storage pipeline:
-- **Conversion**: Files are read via `FileReader` and converted to `Blob` data.
-- **Metadata**: Explicit `contentType` is set to prevent generic binary storage.
-- **Resumable**: Uses `uploadBytesResumable` for better handling of shaky mobile networks.
-- **Security**: Specific **CORS** policies allow the `https://localhost` origin (the mobile app) to talk to the Firebase bucket.
+```
+User taps "Skip" on projected card
+  → cancelScheduledTiffin(delivery, userId)
+      ├── isProjected? → setDoc() new delivery_orders doc with status='skipped'
+      │                   fields: subscriptionId, vendorId, customerId, meal, scheduledSlot, createdAt
+      └── else → updateDoc() existing doc to status='skipped'
+      
+      → awardUserCredit({ source: 'cancellation', source_reference_id: deliveryRef.id })
+
+User taps "Cancel Skip"
+  → undoSkipScheduledTiffin(delivery, userId)
+      ├── Validate status === 'skipped'
+      ├── Validate delivery slot time > now
+      ├── Find credit doc by source_reference_id === delivery.id
+      │     └── Fallback: same-date 'cancellation' credit
+      ├── Find active subscription (by subscriptionId, then user_id)
+      └── runTransaction:
+          ├── delivery_orders[delivery.id].status → 'pending'
+          ├── DELETE credit doc
+          ├── subscription.next_billing_date -= 1 day
+          └── CREATE user_credits { source: 'cancel_skip_refund', credit_amount: 0.5 }
+```
 
 ---
 
-## 5. Deployment & Maintenance
+## 5. Key Business Rules
 
-### Web Deployment
+### Credits
+| Event | Credit Change | Source field |
+|---|---|---|
+| Skip a delivery | +0.5 | `cancellation` |
+| Cancel a skip | −0.5 (original deleted) +0.5 (refund) | `cancel_skip_refund` |
+| Subscription net after cancel skip | −1 day to next_billing_date | — |
+
+### Time Gates
+| Action | Cutoff |
+|---|---|
+| Skip a delivery | Must be > 4 hours before slot |
+| Swap a delivery | Must be > 4 hours before slot |
+| Cancel Skip | Must be before slot time (no 4h gate) |
+
+### Ghost Order Filter (UI)
+Skipped orders are **only shown** in the Upcoming Schedule if:
+1. `subscriptionId` is set AND matches an active subscription
+2. `vendorId` is set AND matches that subscription's vendor
+3. Delivery slot time is still in the future
+
+This prevents orphaned test/dev documents from appearing in production.
+
+---
+
+## 6. Firestore Collections Reference
+
+| Collection | Purpose | Key Fields |
+|---|---|---|
+| `users` | User profiles + roles | `role`, `location`, `is_approved` |
+| `subscriptions` | Active meal plans | `user_id`, `vendor_id`, `status`, `next_billing_date`, `frequency` |
+| `delivery_orders` | Daily delivery tracking | `customerId`, `vendorId`, `subscriptionId`, `status`, `scheduledSlot`, `meal` |
+| `user_credits` | Credit wallet | `user_id`, `credit_amount`, `source`, `source_reference_id`, `redeemed` |
+| `swap_requests` | Swap marketplace | `initiator_user_id`, `status`, `meal_type` |
+| `daily_menus` | Vendor daily menus | `vendor_id`, `date`, `meals` |
+| `rider_trips` | Rider GPS tracking | `riderId`, `status`, `vendorIds` |
+| `support_tickets` | User support | `submitter_id`, `status` |
+| `audit_logs` | Immutable event log | `action`, `userId`, `timestamp` |
+
+---
+
+## 7. Firestore Security Rules Summary
+
+- `delivery_orders`: CRUD by `customerId`, `vendorId`, or `agentId`. **Delete is admin-only.**
+- `subscriptions`: Read/Update by `user_id` or `vendor_id`. Delete by `user_id` or admin.
+- `user_credits`: Read/Write by `user_id`. Admins have full access.
+- `swap_requests`: Create by initiator. Update by anyone (for claiming). Delete by admin.
+- `audit_logs`: Create by anyone. Update/Delete: never (immutable).
+
+---
+
+## 8. Development Notes
+
+### Running Locally
 ```bash
-npm run build
-firebase deploy --only hosting
+npm run dev          # Start Next.js dev server
+npm run build        # Production build check
 ```
 
-### Mobile Sync (Capacitor)
-```bash
-npm run build
-npx cap sync android
+### Environment Variables
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 ```
 
-### Key Maintenance Files
-- `firestore.rules`: Security logic for database access.
-- `storage.rules`: Security logic for image uploads.
-- `capacitor.config.ts`: Native app settings (Scheme, App ID).
-- `cors.json`: Cross-origin settings for Firebase Storage.
-
----
-
-## 6. Future Scalability
-The project is built using a **Modular Data Layer** (`src/lib/queries`). If you decide to move away from Firebase to a custom backend in the future, you only need to swap out the functions in the `queries` folder—the UI and State logic remain completely unchanged.
-
----
-
-**Documentation Version**: 2.0.0  
-**Author**: Antigravity AI
+### Known Constraints
+- **Static Export**: `output: 'export'` means no server-side rendering. All data fetching is client-side via Firestore real-time listeners.
+- **Capacitor + Dynamic Routes**: Dynamic Next.js routes don't work with Capacitor's file:// protocol. All routes must be statically pre-rendered.
+- **Firestore Delete Rules**: Standard users cannot delete `delivery_orders`. Ghost documents should be handled via status updates (`cancelled`) or UI-level filtering.

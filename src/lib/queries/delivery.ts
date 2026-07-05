@@ -5,17 +5,22 @@ import {
   getDocs,
   updateDoc,
   setDoc,
+  deleteDoc,
   query,
   where,
   onSnapshot,
   Timestamp,
+  serverTimestamp,
   writeBatch,
   orderBy,
+  runTransaction
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import type { Delivery, DeliveryStatus as OldDeliveryStatus } from '@/types';
-import type { DeliveryOrder, DriverProfile, DeliveryStatus } from '@/types/delivery';
+import type { DeliveryOrder, DriverProfile, DeliveryStatus, RiderTrip, PickupStop, DropStop } from '@/types/delivery';
+import { awardUserCredit } from './swaps';
+import { createAuditLog } from './audit';
 
 // ==========================================
 // BACKWARD COMPATIBILITY LAYER FOR OLD FLIGHTS
@@ -32,23 +37,45 @@ export function subscribeToAgentDeliveries(
   deliveryBoyId: string,
   callback: (orders: DeliveryOrder[], fromCache: boolean) => void
 ): () => void {
+  // Simple query on a single field — no composite index required.
   const q = query(
     collection(db, 'delivery_orders'),
-    where('driverId', '==', deliveryBoyId),
-    where('status', 'not-in', ['delivered', 'failed_attempt']),
-    orderBy('status', 'asc'),
-    orderBy('createdAt', 'asc')
+    where('driverId', '==', deliveryBoyId)
   );
 
   return onSnapshot(
     q,
     { includeMetadataChanges: true },
     (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder));
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder))
+        .filter((order) => {
+          // Filter to only include today's orders
+          if (!order.createdAt) return false;
+          const createdAt = order.createdAt as { seconds?: number } | string | Date;
+          const timestamp = typeof createdAt === 'string'
+            ? new Date(createdAt).getTime()
+            : createdAt instanceof Date
+              ? createdAt.getTime()
+              : (createdAt?.seconds ?? 0) * 1000;
+          return timestamp >= start.getTime() && timestamp <= end.getTime();
+        })
+        .sort((a, b) => {
+          // Sort by createdAt ascending (oldest first)
+          const aTime = (a as any).createdAt?.seconds ?? 0;
+          const bTime = (b as any).createdAt?.seconds ?? 0;
+          return aTime - bTime;
+        });
       callback(list, snap.metadata.fromCache);
     }
   );
 }
+
 
 /**
  * Legacy update function to update location of a user.
@@ -165,6 +192,7 @@ export async function getVendorTodayOrders(
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
   const end = new Date(date);
+  end.setDate(end.getDate() + 5);
   end.setHours(23, 59, 59, 999);
 
   const q = query(
@@ -557,17 +585,326 @@ export interface GenerateResult {
 
 /**
  * Reads all active subscriptions and creates a delivery_order for each one today
- * if one doesn't already exist. Safe to call multiple times (idempotent per subscription per day).
+ * if one doesn't already exist.
  *
+ * @param force - When true, bypasses the duplicate-order guard and creates fresh orders
+ *                even if orders already exist for today. Useful for testing / re-generation.
  * @returns Summary object showing how many orders were created, skipped (already exist), or errored.
  */
-export async function generateTodayDeliveries(): Promise<GenerateResult> {
+export async function generateTodayDeliveries(force = false): Promise<GenerateResult> {
   try {
-    const generateFn = httpsCallable<void, GenerateResult>(functions, 'generateTodayDeliveries');
-    const result = await generateFn();
+    const generateFn = httpsCallable<{ force: boolean }, GenerateResult>(functions, 'generateTodayDeliveries');
+    const result = await generateFn({ force });
     return result.data;
   } catch (err: any) {
     console.error('generateTodayDeliveries Error:', err);
     throw err;
   }
+}
+
+
+// ==========================================
+// USER: CANCEL SCHEDULED TIFFIN (SKIP DAY)
+// ==========================================
+
+export async function cancelScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; creditsEarned: number }> {
+  let deliveryRef;
+  const isProjected = typeof delivery.id === 'string' && delivery.id.startsWith('projected_');
+  
+  if (isProjected) {
+    // Materialize projected order instantly
+    deliveryRef = doc(collection(db, 'delivery_orders'));
+  } else {
+    deliveryRef = doc(db, 'delivery_orders', delivery.id);
+  }
+  
+  let currentStatus = delivery.status;
+
+  if (!isProjected) {
+    const snap = await getDoc(deliveryRef);
+    if (!snap.exists()) throw new Error('Delivery order not found.');
+    const data = snap.data() as any;
+    if (data.customerId !== userId) throw new Error('Unauthorized.');
+    currentStatus = data.status;
+  }
+
+  if (['swapped', 'skipped', 'picked_up', 'delivered'].includes(currentStatus)) {
+    throw new Error(`Cannot skip delivery in status: ${currentStatus}`);
+  }
+
+  // Calculate estimated delivery time today
+  const now = new Date();
+  let deliveryDate = new Date();
+  if (delivery.createdAt?.toDate) {
+    deliveryDate = delivery.createdAt.toDate();
+  }
+  
+  if (delivery.scheduledSlot === '8am') {
+    deliveryDate.setHours(8, 0, 0, 0);
+  } else if (delivery.scheduledSlot === '11am') {
+    deliveryDate.setHours(11, 0, 0, 0);
+  } else if (delivery.scheduledSlot === '8pm') {
+    deliveryDate.setHours(20, 0, 0, 0);
+  } else if (delivery.meal?.type === 'lunch') {
+    deliveryDate.setHours(13, 0, 0, 0); // Legacy fallback
+  } else {
+    deliveryDate.setHours(20, 0, 0, 0);
+  }
+
+  const hoursRemaining = (deliveryDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+  
+  if (hoursRemaining < 4) {
+    throw new Error('Cannot skip an order less than 4 hours before its scheduled delivery time.');
+  }
+
+  let creditsEarned = 0.5;
+
+  if (creditsEarned > 0) {
+    await awardUserCredit({
+      user_id: userId,
+      credit_amount: creditsEarned,
+      source: 'cancellation',
+      source_reference_id: deliveryRef.id,
+    });
+  }
+
+  if (isProjected) {
+    await setDoc(deliveryRef, {
+      subscriptionId: delivery.subscriptionId,
+      customerId: userId,
+      vendorId: delivery.vendorId,
+      status: 'skipped',
+      otp: String(Math.floor(1000 + Math.random() * 9000)),
+      otpVerified: false,
+      meal: delivery.meal,
+      scheduledSlot: delivery.scheduledSlot,
+      createdAt: Timestamp.fromDate(deliveryDate), // Set to target date so backend cron skips it
+      updatedAt: serverTimestamp()
+    });
+  } else {
+    await updateDoc(deliveryRef, {
+      status: 'skipped',
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  await createAuditLog('delivery_cancelled', userId, undefined, creditsEarned, { deliveryOrderId: deliveryRef.id });
+
+  return { success: true, creditsEarned };
+}export async function undoSkipScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; mode: 'credit' | 'day' }> {
+  console.log('[undoSkip] Called with delivery:', JSON.stringify({
+    id: delivery.id,
+    status: delivery.status,
+    scheduledSlot: delivery.scheduledSlot,
+    mealType: delivery.meal?.type,
+    subscriptionId: delivery.subscriptionId,
+    createdAt: delivery.createdAt?.seconds,
+  }), 'userId:', userId);
+
+  if (delivery.status !== 'skipped') {
+    throw new Error(`Order is not skipped. Current status: ${delivery.status}`);
+  }
+
+  // ── Time constraint: only block if delivery time has already passed ────────
+  const now = new Date();
+  let baseDate: Date;
+  if (delivery.createdAt?.toDate) {
+    baseDate = delivery.createdAt.toDate();
+  } else if (delivery.createdAt?.seconds) {
+    baseDate = new Date(delivery.createdAt.seconds * 1000);
+  } else {
+    baseDate = now;
+  }
+
+  const deliveryMoment = new Date(baseDate);
+  if (delivery.scheduledSlot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+  else if (delivery.scheduledSlot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
+  else if (delivery.scheduledSlot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
+  else if (delivery.meal?.type === 'lunch') deliveryMoment.setHours(11, 0, 0, 0);
+  else deliveryMoment.setHours(20, 0, 0, 0);
+
+  console.log('[undoSkip] deliveryMoment:', deliveryMoment.toISOString(), '| now:', now.toISOString());
+
+  if (deliveryMoment.getTime() < now.getTime()) {
+    throw new Error('Cannot undo a skip — the delivery time has already passed.');
+  }
+
+  // ── Fetch ALL user credit docs ─────────────────────────────────────────────
+  const allCreditsSnap = await getDocs(
+    query(collection(db, 'user_credits'), where('user_id', '==', userId))
+  );
+  console.log('[undoSkip] Total credit docs:', allCreditsSnap.docs.length);
+  allCreditsSnap.docs.forEach(d => {
+    console.log('[undoSkip] credit:', d.id, JSON.stringify(d.data()));
+  });
+
+  // Find the original skip credit (the 0.5 earned when user skipped this delivery)
+  let skipCreditDoc = allCreditsSnap.docs.find(d =>
+    d.data().source_reference_id === delivery.id
+  ) ?? null;
+
+  // Fallback: same-date cancellation credit without source_reference_id
+  if (!skipCreditDoc) {
+    const deliveryDateStr = baseDate.toLocaleDateString('en-CA');
+    skipCreditDoc = allCreditsSnap.docs.find(d => {
+      const data = d.data();
+      if (data.source !== 'cancellation') return false;
+      const ca = data.created_at?.toDate?.() ?? data.createdAt?.toDate?.();
+      if (!ca) return false;
+      return ca.toLocaleDateString('en-CA') === deliveryDateStr;
+    }) ?? null;
+  }
+  console.log('[undoSkip] skipCreditDoc found:', !!skipCreditDoc, skipCreditDoc?.id);
+
+  // ── Calculate total AVAILABLE (unredeemed) credits ────────────────────────
+  const totalAvailableCredits = allCreditsSnap.docs.reduce((sum, d) => {
+    const data = d.data();
+    if (data.redeemed === true) return sum;
+    return sum + (data.credit_amount ?? 0);
+  }, 0);
+  console.log('[undoSkip] totalAvailableCredits:', totalAvailableCredits);
+
+  // ── Determine mode ────────────────────────────────────────────────────────
+  // MODE A (credit): user has >= 0.5 credits → deduct 0.5 credit, no day lost
+  // MODE B (day):    user has 0 credits       → deduct 1 sub day, award 0.5 credit
+  const useCredit = totalAvailableCredits >= 0.5;
+  console.log('[undoSkip] mode:', useCredit ? 'CREDIT (deduct 0.5 credit)' : 'DAY (deduct 1 subscription day)');
+
+  // Find an unredeemed credit doc to delete (for Mode A — prefer the skip credit itself,
+  // otherwise any unredeemed 0.5 credit doc)
+  let creditDocToDelete = skipCreditDoc && skipCreditDoc.data().redeemed !== true
+    ? skipCreditDoc
+    : allCreditsSnap.docs.find(d => d.data().redeemed !== true && d.data().credit_amount === 0.5) ?? null;
+
+  // ── Find the subscription (needed for Mode B) ─────────────────────────────
+  const subId = delivery.subscriptionId ?? null;
+  let subRef: ReturnType<typeof doc> | null = null;
+
+  if (!useCredit) {
+    // Only need the subscription reference in day-deduction mode
+    if (subId) {
+      const directSnap = await getDocs(
+        query(collection(db, 'subscriptions'),
+          where('user_id', '==', userId),
+          where('status', '==', 'active'))
+      );
+      const matchedDoc = directSnap.docs.find(d => d.id === subId) ?? directSnap.docs[0] ?? null;
+      if (matchedDoc) subRef = matchedDoc.ref;
+    }
+    if (!subRef) {
+      const subSnap = await getDocs(
+        query(collection(db, 'subscriptions'),
+          where('user_id', '==', userId),
+          where('status', '==', 'active'))
+      );
+      if (!subSnap.empty) subRef = subSnap.docs[0].ref;
+    }
+    console.log('[undoSkip] subRef:', subRef?.id ?? 'none');
+  }
+
+  // ── Atomic transaction ────────────────────────────────────────────────────
+  // ⚠️  ALL transaction.get() READS must come before ALL writes (Firestore rule)
+  console.log('[undoSkip] Starting transaction...');
+  await runTransaction(db, async (transaction) => {
+
+    // ── READS FIRST ──────────────────────────────────────────────────────────
+    const deliveryRef = doc(db, 'delivery_orders', delivery.id);
+
+    let subData: Record<string, any> | null = null;
+    if (subRef) {
+      const subSnap = await transaction.get(subRef);
+      if (subSnap.exists()) subData = subSnap.data();
+      console.log('[undoSkip] subData read:', !!subData);
+    }
+
+    // ── WRITES ───────────────────────────────────────────────────────────────
+
+    // Always: restore delivery to pending
+    transaction.update(deliveryRef, {
+      status: 'pending',
+      updatedAt: serverTimestamp(),
+    });
+
+    if (useCredit) {
+      // MODE A: Delete 0.5 credit from user's wallet — cheapest reversal
+      if (creditDocToDelete) {
+        transaction.delete(creditDocToDelete.ref);
+        console.log('[undoSkip] MODE A: Deleted credit doc:', creditDocToDelete.id);
+      }
+      // No subscription day change in this mode
+    } else {
+      // MODE B: No credits available — delete skip credit if found, deduct 1 day, award 0.5 credit
+      if (skipCreditDoc) {
+        transaction.delete(skipCreditDoc.ref);
+        console.log('[undoSkip] MODE B: Deleted skip credit doc:', skipCreditDoc.id);
+      }
+
+      if (subRef && subData) {
+        let nextBilling: Date = subData.next_billing_date?.toDate?.() ?? null;
+        if (!nextBilling) {
+          const created = subData.created_at?.toDate?.() ?? new Date();
+          nextBilling = new Date(created);
+          nextBilling.setDate(nextBilling.getDate() + (subData.frequency === 'monthly' ? 30 : 7));
+        }
+
+        const adjusted = new Date(nextBilling);
+        adjusted.setDate(adjusted.getDate() - 1);
+        console.log('[undoSkip] MODE B: Deducting 1 day →', adjusted.toISOString());
+
+        transaction.update(subRef, {
+          next_billing_date: Timestamp.fromDate(adjusted),
+          updated_at: serverTimestamp(),
+        });
+
+        // Award 0.5 credit back (the half that stays with user after losing a day)
+        const refundRef = doc(collection(db, 'user_credits'));
+        transaction.set(refundRef, {
+          user_id: userId,
+          source: 'cancel_skip_refund',
+          credit_amount: 0.5,
+          redeemed: false,
+          created_at: serverTimestamp(),
+          source_reference_id: delivery.id,
+        });
+        console.log('[undoSkip] MODE B: Awarded 0.5 cancel_skip_refund credit');
+      }
+    }
+  });
+
+  console.log('[undoSkip] ✅ Transaction complete, mode:', useCredit ? 'credit' : 'day');
+  return { success: true, mode: useCredit ? 'credit' : 'day' };
+}
+
+/**
+ * Subscribes to the active RiderTrip for a specific driver.
+ */
+export function subscribeToActiveRiderTrip(
+  driverId: string,
+  callback: (trip: RiderTrip | null) => void
+): () => void {
+  const q = query(
+    collection(db, 'rider_trips'),
+    where('riderId', '==', driverId),
+    where('status', 'in', ['pickup_pending', 'picking_up', 'pickup_complete', 'dropping'])
+  );
+
+  return onSnapshot(q, (snap) => {
+    if (snap.empty) {
+      callback(null);
+    } else {
+      const d = snap.docs[0];
+      callback({ id: d.id, ...d.data() } as RiderTrip);
+    }
+  });
+}
+
+/**
+ * Updates a RiderTrip document.
+ */
+export async function updateRiderTrip(
+  tripId: string,
+  updateData: Partial<RiderTrip>
+): Promise<void> {
+  const tripRef = doc(db, 'rider_trips', tripId);
+  await updateDoc(tripRef, { ...updateData, updatedAt: serverTimestamp() });
 }

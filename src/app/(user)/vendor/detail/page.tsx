@@ -10,14 +10,15 @@ import { getUserById } from '@/lib/queries/users';
 import { getVendorReviews, addReview, editReview } from '@/lib/queries/reviews';
 import { getDocs, collection, query, where, getDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { createSubscription, getUserSubscriptions } from '@/lib/queries/subscriptions';
+import { createSubscription, getUserSubscriptions, cancelSubscription } from '@/lib/queries/subscriptions';
 import { validateDiscountCode } from '@/lib/queries/discounts';
 import { getImageUrl } from '@/lib/storage';
 import { formatDate, toMillis, cn } from '@/lib/utils';
 import { SkeletonCard } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
-import type { AppUser, Review, DiscountCode } from '@/types';
-import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X } from 'lucide-react';
+import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
+import type { AppUser, Review, DiscountCode, SubscriptionFrequency } from '@/types';
+import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, ShieldCheck } from 'lucide-react';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -58,8 +59,17 @@ export default function VendorDetailPage() {
   
   // Promo code state
   const [promoInput, setPromoInput] = useState('');
-  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [validatingPromo, setValidatingPromo] = useState(false);
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
+
+  // Subscription Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalInitialPlanId, setModalInitialPlanId] = useState('');
+  const [subscribing, setSubscribing] = useState<string | null>(null);
+
+  // Frequency selector state
+  const [selectedFrequency, setSelectedFrequency] = useState<SubscriptionFrequency>('one-time');
+  const [showDowngradeModal, setShowDowngradeModal] = useState(false);
 
   useEffect(() => { loadAll(); }, [vendorId]);
 
@@ -113,7 +123,6 @@ export default function VendorDetailPage() {
     finally { setSubmittingReview(false); }
   }
 
-  const [subscribing, setSubscribing] = useState<string | null>(null);
 
   async function handleApplyPromo() {
     if (!promoInput.trim()) return;
@@ -136,27 +145,51 @@ export default function VendorDetailPage() {
   async function handleSubscribe(planId: string) {
     if (!user) { addToast('Please sign in to subscribe', 'warning'); router.push('/login'); return; }
     
-    setSubscribing(planId);
-    try {
-      await createSubscription({
-        user_id: user.id,
-        vendor_id: vendorId,
-        plan_id: planId,
-        meal_type: planId as any,
-        discount_pct: appliedDiscount?.discount_pct,
-        promo_code: appliedDiscount?.code,
-      });
-      addToast('Subscription active! 🍛', 'success');
-      loadAll();
-    } catch { addToast('Failed to subscribe', 'error'); }
-    finally { setSubscribing(null); }
+    // Restriction logic: Cannot subscribe to anything else if 'both' is active
+    if (userSubs.includes('both') && planId !== 'both') {
+      setShowDowngradeModal(true);
+      return;
+    }
+
+    setModalInitialPlanId(planId);
+    setIsModalOpen(true);
   }
 
-  const plans = [
-    vendor?.rate_lunch && { id: 'lunch', label: 'Lunch Plan', price: vendor.rate_lunch, type: 'Lunch Only' },
-    vendor?.rate_dinner && { id: 'dinner', label: 'Dinner Plan', price: vendor.rate_dinner, type: 'Dinner Only' },
-    vendor?.rate_both && { id: 'both', label: 'Lunch + Dinner', price: vendor.rate_both, type: 'Full Day' },
-  ].filter(Boolean) as { id: string; label: string; price: number; type: string }[];
+  // One-time = flat per-meal price (no lunch/dinner distinction).
+  // Weekly/monthly = per meal type, with fallback chain: monthly → weekly → base.
+  const plans = selectedFrequency === 'one-time'
+    ? (vendor?.rate_onetime
+        ? [{ id: 'one-time', label: 'Single Meal', price: vendor.rate_onetime, basePrice: vendor.rate_onetime, type: 'Any meal, any time' }]
+        : [])
+    : [
+        (vendor?.rate_lunch_weekly || vendor?.rate_lunch_monthly) && {
+          id: 'lunch',
+          label: 'Lunch Plan',
+          price: selectedFrequency === 'monthly'
+            ? (vendor?.rate_lunch_monthly ?? vendor?.rate_lunch_weekly ?? 0)
+            : (vendor?.rate_lunch_weekly ?? 0),
+          basePrice: vendor?.rate_lunch_weekly ?? 0,
+          type: 'Lunch Only',
+        },
+        (vendor?.rate_dinner_weekly || vendor?.rate_dinner_monthly) && {
+          id: 'dinner',
+          label: 'Dinner Plan',
+          price: selectedFrequency === 'monthly'
+            ? (vendor?.rate_dinner_monthly ?? vendor?.rate_dinner_weekly ?? 0)
+            : (vendor?.rate_dinner_weekly ?? 0),
+          basePrice: vendor?.rate_dinner_weekly ?? 0,
+          type: 'Dinner Only',
+        },
+        (vendor?.rate_both_weekly || vendor?.rate_both_monthly) && {
+          id: 'both',
+          label: 'Lunch + Dinner',
+          price: selectedFrequency === 'monthly'
+            ? (vendor?.rate_both_monthly ?? vendor?.rate_both_weekly ?? 0)
+            : (vendor?.rate_both_weekly ?? 0),
+          basePrice: vendor?.rate_both_weekly ?? 0,
+          type: 'Full Day',
+        },
+      ].filter(Boolean) as { id: string; label: string; price: number; basePrice: number; type: string }[];
 
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
@@ -309,13 +342,35 @@ export default function VendorDetailPage() {
 
         {/* Meal Plans Section */}
         <div className="px-1">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-[20px] font-black text-slate-900 tracking-tight">Select Plan</h2>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Flexible subscriptions</p>
+          <div className="flex flex-col mb-6 gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-[20px] font-black text-slate-900 tracking-tight">Select Plan</h2>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Flexible subscriptions</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                <Plus className="w-6 h-6 text-slate-400" />
+              </div>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
-              <Plus className="w-6 h-6 text-slate-400" />
+            
+            {/* Frequency Selector */}
+            <div className="bg-slate-100 p-1 rounded-2xl flex">
+              {(['one-time', 'weekly', 'monthly'] as SubscriptionFrequency[]).map(freq => (
+                <button
+                  key={freq}
+                  onClick={() => setSelectedFrequency(freq)}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
+                    selectedFrequency === freq 
+                      ? 'bg-white text-slate-900 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {freq === 'one-time' && <Clock className="w-3.5 h-3.5" />}
+                  {freq === 'weekly' && <RotateCcw className="w-3.5 h-3.5" />}
+                  {freq === 'monthly' && <Calendar className="w-3.5 h-3.5" />}
+                  {freq.replace('-', ' ')}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -352,7 +407,9 @@ export default function VendorDetailPage() {
                           ) : (
                             <span className="text-base sm:text-lg font-black text-slate-900">₹{plan.price}</span>
                           )}
-                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">/ day</span>
+                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            / {selectedFrequency === 'one-time' ? 'meal' : selectedFrequency === 'weekly' ? 'week' : 'month'}
+                          </span>
                         </div>
                       </div>
 
@@ -476,6 +533,49 @@ export default function VendorDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Downgrade Restriction Modal */}
+      {showDowngradeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowDowngradeModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl scale-in" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+              <ShieldCheck className="w-8 h-8 text-rose-500" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 text-center mb-2">Active Combo Plan</h3>
+            <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
+              You are currently subscribed to the <strong className="text-slate-700">Both (Lunch + Dinner)</strong> plan. 
+              To switch to a single meal plan, you must first cancel your combo subscription from your Orders page.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => router.push('/orders')}
+                className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
+              >
+                Go to My Orders
+              </button>
+              <button 
+                onClick={() => setShowDowngradeModal(false)}
+                className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl text-sm font-bold hover:bg-slate-200 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Modal */}
+      {vendor && (
+        <SubscriptionOnboardingModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          vendor={vendor as AppUser}
+          initialPlanId={modalInitialPlanId}
+          selectedFrequency={selectedFrequency}
+          appliedDiscount={appliedDiscount}
+          onSuccess={loadAll}
+        />
+      )}
     </div>
   );
 }

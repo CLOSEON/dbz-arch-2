@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { useRouter } from 'next/navigation';
@@ -8,6 +8,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { updateUser } from '@/lib/queries/users';
 import { uploadImage, getImageUrl } from '@/lib/storage';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Gift, Star, ChevronRight, Calendar, AlertCircle } from 'lucide-react';
+import { PaymentModal } from '@/components/shared/PaymentModal';
+import { redeemCreditsForDays } from '@/lib/queries/swaps';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -18,6 +23,40 @@ export default function ProfilePage() {
   
   const [loadingImage, setLoadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [totalCredits, setTotalCredits] = useState(0);
+  const [creditHistory, setCreditHistory] = useState<any[]>([]);
+  const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedSubForPayment, setSelectedSubForPayment] = useState<any>(null);
+  const [redeemingCredits, setRedeemingCredits] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'user_credits'),
+      where('user_id', '==', user.id)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const credits = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const unredeemed = credits.filter(c => !c.redeemed).reduce((sum, c) => sum + (c.credit_amount || 0), 0);
+      setTotalCredits(Math.round(unredeemed * 10) / 10);
+      setCreditHistory(credits.sort((a, b) => (b.created_at?.seconds ?? 0) - (a.created_at?.seconds ?? 0)).slice(0, 5));
+    });
+
+    const qSubs = query(
+      collection(db, 'subscriptions'),
+      where('user_id', '==', user.id),
+      where('status', '==', 'active')
+    );
+    const unsubSubs = onSnapshot(qSubs, (snap) => {
+      setActiveSubscriptions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      unsub();
+      unsubSubs();
+    };
+  }, [user]);
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -44,6 +83,34 @@ export default function ProfilePage() {
     logout(); // Now handles both Zustand clear + Firebase signOut
     router.replace('/login');
     addToast('Signed out successfully', 'info');
+  }
+
+  async function updatePreference(slot: '8am' | '11am') {
+    if (!user) return;
+    try {
+      await updateUser(user.id, { deliveryPreference: slot });
+      setUser({ ...user, deliveryPreference: slot });
+      addToast(`Lunch delivery preference updated to ${slot === '8am' ? '8:00 AM' : '11:00 AM'}! 🍱`, 'success');
+    } catch (err) {
+      addToast('Failed to update preference.', 'error');
+    }
+  }
+
+  async function handleRedeem() {
+    if (!user || activeSubscriptions.length === 0) {
+      addToast('You need an active subscription to redeem credits.', 'error');
+      return;
+    }
+    
+    setRedeemingCredits(true);
+    try {
+      const days = await redeemCreditsForDays(user.id, activeSubscriptions[0].id);
+      addToast(`Successfully redeemed! Added ${days} days to your subscription. 🎉`, 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to redeem credits.', 'error');
+    } finally {
+      setRedeemingCredits(false);
+    }
   }
 
   // Format phone for display: +919876543210 → 98765 43210
@@ -125,6 +192,142 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Active Subscriptions / Days Remaining */}
+      {activeSubscriptions.length > 0 && (
+        <div className="bg-white rounded-3xl p-5 shadow-card mb-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900">Active Subscriptions</h3>
+            <Calendar className="w-5 h-5 text-slate-400" />
+          </div>
+          
+          <div className="space-y-4">
+            {activeSubscriptions.map(sub => {
+              const frequency = sub.frequency || 'weekly';
+              const daysInCycle = frequency === 'monthly' ? 30 : 7;
+              
+              let currentNextBilling = sub.next_billing_date?.toDate?.();
+              if (!currentNextBilling) {
+                const createdDate = sub.created_at?.toDate?.() || new Date();
+                currentNextBilling = new Date(createdDate.getTime());
+                currentNextBilling.setDate(currentNextBilling.getDate() + daysInCycle);
+              }
+              
+              const now = new Date();
+              const diffTime = currentNextBilling.getTime() - now.getTime();
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              
+              const isExpiringSoon = diffDays <= 7;
+              
+              return (
+                <div key={sub.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold text-slate-900 capitalize">{sub.meal_type} Meal ({frequency})</span>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-full ${isExpiringSoon ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {diffDays > 0 ? `${diffDays} Days Left` : 'Expired'}
+                    </span>
+                  </div>
+                  
+                  <div className="w-full bg-slate-200 rounded-full h-1.5 mb-3 overflow-hidden">
+                    <div 
+                      className={`h-1.5 rounded-full ${isExpiringSoon ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, (diffDays / daysInCycle) * 100))}%` }}
+                    />
+                  </div>
+                  
+                  {isExpiringSoon && (
+                    <button
+                      onClick={() => {
+                        setSelectedSubForPayment(sub);
+                        setPaymentModalOpen(true);
+                      }}
+                      className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-brand text-white hover:bg-brand-600 active:scale-95 shadow-md shadow-brand/20"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Make Payment
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Rewards / Credits */}
+      <div className="bg-white rounded-3xl p-5 shadow-card mb-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Gift className="w-4 h-4 text-amber-500" />
+            </div>
+            <h3 className="text-[15px] font-bold text-slate-900">My Rewards</h3>
+          </div>
+          <div className="flex items-center gap-1.5 bg-amber-50 rounded-2xl px-3 py-1.5">
+            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+            <span className="text-[13px] font-black text-amber-700">{totalCredits} cr</span>
+          </div>
+        </div>
+        
+        {totalCredits >= 1 && activeSubscriptions.length > 0 && (
+          <button
+            onClick={handleRedeem}
+            disabled={redeemingCredits}
+            className="w-full mb-4 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-amber-500 text-white hover:bg-amber-600 active:scale-95 disabled:opacity-50"
+          >
+            {redeemingCredits ? 'Redeeming...' : `Redeem ${Math.floor(totalCredits)} Credits for ${Math.floor(totalCredits)} Days`}
+          </button>
+        )}
+        <p className="text-[11px] text-slate-400 mb-3">Earn 0.5 credits every time you skip a delivery. 2 credits = 1 free meal.</p>
+        {creditHistory.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-2">No credits yet — skip a delivery to start earning!</p>
+        ) : (
+          <div className="space-y-2">
+            {creditHistory.map((c) => (
+              <div key={c.id} className="flex items-center justify-between">
+                <div>
+                  <p className="text-[12px] font-semibold text-slate-700 capitalize">{c.source?.replace(/_/g, ' ') || 'Credit'}</p>
+                  <p className="text-[10px] text-slate-400">{c.created_at?.toDate ? c.created_at.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</p>
+                </div>
+                <span className={`text-[12px] font-black ${c.redeemed ? 'text-slate-400 line-through' : 'text-amber-600'}`}>
+                  +{c.credit_amount}cr
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Delivery Preferences */}
+      <div className="bg-white rounded-3xl p-5 shadow-card mb-5">
+        <h3 className="text-[15px] font-bold text-slate-900 mb-1">Lunch Delivery Slot</h3>
+        <p className="text-[11px] text-slate-500 mb-4 leading-tight">
+          Applies to tomorrow's scheduled orders.
+        </p>
+        
+        <div className="flex bg-slate-100 p-1 rounded-2xl relative">
+          <button
+            onClick={() => updatePreference('8am')}
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all focus:outline-none active:scale-[0.98] ${
+              user?.deliveryPreference === '8am' || !user?.deliveryPreference
+                ? 'bg-white text-brand shadow-sm ring-1 ring-black/5'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            8:00 AM
+          </button>
+          <button
+            onClick={() => updatePreference('11am')}
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all focus:outline-none active:scale-[0.98] ${
+              user?.deliveryPreference === '11am'
+                ? 'bg-white text-brand shadow-sm ring-1 ring-black/5'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            11:00 AM
+          </button>
+        </div>
+      </div>
+
       {/* Menu Items */}
       <div className="bg-white rounded-3xl shadow-card overflow-hidden mb-5">
         {menuItems.map((item, i) => (
@@ -147,7 +350,20 @@ export default function ProfilePage() {
         Sign Out
       </button>
 
-      <p className="text-center text-xs text-slate-400 mt-6">Dabzo v2.0 • Smart Meal Subscriptions</p>
+      <p className="text-center text-xs text-slate-400 mt-6 mb-10">Dabzo v2.0 • Smart Meal Subscriptions</p>
+      
+      {selectedSubForPayment && (
+        <PaymentModal 
+          isOpen={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          subscription={selectedSubForPayment}
+          amount={selectedSubForPayment.price || (selectedSubForPayment.frequency === 'monthly' ? 2400 : 600)}
+          onSuccess={() => {
+            setPaymentModalOpen(false);
+            addToast('Payment successful! Subscription renewed.', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,10 @@
  * - Native (Android / iOS): delegates to pushInit.ts which handles permissions,
  *   FCM registration, token persistence, foreground toasts, and appStateChange re-init.
  * - Web: uses Firebase Web Messaging (getToken / onMessage).
+ *
+ * SECURITY: The active FCM token is stored in localStorage under 'current_fcm_token'.
+ * The signOut function reads and removes it from Firestore to prevent notification
+ * leaks — i.e. delivery confirmed alerts broadcasting to all previously-logged-in users.
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -13,6 +17,8 @@ import { db, getAppMessaging } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { initPushNotifications } from './pushInit';
+
+import { FCM_TOKEN_STORAGE_KEY } from './constants';
 
 export async function registerPushNotifications(userId: string) {
   if (!userId) return;
@@ -45,12 +51,18 @@ export async function registerPushNotifications(userId: string) {
 
     if (token) {
       console.log('[PushNotifications] Web FCM token generated:', token);
+
       await updateDoc(doc(db, 'users', userId), {
         push_tokens: arrayUnion(token),
         fcmToken: token,
       });
 
-      // Show foreground web notifications via console (toast handled natively on mobile)
+      // Cache in localStorage so signOut() can cleanly remove it from Firestore,
+      // preventing this device's token from being used to notify the NEXT user
+      // who logs in on the same device/browser.
+      localStorage.setItem(FCM_TOKEN_STORAGE_KEY, token);
+
+      // Show foreground notifications (natively handled on mobile)
       onMessage(messaging, (payload) => {
         console.log('[PushNotifications] Web foreground message:', payload);
       });

@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Vendor } from '@/types';
+import { Star } from 'lucide-react';
 import { getImageUrl } from '@/lib/storage';
 
 interface VendorCardProps {
@@ -13,7 +14,8 @@ export function VendorCard({ vendor }: VendorCardProps) {
   const prices = [vendor.rate_lunch, vendor.rate_dinner, vendor.rate_both]
     .filter((p): p is number => typeof p === 'number' && p > 0);
   const startingPrice = prices.length ? Math.min(...prices) : null;
-  const rating = vendor.rating_avg ? Number(vendor.rating_avg).toFixed(1) : null;
+  const ratingValue = vendor.rating_avg || vendor.rating || 4.5;
+  const rating = Number(ratingValue).toFixed(1);
 
   return (
     <Link
@@ -37,12 +39,10 @@ export function VendorCard({ vendor }: VendorCardProps) {
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/35 to-transparent" />
         
         {/* Premium Rating Badge */}
-        {rating && (
-          <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.12)] border border-white/70">
-            <span className="text-brand text-xs">★</span>
-            <span className="text-slate-900 text-xs font-bold leading-none">{rating}</span>
-          </div>
-        )}
+        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.12)] border border-white/70">
+          <span className="text-brand text-xs">★</span>
+          <span className="text-slate-900 text-xs font-bold leading-none">{rating}</span>
+        </div>
 
         {/* Status Badge */}
         {vendor.is_approved && (
@@ -65,7 +65,13 @@ export function VendorCard({ vendor }: VendorCardProps) {
               </p>
               <div className="w-1 h-1 rounded-full bg-slate-200" />
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.12em]">
-                {vendor.subscriberCount ?? 0} subscribers
+                {vendor.capacityUnlimited ? (
+                  <span className="text-slate-500 text-xs font-bold">Unlimited capacity</span>
+                ) : (
+                  <span className="text-slate-500 text-xs font-bold">
+                    {vendor.capacity ? `${vendor.capacity} tiffins` : 'Capacity not set'}
+                  </span>
+                )}
               </p>
             </div>
           </div>

@@ -125,25 +125,12 @@ export default function VendorSubscribers() {
                     {s.meal_type}
                   </span>
                   <span className="text-xs text-slate-400 font-medium">
-                    {s.userPhone ? `+91 ${s.userPhone.replace(/\D/g,'').slice(-10)}` : '—'}
+                    {s.userPhone ? `+91 ******${s.userPhone.replace(/\D/g,'').slice(-4)}` : '—'}
                   </span>
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Active</div>
-                <button 
-                  onClick={() => {
-                    const phone = (s.userPhone || '').replace(/\D/g, '');
-                    const target = phone.length === 10 ? '91' + phone : phone;
-                    if (!target) { addToast('No phone number available', 'warning'); return; }
-                    window.open(`https://wa.me/${target}?text=${encodeURIComponent(`Hello ${s.userName}!`)}`, '_blank');
-                  }}
-                  className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-emerald-50 hover:text-emerald-500 transition-colors"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 3.8.9L21 3z" />
-                  </svg>
-                </button>
               </div>
             </div>
           ))}

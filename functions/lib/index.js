@@ -118,4 +118,8 @@ exports.broadcastNotificationV1 = functions.https.onCall(async (data, context) =
 __exportStar(require("./deliveryTriggers"), exports);
 __exportStar(require("./authTriggers"), exports);
 __exportStar(require("./payoutTriggers"), exports);
+__exportStar(require("./matchingTriggers"), exports);
+__exportStar(require("./riderPaymentTriggers"), exports);
+__exportStar(require("./notificationTriggers"), exports);
+__exportStar(require("./cronTriggers"), exports);
 //# sourceMappingURL=index.js.map

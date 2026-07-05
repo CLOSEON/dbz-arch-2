@@ -12,6 +12,7 @@ import {
   isTestAccount,
   completeOnboarding,
 } from '@/lib/queries/users';
+import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
 import Image from 'next/image';
 
@@ -112,6 +113,10 @@ export default function LoginPage() {
       // Existing user — login
       setUser(profile);
       addToast(`Welcome back, ${profile.name || 'Chef'}!`, 'success');
+      // Fire-and-forget: migrates legacy docs to deterministic IDs, cleans duplicates
+      if (profile.role === 'user') {
+        migrateSubscriptions(profile.id).catch(() => {});
+      }
       routeToRole(profile.role);
 
     } catch (err: any) {
@@ -257,39 +262,48 @@ export default function LoginPage() {
   // ─── RENDER ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-ivory flex flex-col items-center justify-center p-6 max-w-md mx-auto relative">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative overflow-hidden font-sans">
+      
+      {/* ── Minimalist Top Section ── */}
+      <div className="absolute top-0 left-0 w-full h-[45vh] bg-white rounded-b-[40px] shadow-[0_4px_40px_rgba(0,0,0,0.03)] z-0" />
 
-      <div className="w-full max-w-sm animate-fade-in">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8 text-center">
-          <div className="flex items-center justify-center mb-4 w-28 h-28 rounded-full bg-white shadow-[0_20px_50px_rgba(255,59,48,0.12)] border border-brand/10">
-            <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={96} height={96} priority className="object-contain rounded-full" />
+      {/* ── Main Content Area ── */}
+      <div className="flex-1 flex flex-col relative z-10 px-6 pt-12 pb-8">
+        
+        <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-center">
+          
+          {/* Logo & Header */}
+          <div className="flex flex-col items-center mb-10 animate-fade-in text-center">
+            <div className="w-24 h-24 bg-white rounded-[2rem] flex items-center justify-center shadow-lg shadow-slate-200/50 mb-6 p-4">
+              {/* Removed brightness-0 invert so the logo is actually visible! */}
+              <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={72} height={72} priority className="object-contain" />
+            </div>
+
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+              Welcome to Dabzo
+            </h1>
+            <p className="text-base font-medium text-slate-500">
+              {step === 'phone' ? 'Premium meal subscriptions' : step === 'otp' ? 'Verify your number' : 'Complete your profile'}
+            </p>
           </div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Welcome to Dabzo</h2>
-          <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">
-            Smart Meal Subscriptions
-          </p>
-        </div>
-
-        {/* Card */}
-        <div className="bg-white rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)] border border-slate-100">
 
           {/* ── STEP 1: Phone Input ───────────────────────────────────────── */}
           {step === 'phone' && (
-            <form onSubmit={handleSendOTP} className="space-y-6">
-              <div className="bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-5 py-4 focus-within:border-brand/40 focus-within:bg-white transition-all duration-300">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-1 block">
+            <form onSubmit={handleSendOTP} className="w-full space-y-6 animate-fade-in">
+              
+              <div className="relative">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2 ml-1">
                   Mobile Number
                 </label>
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-bold text-slate-300 select-none">+91</span>
-                  <div className="w-px h-6 bg-slate-200" />
+                <div className="flex items-center bg-white border-2 border-slate-100 rounded-2xl px-4 py-4 shadow-sm focus-within:border-brand focus-within:shadow-[0_0_0_4px_rgba(255,107,0,0.1)] transition-all duration-300">
+                  <span className="text-lg font-bold text-slate-400 select-none mr-3">+91</span>
+                  <div className="w-px h-6 bg-slate-200 mr-3" />
                   <input
                     ref={phoneInputRef}
                     type="tel"
                     inputMode="numeric"
                     placeholder="Enter 10 digit number"
-                    className="w-full bg-transparent outline-none text-xl font-bold text-slate-900 placeholder:text-slate-300 placeholder:text-base placeholder:font-medium"
+                    className="w-full bg-transparent outline-none text-lg font-bold text-slate-900 placeholder:text-slate-300"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     autoFocus
@@ -301,15 +315,12 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || phone.length !== 10}
-                className="btn-primary"
+                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600"
               >
                 {loading ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Sending...</span>
-                  </>
+                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
-                  'Get OTP'
+                  'Continue'
                 )}
               </button>
             </form>
@@ -317,11 +328,11 @@ export default function LoginPage() {
 
           {/* ── STEP 2: OTP Verification ──────────────────────────────────── */}
           {step === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="space-y-6">
+             <form onSubmit={handleVerifyOTP} className="w-full space-y-6 animate-fade-in">
+              
               <div className="text-center mb-2">
-                <p className="text-sm text-slate-400 font-medium">
-                  Code sent to{' '}
-                  <span className="text-slate-900 font-bold">+91 {phone}</span>
+                <p className="text-sm font-medium text-slate-500">
+                  Enter the code sent to <span className="text-slate-900 font-bold">+91 {phone}</span>
                 </p>
               </div>
 
@@ -330,42 +341,27 @@ export default function LoginPage() {
                   ref={otpInputRef}
                   type="text"
                   inputMode="numeric"
-                  placeholder="000000"
-                  className="w-full text-center text-4xl sm:text-5xl font-black py-5 bg-slate-50/80 border-2 border-slate-100 rounded-2xl outline-none focus:border-brand/40 focus:bg-white transition-all duration-300 tracking-[0.3em] placeholder:text-slate-200"
+                  placeholder="------"
+                  className="w-full text-center text-[40px] font-bold py-5 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-brand focus:shadow-[0_0_0_4px_rgba(255,107,0,0.1)] transition-all duration-300 tracking-[0.4em] text-slate-900 shadow-sm"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
                   autoComplete="one-time-code"
                 />
-                {/* Progress dots */}
-                <div className="flex justify-center gap-2 mt-3">
-                  {Array.from({ length: OTP_LENGTH }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                        i < otp.length ? 'bg-brand scale-110' : 'bg-slate-200'
-                      }`}
-                    />
-                  ))}
-                </div>
               </div>
 
               <button
                 type="submit"
                 disabled={loading || otp.length < OTP_LENGTH}
-                className="btn-primary"
+                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600"
               >
                 {loading ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Verifying...</span>
-                  </>
+                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
-                  'Verify & Sign In'
+                  'Verify Code'
                 )}
               </button>
 
-              {/* Resend + Change number */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-center gap-6 pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -374,17 +370,18 @@ export default function LoginPage() {
                     setVerificationId(null);
                     cleanupAuth();
                   }}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                  className="text-sm font-bold text-slate-400 hover:text-slate-700 transition-colors"
                 >
-                  ← Change number
+                  Edit number
                 </button>
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={resendTimer > 0 || loading}
-                  className="text-xs font-bold text-brand hover:text-brand-700 transition-colors disabled:text-slate-300 disabled:cursor-not-allowed"
+                  className="text-sm font-bold text-brand hover:text-brand-600 transition-colors disabled:text-slate-300"
                 >
-                  {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                  {resendTimer > 0 ? `Resend code in ${resendTimer}s` : 'Resend code'}
                 </button>
               </div>
             </form>
@@ -392,101 +389,83 @@ export default function LoginPage() {
 
           {/* ── STEP 3: Onboarding ────────────────────────────────────────── */}
           {step === 'onboarding' && (
-            <form onSubmit={handleOnboarding} className="space-y-6">
-              {/* Context header */}
-              <div className="text-center">
-                <p className="text-sm font-bold text-slate-600">
-                  {isExistingUserMissingName ? '👋 Almost there!' : '🎉 Welcome to Dabzo!'}
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {isExistingUserMissingName
-                    ? 'Just tell us your name to continue'
-                    : 'Set up your account to get started'}
-                </p>
-              </div>
-
-              {/* Name */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-2 block ml-1">
-                  Your Name
+            <form onSubmit={handleOnboarding} className="w-full space-y-5 animate-fade-in">
+              
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block ml-1">
+                  Full Name
                 </label>
                 <input
                   type="text"
-                  placeholder="What should we call you?"
-                  className="w-full bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-5 py-4 text-sm font-semibold outline-none focus:border-brand/40 focus:bg-white transition-all duration-300 placeholder:text-slate-300"
+                  placeholder="John Doe"
+                  className="w-full bg-white border-2 border-slate-100 rounded-2xl px-5 py-4 text-lg font-bold outline-none focus:border-brand focus:shadow-[0_0_0_4px_rgba(255,107,0,0.1)] transition-all duration-300 text-slate-900 shadow-sm placeholder:text-slate-300"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
                 />
               </div>
 
-              {/* Role selection — only for brand new users */}
               {!isExistingUserMissingName && (
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3 block ml-1">
-                    I am a
+                <div className="pt-4">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-3 ml-1">
+                    Account Type
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-3">
                     {([
-                      { role: 'user' as UserRole, emoji: '🍽️', label: 'Customer', desc: 'Order meals' },
-                      { role: 'vendor' as UserRole, emoji: '👨‍🍳', label: 'Vendor', desc: 'Sell meals' },
-                      { role: 'delivery' as UserRole, emoji: '🚴', label: 'Delivery', desc: 'Deliver meals' },
-                    ]).map(({ role, emoji, label, desc }) => (
+                      { role: 'user' as UserRole, title: 'Customer', desc: 'Order and manage subscriptions' },
+                      { role: 'vendor' as UserRole, title: 'Vendor', desc: 'List and sell meals' },
+                      { role: 'delivery' as UserRole, title: 'Delivery', desc: 'Deliver orders' },
+                    ]).map(({ role, title, desc }) => (
                       <button
-                        key={role}
-                        type="button"
-                        onClick={() => setSelectedRole(role)}
-                        className={`p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.97] ${
-                          selectedRole === role
-                            ? 'border-brand bg-brand/5 shadow-lg shadow-brand/10'
-                            : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
-                        }`}
-                      >
-                        <span className="text-2xl">{emoji}</span>
-                        <p className={`font-bold text-sm mt-2 ${selectedRole === role ? 'text-brand' : 'text-slate-700'}`}>
-                          {label}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">{desc}</p>
-                      </button>
+                         key={role}
+                         type="button"
+                         onClick={() => setSelectedRole(role)}
+                         className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-[0.99] ${
+                           selectedRole === role
+                             ? 'border-brand bg-brand/5 shadow-sm'
+                             : 'border-slate-100 bg-white hover:border-slate-200'
+                         }`}
+                       >
+                         <div className="text-left">
+                           <p className={`font-bold text-base ${selectedRole === role ? 'text-brand' : 'text-slate-700'}`}>
+                             {title}
+                           </p>
+                           <p className="text-xs font-medium text-slate-500 mt-0.5">{desc}</p>
+                         </div>
+                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedRole === role ? 'border-brand' : 'border-slate-300'}`}>
+                           {selectedRole === role && <div className="w-2.5 h-2.5 bg-brand rounded-full" />}
+                         </div>
+                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {!isExistingUserMissingName && selectedRole === 'vendor' && (
-                <div className="bg-amber-50 border border-amber-200/50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-amber-700 font-semibold">
-                    ⚠️ Vendor accounts require admin approval before they can list meals.
-                  </p>
                 </div>
               )}
 
               <button
                 type="submit"
                 disabled={loading || !name.trim()}
-                className="btn-primary"
+                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-6 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600"
               >
                 {loading ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>{isExistingUserMissingName ? 'Saving...' : 'Creating account...'}</span>
-                  </>
+                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
-                  isExistingUserMissingName ? 'Save & Continue' : 'Create Account'
+                  isExistingUserMissingName ? 'Save Profile' : 'Complete Setup'
                 )}
               </button>
             </form>
           )}
+
+        </div>
+        
+        {/* Footer */}
+        <div className="mt-auto pt-8">
+          <p className="text-xs text-slate-400 font-medium text-center">
+            By continuing, you agree to our <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Terms</span> & <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Privacy</span>
+          </p>
+          {/* Dynamic reCAPTCHA container is now fully managed by auth-service.ts to prevent React mounting crashes */}
         </div>
 
-        {/* Footer */}
-        <p className="mt-8 text-center text-slate-300 text-[10px] font-bold tracking-[0.2em] uppercase">
-          Dabzo v2.0 • Secured by Firebase
-        </p>
       </div>
-
-      {/* Invisible reCAPTCHA container — DO NOT REMOVE */}
-      <div id="recaptcha-container" />
     </div>
   );
 }

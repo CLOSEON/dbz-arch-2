@@ -20,6 +20,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { auth } from '../firebase';
+import { FCM_TOKEN_STORAGE_KEY } from '../notifications/constants';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,35 +64,67 @@ function isTestAccount(phone: string): boolean {
   return TEST_NUMBERS.includes(phone);
 }
 
-// ─── reCAPTCHA Setup (Web Only) ──────────────────────────────────────────────
+// ─── reCAPTCHA Setup & Web Implementation ──────────────────────────────────────
 
-function getRecaptchaVerifier(): RecaptchaVerifier {
-  // Clean up any existing verifier
+async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
+  console.log('[Auth] Starting robust Web OTP flow...');
+
+  // 1. Purge any ghost reCAPTCHA instances
   if (_recaptchaVerifier) {
-    _recaptchaVerifier.clear();
+    try {
+      _recaptchaVerifier.clear();
+    } catch (e) {
+      console.warn('[Auth] Ignored error while clearing old reCAPTCHA', e);
+    }
     _recaptchaVerifier = null;
   }
 
-  // Ensure the container element exists
-  let container = document.getElementById('recaptcha-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'recaptcha-container';
-    document.body.appendChild(container);
+  // 2. Completely remove any old containers from the DOM
+  const oldContainer = document.getElementById('firebase-recaptcha-container');
+  if (oldContainer) {
+    oldContainer.remove();
   }
 
-  _recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-    size: 'invisible',
-    callback: () => {
-      console.log('[Auth] reCAPTCHA verified');
-    },
-    'expired-callback': () => {
-      console.warn('[Auth] reCAPTCHA expired — will refresh on next attempt');
-      _recaptchaVerifier = null;
-    },
-  });
+  // 3. Create a brand new, isolated container for Firebase
+  const container = document.createElement('div');
+  container.id = 'firebase-recaptcha-container';
+  document.body.appendChild(container);
 
-  return _recaptchaVerifier;
+  try {
+    // 4. Initialize fresh verifier on the new container
+    _recaptchaVerifier = new RecaptchaVerifier(auth, container, {
+      size: 'invisible',
+      callback: () => console.log('[Auth] reCAPTCHA solved'),
+      'expired-callback': () => console.warn('[Auth] reCAPTCHA expired')
+    });
+
+    // 5. Send the OTP
+    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, _recaptchaVerifier);
+    
+    console.log('[Auth] Web: OTP sent successfully');
+    return {
+      success: true,
+      verificationId: '_web_confirmation',
+    };
+  } catch (err: any) {
+    console.error('[Auth] Web OTP Error:', err);
+    // Cleanup on failure
+    if (_recaptchaVerifier) {
+      try { _recaptchaVerifier.clear(); } catch(e){}
+      _recaptchaVerifier = null;
+    }
+    container.remove();
+    
+    // Map Firebase errors to human readable
+    if (err.code === 'auth/too-many-requests') {
+      return { success: false, error: 'Too many attempts. Please use a Firebase Test Number or wait 15 minutes.' };
+    }
+    if (err.code === 'auth/invalid-app-credential') {
+      return { success: false, error: 'App verification failed. Please try again.' };
+    }
+    
+    return mapFirebaseError(err);
+  }
 }
 
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
@@ -135,8 +168,9 @@ export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
   console.log(`[Auth] Sending OTP to ${phoneNumber} (platform: ${isNative ? 'native' : 'web'})`);
 
   try {
-    // Force web flow for all numbers so JS SDK gets properly signed in
-    // This prevents "insufficient permissions" when using Firestore Web SDK on Capacitor
+    if (isNative) {
+      return await sendOtpNative(phoneNumber);
+    }
     return await sendOtpWeb(phoneNumber);
   } catch (err: any) {
     console.error('[Auth] sendOtp error:', err);
@@ -144,19 +178,6 @@ export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
   }
 }
 
-// ── Web Implementation ───────────────────────────────────────────────────────
-
-async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
-  const verifier = getRecaptchaVerifier();
-
-  _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-
-  console.log('[Auth] Web: OTP sent successfully');
-  return {
-    success: true,
-    verificationId: '_web_confirmation', // Sentinel — we use _confirmationResult directly
-  };
-}
 
 // ── Native Implementation ────────────────────────────────────────────────────
 
@@ -235,6 +256,16 @@ export async function verifyOtp(verificationId: string, code: string): Promise<V
       cleanupAuth();
       return { success: true, user: result.user };
     }
+    
+    // Native Path (Capacitor Firebase Auth)
+    // The native SDK generates a verificationId which we pass back here to authenticate the Web SDK
+    if (verificationId && verificationId !== '_web_confirmation') {
+      const credential = PhoneAuthProvider.credential(verificationId, code);
+      const result = await signInWithCredential(auth, credential);
+      cleanupAuth();
+      return { success: true, user: result.user };
+    }
+
     return { success: false, error: 'Session expired. Request a new OTP.' };
 
   } catch (err: any) {
@@ -248,6 +279,32 @@ export async function verifyOtp(verificationId: string, code: string): Promise<V
 
 export async function signOut(): Promise<void> {
   cleanupAuth();
+  
+  try {
+    const { LocationTracker } = await import('@/lib/delivery/locationTracker');
+    await LocationTracker.stopTracking(true);
+  } catch (err) {
+    console.error('[Auth] Failed to stop location tracking on logout:', err);
+  }
+
+  // Remove the active push token before signing out to prevent notification leaks
+  if (auth.currentUser) {
+    const token = localStorage.getItem(FCM_TOKEN_STORAGE_KEY);
+    if (token) {
+      try {
+        const { doc, updateDoc, arrayRemove, deleteField } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          push_tokens: arrayRemove(token),
+          fcmToken: deleteField()
+        });
+        localStorage.removeItem(FCM_TOKEN_STORAGE_KEY);
+        console.log('[Auth] FCM token cleaned up on logout');
+      } catch (e) {
+        console.error('[Auth] Failed to remove FCM token on signout', e);
+      }
+    }
+  }
 
   if (isNative) {
     try {

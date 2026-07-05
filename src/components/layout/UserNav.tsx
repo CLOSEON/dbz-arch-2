@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, MapPin, Package, UserCircle } from 'lucide-react';
+import { Home, Package, UserCircle } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -20,11 +20,6 @@ const NAV_ITEMS = [
     href: '/profile',
     label: 'Profile',
     icon: UserCircle,
-  },
-  {
-    href: '/track',
-    label: 'Track',
-    icon: MapPin,
   },
 ];
 

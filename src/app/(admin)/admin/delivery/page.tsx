@@ -23,10 +23,14 @@ import {
   Zap,
   CheckCheck,
   SkipForward,
-  XCircle
+  XCircle,
+  Truck,
+  IndianRupee,
+  Route
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { DeliveryOrder, DriverProfile } from '@/types/delivery';
+import { riderPaymentConverter, RiderPayment } from '@/types/payout';
 
 /* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
 declare global {
@@ -100,6 +104,7 @@ export default function AdminDeliveryOversightPage() {
   const { user, isHydrated } = useAuthStore();
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
+  const [payments, setPayments] = useState<RiderPayment[]>([]);
 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,6 +116,24 @@ export default function AdminDeliveryOversightPage() {
   const [pickUpAnomalyAlerts, setPickUpAnomalyAlerts] = useState<DeliveryOrder[]>([]);
 
   const selectedDriver = activeDrivers.find(d => d.uid === selectedDriverId) || null;
+
+  // Track today's payments for fleet averages
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const q = query(
+      collection(db, 'rider_payments').withConverter(riderPaymentConverter),
+      where('calculatedAt', '>=', startOfDay)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setPayments(snap.docs.map(d => d.data()));
+    });
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
     const checkAnomalies = () => {
@@ -353,7 +376,17 @@ export default function AdminDeliveryOversightPage() {
   const totalDeliveries = orders.length;
   const deliveredCount = orders.filter((o) => o.status === 'delivered').length;
   const pendingCount = orders.filter((o) => o.status !== 'delivered' && o.status !== 'failed').length;
+  const tiffinsInTransit = orders.filter((o) => o.status === 'picked_up' || o.status === 'out_for_delivery').length;
   const onlineDriversCount = activeDrivers.length;
+  
+  // Averages from live payments
+  const totalPaymentSum = payments.reduce((sum, p) => sum + p.totalPayment, 0);
+  const totalDistanceSum = payments.reduce((sum, p) => sum + p.totalDistanceKm, 0);
+  
+  const uniquePaidRiders = new Set(payments.map(p => p.riderId)).size;
+  
+  const avgPaymentPerRider = uniquePaidRiders > 0 ? (totalPaymentSum / uniquePaidRiders) : 0;
+  const avgTripDistance = payments.length > 0 ? (totalDistanceSum / payments.length) : 0;
 
   // Filter drivers list based on search query
   const filteredDrivers = activeDrivers.filter((driver) =>
@@ -408,14 +441,15 @@ export default function AdminDeliveryOversightPage() {
           <button
             onClick={handleGenerateOrders}
             disabled={generating}
-            className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl bg-brand px-4 py-2.5 text-center text-xs font-black text-white shadow-sm shadow-brand/25 transition-all hover:bg-brand/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+            title="This action is automated daily at 1:00 AM IST. Use this button for testing or recovery only."
+            className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl bg-rose-600 px-4 py-2.5 text-center text-xs font-black text-white shadow-sm shadow-rose-600/25 transition-all hover:bg-rose-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {generating ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Zap className="w-3.5 h-3.5" />
+              <AlertTriangle className="w-3.5 h-3.5" />
             )}
-            {generating ? 'Generating...' : 'Generate Today\'s Orders'}
+            <span className="hidden sm:inline">Generate Orders (Test)</span>
           </button>
           <button
             onClick={() => {
@@ -448,49 +482,49 @@ export default function AdminDeliveryOversightPage() {
             <Users className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Online Riders</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Total Riders Active</p>
             <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
               {onlineDriversCount}
-              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Active</span>
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Online</span>
             </h4>
           </div>
         </div>
 
         <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
           <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 sm:mb-0 sm:h-12 sm:w-12">
-            <Package className="w-5 h-5 sm:h-6 sm:w-6" />
+            <Truck className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Total Deliveries</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Tiffins In Transit</p>
             <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
-              {totalDeliveries}
-              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Orders</span>
+              {tiffinsInTransit}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Tiffins</span>
             </h4>
           </div>
         </div>
 
         <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
           <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-500 sm:mb-0 sm:h-12 sm:w-12">
-            <CheckCircle2 className="w-5 h-5 sm:h-6 sm:w-6" />
+            <Route className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Meal Delivered</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Avg Trip Distance</p>
             <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
-              {deliveredCount}
-              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Done</span>
+              {avgTripDistance.toFixed(1)}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">km</span>
             </h4>
           </div>
         </div>
 
         <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:rounded-3xl sm:p-5">
           <div className="mb-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 sm:mb-0 sm:h-12 sm:w-12">
-            <Clock className="w-5 h-5 sm:h-6 sm:w-6" />
+            <IndianRupee className="w-5 h-5 sm:h-6 sm:w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Pending Runs</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em] leading-tight">Avg Payment / Rider</p>
             <h4 className="mt-1 text-[22px] font-black leading-none text-slate-900 sm:text-xl">
-              {pendingCount}
-              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">Left</span>
+              ₹{avgPaymentPerRider.toFixed(0)}
+              <span className="ml-1 text-sm font-black text-slate-900 sm:text-xl">avg</span>
             </h4>
           </div>
         </div>

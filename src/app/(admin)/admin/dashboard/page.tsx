@@ -39,35 +39,19 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadStats();
-    
-    // Set up real-time listener for fleet tracking
-    let unsubscribe: (() => void) | undefined;
-    import('firebase/firestore').then(({ collection, query, where, onSnapshot }) => {
-      import('@/lib/firebase').then(({ db }) => {
-        const q = query(collection(db, 'users'), where('role', '==', 'delivery'));
-        unsubscribe = onSnapshot(q, (snap) => {
-          const fleet = snap.docs
-            .map(d => ({ id: d.id, ...d.data() } as any))
-            .filter(u => u.location && u.location.lat && u.location.lng);
-          setPartners(fleet);
-        });
-      });
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
 
   async function loadStats() {
     setLoading(true);
     try {
-      const [statsData, activityData] = await Promise.all([
+      const [statsData, activityData, partnersData] = await Promise.all([
         getAdminStats(),
-        getRecentActivity()
+        getRecentActivity(),
+        getActiveDeliveryPartners()
       ]);
       setStats(statsData);
       setActivities(activityData);
+      setPartners(partnersData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -85,18 +69,30 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-10 animate-fade-in pb-10">
       {/* Header */}
-      <div className="flex items-start justify-between mt-4 px-1 gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 px-1 gap-4">
         <div>
-          <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
-            Admin Panel
-          </h1>
-          <p className="text-sm font-medium text-slate-400 mt-1">
-            System overview & real-time controls
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">
+              Admin Panel
+            </h1>
+            <button 
+              onClick={loadStats}
+              disabled={loading}
+              className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors disabled:opacity-50"
+              title="Refresh Dashboard"
+            >
+              <svg className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-sm font-medium text-slate-400">
+            System overview & manual controls
           </p>
         </div>
         <button
           onClick={logout}
-          className="btn-outline"
+          className="btn-outline whitespace-nowrap"
         >
           Logout
         </button>

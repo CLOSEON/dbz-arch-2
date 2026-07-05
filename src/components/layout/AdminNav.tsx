@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -36,10 +36,15 @@ const NAV_ITEMS = [
     label: 'Subs',
     icon: (active: boolean) => <Ticket className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
+  {
+    href: '/admin/swaps',
+    label: 'Swaps',
+    icon: (active: boolean) => <RefreshCw className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
 ];
 
 const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  ['Overview', 'Vendors', 'Logistics', 'Subs'].includes(item.label)
+  ['Overview', 'Vendors', 'Logistics', 'Orders', 'Swaps'].includes(item.label)
 );
 
 interface AdminNavProps {
