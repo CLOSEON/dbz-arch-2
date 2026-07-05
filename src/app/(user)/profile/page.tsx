@@ -357,7 +357,7 @@ export default function ProfilePage() {
           isOpen={paymentModalOpen}
           onClose={() => setPaymentModalOpen(false)}
           subscription={selectedSubForPayment}
-          amount={selectedSubForPayment.price || (selectedSubForPayment.frequency === 'monthly' ? 2400 : 600)}
+          amount={selectedSubForPayment.planPrice || selectedSubForPayment.price || (selectedSubForPayment.frequency === 'monthly' ? 2400 : 600)}
           onSuccess={() => {
             setPaymentModalOpen(false);
             addToast('Payment successful! Subscription renewed.', 'success');

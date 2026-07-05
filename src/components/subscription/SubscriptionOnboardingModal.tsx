@@ -7,6 +7,7 @@ import { updateUser } from '@/lib/queries/users';
 import { createSubscription } from '@/lib/queries/subscriptions';
 import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
+import { createPortal } from 'react-dom';
 
 interface SubscriptionOnboardingModalProps {
   isOpen: boolean;
@@ -38,6 +39,11 @@ export function SubscriptionOnboardingModal({
   const [planId, setPlanId] = useState(initialPlanId);
   const [deliveryPreference, setDeliveryPreference] = useState<'8am' | '11am' | null>(user?.deliveryPreference || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,7 +55,7 @@ export function SubscriptionOnboardingModal({
     }
   }, [isOpen, initialPlanId, user]);
 
-  if (!isOpen || !user) return null;
+  if (!mounted || !isOpen || !user) return null;
 
   const handleDetectLocation = () => {
     setDetectingLoc(true);
@@ -98,9 +104,9 @@ export function SubscriptionOnboardingModal({
       // 1. Update user profile
       const userUpdates: Partial<AppUser> = {
         address,
+        location: location || undefined,
+        deliveryPreference: deliveryPreference || undefined
       };
-      if (location) userUpdates.location = location;
-      if (deliveryPreference) userUpdates.deliveryPreference = deliveryPreference;
       
       await updateUser(user.id, userUpdates);
       setUser({ ...user, ...userUpdates });
@@ -139,10 +145,10 @@ export function SubscriptionOnboardingModal({
   const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.discount_pct) / 100 : 0;
   const finalPrice = basePrice - discountAmount;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in bg-black/40 backdrop-blur-sm">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 animate-fade-in bg-black/40 backdrop-blur-sm">
       <div 
-        className="w-full sm:w-[400px] bg-white rounded-t-[2rem] sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+        className="w-full sm:w-[400px] bg-white rounded-t-[2rem] sm:rounded-3xl shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -311,6 +317,7 @@ export function SubscriptionOnboardingModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
