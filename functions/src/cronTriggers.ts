@@ -110,10 +110,10 @@ export const formBatches = onSchedule({
   const targetDateStr = targetDate.toISOString().split('T')[0];
   const targetHour = targetDate.getHours();
   
-  let targetSlot = '';
-  if (targetHour === 8) targetSlot = '8am';
-  else if (targetHour === 11) targetSlot = '11am';
-  else if (targetHour === 20) targetSlot = '8pm';
+  let targetSlot = '11am'; // TEMPORARY FOR TESTING
+  // if (targetHour === 8) targetSlot = '8am';
+  // else if (targetHour === 11) targetSlot = '11am';
+  // else if (targetHour === 20) targetSlot = '8pm';
   
   if (!targetSlot) {
     console.log(`[formBatches] No slot aligned with target hour ${targetHour}. Skipping.`);
@@ -305,7 +305,7 @@ export const checkStuckOrders = onSchedule({
       await publishEvent(
         'delivery_failed', // Re-using delivery_failed as a high-severity alert for logistics
         order.user_id,
-        'user',
+        'customer',
         `stuck_order_alert_${doc.id}_${now.getTime()}`,
         { 
           order_id: doc.id, 

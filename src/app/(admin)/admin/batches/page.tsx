@@ -45,7 +45,7 @@ export default function AdminVendorOpsPage() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const bList = snap.docs.map(d => d.data() as Batch);
+      const bList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Batch));
       // Sort by slot (8am, 11am, 8pm)
       const slotOrder = { '8am': 1, '11am': 2, '8pm': 3 };
       bList.sort((a, b) => (slotOrder[a.slot as keyof typeof slotOrder] || 99) - (slotOrder[b.slot as keyof typeof slotOrder] || 99));
