@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import { useUiStore } from '@/store/uiStore';
@@ -101,14 +101,36 @@ export default function VendorDashboard() {
       );
     });
 
-    // 5. Active subscriptions (for Estimated Prep section)
+    // 5. Active Subscriptions with User Preferences (for Preparation Forecast)
     const qSubs = query(
       collection(db, 'subscriptions'),
       where('vendor_id', '==', user.id),
       where('status', '==', 'active')
     );
-    const unsubSubs = onSnapshot(qSubs, (snap) => {
-      setSubsStore(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    
+    const unsubSubs = onSnapshot(qSubs, async (snap) => {
+      const subs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      const userIds = [...new Set(subs.map((s: any) => s.user_id))].filter(Boolean) as string[];
+      const userPrefs: Record<string, string> = {};
+      
+      if (userIds.length > 0) {
+        // Chunk userIds to avoid 'in' query limit of 30
+        for (let i = 0; i < userIds.length; i += 30) {
+          const chunk = userIds.slice(i, i + 30);
+          const uSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
+          uSnap.docs.forEach(d => {
+            userPrefs[d.id] = d.data().deliveryPreference || '11am';
+          });
+        }
+      }
+      
+      const enrichedSubs = subs.map((s: any) => ({
+        ...s,
+        deliveryPreference: userPrefs[s.user_id] || '11am'
+      }));
+      
+      setSubsStore(enrichedSubs);
     });
 
     return () => {
@@ -121,35 +143,46 @@ export default function VendorDashboard() {
   }, [user?.id]);
 
   // ── Estimated Prep (projection) ───────────────────────────────────────────
-  // Build a lightweight 7-day forecast from subscriptions for days that don't
-  // have a confirmed batch yet. No order-level detail exposed.
+  // Build a 7-day forecast from active subscriptions, applying the accurate
+  // customer delivery preference (8am vs 11am) to provide real, actionable data.
   const estimatedPrep = (() => {
     const now = new Date();
     const confirmedKeys = new Set(batches.map(b => `${b.date}_${b.slot}`));
-    const rows: { dateKey: string; displayDate: string; slot: string; count: number }[] = [];
+    const days: { dateKey: string; displayDate: string; slots: { slot: string; count: number }[] }[] = [];
 
     for (let i = 1; i <= 7; i++) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const dateKey = d.toISOString().split('T')[0];
-      const displayDate = d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateKey = `${year}-${month}-${day}`;
+      
+      const displayDate = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 
       const slotCounts: Record<string, number> = {};
+      let hasData = false;
+      
       subsStore.forEach((sub: any) => {
         const slots = [];
-        if (sub.meal_type === 'lunch' || sub.meal_type === 'both') slots.push(sub.deliveryPreference || '11am');
+        if (sub.meal_type === 'lunch' || sub.meal_type === 'both') slots.push(sub.deliveryPreference);
         if (sub.meal_type === 'dinner' || sub.meal_type === 'both') slots.push('8pm');
+        
         slots.forEach(slot => {
           if (!confirmedKeys.has(`${dateKey}_${slot}`)) {
             slotCounts[slot] = (slotCounts[slot] || 0) + 1;
+            hasData = true;
           }
         });
       });
 
-      Object.entries(slotCounts).forEach(([slot, count]) => {
-        rows.push({ dateKey, displayDate, slot, count });
-      });
+      if (hasData) {
+        const sortedSlots = Object.entries(slotCounts)
+          .map(([slot, count]) => ({ slot, count }))
+          .sort((a, b) => (SLOT_SORT[a.slot] ?? 99) - (SLOT_SORT[b.slot] ?? 99));
+        days.push({ dateKey, displayDate, slots: sortedSlots });
+      }
     }
-    return rows.sort((a, b) => a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : (SLOT_SORT[a.slot] ?? 99) - (SLOT_SORT[b.slot] ?? 99));
+    return days;
   })();
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -418,33 +451,47 @@ export default function VendorDashboard() {
       </div>
 
       {/* ── ESTIMATED PREP (next 7 days) ─────────────────────────────────────── */}
-      {estimatedPrep.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <CalendarClock className="w-5 h-5 text-slate-400" />
-              Estimated Prep — Next 7 Days
-            </h3>
-            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full uppercase tracking-wide">
-              Projected
-            </span>
-          </div>
-          <div className="space-y-2">
-            {estimatedPrep.map((row) => (
-              <div key={`${row.dateKey}_${row.slot}`} className="flex items-center justify-between bg-white rounded-2xl px-5 py-4 border border-slate-100">
-                <div>
-                  <p className="text-sm font-bold text-slate-700">{row.displayDate}</p>
-                  <p className="text-xs font-medium text-slate-400">{row.slot} slot</p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-slate-900 flex items-center gap-2">
+            <CalendarClock className="w-5 h-5 text-brand" />
+            Preparation Forecast
+          </h3>
+          <span className="text-[10px] font-bold text-brand bg-brand/10 px-3 py-1 rounded-full uppercase tracking-wide">
+            Projected
+          </span>
+        </div>
+        
+        {estimatedPrep.length > 0 ? (
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+            {estimatedPrep.map((day) => (
+              <div key={day.dateKey} className="flex-none w-[200px] bg-white rounded-3xl p-5 border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative overflow-hidden group hover:border-brand/30 transition-colors">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-brand/5 rounded-bl-full -z-10 group-hover:scale-150 transition-transform duration-500" />
+                <p className="text-sm font-black text-slate-900 mb-4">{day.displayDate}</p>
+                <div className="space-y-3">
+                  {day.slots.map(s => (
+                    <div key={s.slot} className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-lg">{s.slot}</span>
+                      <span className="text-lg font-black text-slate-700">{s.count} <span className="text-[10px] text-slate-400 font-bold uppercase">Tiffins</span></span>
+                    </div>
+                  ))}
                 </div>
-                <span className="text-xl font-black text-slate-900">{row.count} <span className="text-sm font-bold text-slate-400">tiffins</span></span>
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-slate-400 text-center font-medium px-4">
-            Estimates based on active subscriptions. Confirmed batches appear 4 hours before each slot.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center">
+            <CalendarClock className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-bold text-slate-600">No Upcoming Orders</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-[250px] mx-auto">Your prep forecast is empty. Real orders will appear here automatically.</p>
+          </div>
+        )}
+
+        <p className="text-[11px] text-slate-400 font-medium bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-2">
+          <span className="w-5 h-5 shrink-0 rounded-full bg-slate-200 flex items-center justify-center text-[10px]">ℹ</span>
+          Estimates are projected from your active subscriptions. Confirmed prep batches will appear exactly 4 hours before each slot.
+        </p>
+      </div>
 
       {/* ── KITCHEN MANAGEMENT ───────────────────────────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-6 items-start">

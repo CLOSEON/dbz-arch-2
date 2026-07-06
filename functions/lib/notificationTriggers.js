@@ -103,9 +103,17 @@ exports.onSystemEventCreated = (0, firestore_1.onDocumentCreated)('system_events
             title = '⚠️ Delivery Attempt Failed';
             body = event.payload.reason ? `Reason: ${event.payload.reason}` : `The rider was unable to complete the delivery.`;
             break;
-        case 'tiffin_count_confirmed':
-            title = '📋 Tiffin Count Confirmed';
-            body = `Prepare ${event.payload.count || 0} tiffins for the upcoming ${event.payload.slot || 'slot'}.`;
+        case 'batch_created':
+            title = '📋 Prepare Your Tiffins';
+            body = `Prepare ${event.payload.count || 0} tiffins for the ${event.payload.slot || 'upcoming slot'} today. (Batch: ${event.payload.batch_id || ''})`;
+            break;
+        case 'batch_count_updated':
+            title = '🔄 Updated Tiffin Count';
+            body = `Updated count for ${event.payload.slot || 'your slot'}: now ${event.payload.new_count ?? 0} tiffins.`;
+            break;
+        case 'vendor_prep_deadline_approaching':
+            title = '⏳ Prep Deadline Approaching';
+            body = `Reminder: Please mark your batch for ${event.payload.slot || 'slot'} as ready. You have ${event.payload.count || 0} tiffins to prepare.`;
             break;
         case 'vendor_rider_assigned':
             title = '🛵 Riders Assigned';

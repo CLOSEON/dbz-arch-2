@@ -3,13 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
     href: '/admin/dashboard',
     label: 'Overview',
     icon: (active: boolean) => <LayoutDashboard className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/batches',
+    label: 'Kitchens',
+    icon: (active: boolean) => <Store className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/admin/vendors',
@@ -44,7 +49,7 @@ const NAV_ITEMS = [
 ];
 
 const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  ['Overview', 'Vendors', 'Logistics', 'Orders', 'Swaps'].includes(item.label)
+  ['Overview', 'Kitchens', 'Logistics', 'Orders', 'Swaps'].includes(item.label)
 );
 
 interface AdminNavProps {
@@ -89,8 +94,8 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/70 bg-white/95 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/70 bg-white/95 px-3 py-2 pb-safe shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
         {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
           const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);

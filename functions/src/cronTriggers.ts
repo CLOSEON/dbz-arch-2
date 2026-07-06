@@ -12,79 +12,83 @@ export const processTimeBasedReminders = onSchedule({
     const db = admin.firestore();
     const now = new Date();
     
-    // Calculate targets for 4 hours and 12 hours from now
-    // We give a 1-hour buffer window for the cron job to catch them
+    // Check 4-hour window (Swap reminder) and 12-hour window (Skip reminder)
     const fourHoursFromNow = new Date(now.getTime() + 4 * 60 * 60 * 1000);
     const fiveHoursFromNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
     
     const twelveHoursFromNow = new Date(now.getTime() + 12 * 60 * 60 * 1000);
     const thirteenHoursFromNow = new Date(now.getTime() + 13 * 60 * 60 * 1000);
 
-    // Fetch active delivery orders
-    const ordersSnap = await db.collection('delivery_orders')
-      .where('status', 'in', ['pending', 'preparing', 'ready'])
+    // 1. Customer Order Reminders (Swap/Skip)
+    // We fetch orders in active states
+    const ordersSnap = await db.collection('orders')
+      .where('status', 'in', ['created', 'vendor_notified', 'vendor_preparing', 'vendor_ready'])
       .get();
       
-    const vendorCounts = new Map<string, { vendorId: string; slot: string; count: number }>();
-
-    // Batch event creation
     for (const doc of ordersSnap.docs) {
       const order = doc.data();
       
-      let deliveryDate = new Date();
-      if (order.createdAt?.toDate) {
-        deliveryDate = order.createdAt.toDate();
-      }
+      // Parse order date string
+      const [year, month, day] = order.date.split('-').map(Number);
+      let deliveryDate = new Date(year, month - 1, day);
       
       // Calculate actual delivery time based on slot
-      if (order.scheduledSlot === '8am') deliveryDate.setHours(8, 0, 0, 0);
-      else if (order.scheduledSlot === '11am') deliveryDate.setHours(11, 0, 0, 0);
-      else if (order.meal?.type === 'lunch') deliveryDate.setHours(13, 0, 0, 0);
-      else deliveryDate.setHours(20, 0, 0, 0);
+      if (order.delivery_slot === '8am') deliveryDate.setHours(8, 0, 0, 0);
+      else if (order.delivery_slot === '11am') deliveryDate.setHours(11, 0, 0, 0);
+      else if (order.delivery_slot === '8pm') deliveryDate.setHours(20, 0, 0, 0);
+      else deliveryDate.setHours(13, 0, 0, 0); // fallback
       
-      // Check 4-hour window (Swap reminder & Tiffin Count)
+      // Check 4-hour window (Swap reminder)
       if (deliveryDate >= fourHoursFromNow && deliveryDate < fiveHoursFromNow) {
-        // Customer: 4 hours left to swap
         await publishEvent(
           'swap_window_closing',
-          order.customerId,
+          order.user_id,
           'customer',
           `swap_reminder_${doc.id}`,
-          { mealType: order.meal?.name || 'meal' }
+          { mealType: order.meal_type || 'meal' }
         );
-        
-        // Aggregate for vendor
-        const vId = order.vendorId;
-        const slot = order.scheduledSlot || 'unknown';
-        const key = `${vId}_${slot}`;
-        if (!vendorCounts.has(key)) {
-          vendorCounts.set(key, { vendorId: vId, slot, count: 0 });
-        }
-        vendorCounts.get(key)!.count++;
       }
       
       // Check 12-hour window (Skip reminder)
       if (deliveryDate >= twelveHoursFromNow && deliveryDate < thirteenHoursFromNow) {
         await publishEvent(
           'skip_window_closing',
-          order.customerId,
+          order.user_id,
           'customer',
           `skip_reminder_${doc.id}`,
-          { mealType: order.meal?.name || 'meal' }
+          { mealType: order.meal_type || 'meal' }
         );
       }
     }
     
-    // Dispatch vendor aggregated counts
-    for (const [key, val] of vendorCounts.entries()) {
-      const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      await publishEvent(
-        'tiffin_count_confirmed',
-        val.vendorId,
-        'vendor',
-        `tiffin_count_${val.vendorId}_${dateStr}_${val.slot}`,
-        { slot: val.slot, count: val.count } 
-      );
+    // 2. Vendor Prep Deadline Reminders (1-hour window for Batches)
+    const oneHourFromNow = new Date(now.getTime() + 1 * 60 * 60 * 1000);
+    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    
+    // Active batches that aren't ready yet
+    const batchesSnap = await db.collection('batches')
+      .where('status', 'in', ['notified', 'preparing'])
+      .get();
+
+    for (const batchDoc of batchesSnap.docs) {
+      const batch = batchDoc.data();
+      const [year, month, day] = batch.date.split('-').map(Number);
+      let deliveryDate = new Date(year, month - 1, day);
+      
+      if (batch.slot === '8am') deliveryDate.setHours(8, 0, 0, 0);
+      else if (batch.slot === '11am') deliveryDate.setHours(11, 0, 0, 0);
+      else if (batch.slot === '8pm') deliveryDate.setHours(20, 0, 0, 0);
+
+      // If delivery is exactly in the 1-2 hour window, send reminder
+      if (deliveryDate >= oneHourFromNow && deliveryDate < twoHoursFromNow) {
+        await publishEvent(
+          'vendor_prep_deadline_approaching',
+          batch.vendor_id,
+          'vendor',
+          `prep_deadline_${batchDoc.id}`,
+          { slot: batch.slot, batch_id: batchDoc.id, count: batch.total_count }
+        );
+      }
     }
     
     console.log(`[processTimeBasedReminders] Hourly cron execution complete.`);
@@ -118,7 +122,31 @@ export const formBatches = onSchedule({
   
   console.log(`[formBatches] Forming batches for date: ${targetDateStr}, slot: ${targetSlot}`);
   
-  // Only lock orders that are strictly in 'created' status and already assigned to a vendor
+  // 0. Expire any pending swaps for this slot to ensure no race conditions with batch formation
+  const pendingSwapsSnap = await db.collection('swap_requests').where('status', '==', 'broadcasted').get();
+  for (const swapDoc of pendingSwapsSnap.docs) {
+    const swap = swapDoc.data();
+    if (swap.order_id) {
+      const orderDoc = await db.collection('orders').doc(swap.order_id).get();
+      if (orderDoc.exists) {
+        const order = orderDoc.data()!;
+        if (order.date === targetDateStr && order.delivery_slot === targetSlot) {
+          await swapDoc.ref.update({ status: 'expired' });
+          const broadcastsSnap = await db.collection('swap_broadcasts')
+            .where('swap_request_id', '==', swapDoc.id)
+            .where('response', '==', 'pending')
+            .get();
+          if (!broadcastsSnap.empty) {
+            const bBatch = db.batch();
+            broadcastsSnap.docs.forEach(b => bBatch.update(b.ref, { response: 'expired' }));
+            await bBatch.commit();
+          }
+        }
+      }
+    }
+  }
+
+  // 1. Only lock orders that are strictly in 'created' status and already assigned to a vendor
   const ordersSnap = await db.collection('orders')
     .where('date', '==', targetDateStr)
     .where('delivery_slot', '==', targetSlot)
@@ -232,4 +260,62 @@ export const processBatchSkipUpdates = onSchedule({
   }
 
   console.log(`[processBatchSkipUpdates] Notified ${notifiedCount} vendors of updated counts.`);
+});
+
+/**
+ * Runs every 30 minutes. Checks for orders that are stuck in transit statuses
+ * for more than 1 hour and fires system alerts.
+ */
+export const checkStuckOrders = onSchedule({
+  schedule: '*/30 * * * *',
+  timeZone: 'Asia/Kolkata'
+}, async (event) => {
+  const db = admin.firestore();
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const todayStr = now.toISOString().split('T')[0];
+
+  // We only check today's active orders in specific states
+  const statusesToCheck = ['vendor_preparing', 'picked_up', 'out_for_delivery'];
+  
+  const ordersSnap = await db.collection('orders')
+    .where('date', '==', todayStr)
+    .where('status', 'in', statusesToCheck)
+    .get();
+
+  let stuckCount = 0;
+  for (const doc of ordersSnap.docs) {
+    const order = doc.data();
+    
+    // updated_at is set every time the status changes.
+    // If it's been in this status for > 1 hour, flag it.
+    let isStuck = false;
+    if (order.updated_at && order.updated_at.toDate) {
+      if (order.updated_at.toDate() < oneHourAgo) {
+        isStuck = true;
+      }
+    } else if (order.updated_at && typeof order.updated_at.seconds === 'number') {
+      if (order.updated_at.seconds * 1000 < oneHourAgo.getTime()) {
+        isStuck = true;
+      }
+    }
+
+    if (isStuck) {
+      // Fire an alert event that support/admin can see
+      await publishEvent(
+        'delivery_failed', // Re-using delivery_failed as a high-severity alert for logistics
+        order.user_id,
+        'user',
+        `stuck_order_alert_${doc.id}_${now.getTime()}`,
+        { 
+          order_id: doc.id, 
+          status: order.status, 
+          message: `Order has been stuck in ${order.status} for > 1 hour. Immediate admin review required.`
+        }
+      );
+      stuckCount++;
+    }
+  }
+
+  console.log(`[checkStuckOrders] Found and alerted on ${stuckCount} stuck orders.`);
 });

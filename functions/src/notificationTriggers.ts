@@ -96,9 +96,9 @@ export const onSystemEventCreated = onDocumentCreated('system_events/{eventId}',
         title = '🔄 Updated Tiffin Count';
         body = `Updated count for ${event.payload.slot || 'your slot'}: now ${event.payload.new_count ?? 0} tiffins.`;
         break;
-      case 'tiffin_count_confirmed': // Legacy — kept for backward compatibility
-        title = '📋 Tiffin Count Confirmed';
-        body = `Prepare ${event.payload.count || 0} tiffins for the upcoming ${event.payload.slot || 'slot'}.`;
+      case 'vendor_prep_deadline_approaching':
+        title = '⏳ Prep Deadline Approaching';
+        body = `Reminder: Please mark your batch for ${event.payload.slot || 'slot'} as ready. You have ${event.payload.count || 0} tiffins to prepare.`;
         break;
       case 'vendor_rider_assigned':
         title = '🛵 Riders Assigned';

@@ -46,38 +46,30 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
     const { vendorId, slot } = data || {};
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    let ordersQuery = db.collection('delivery_orders')
-        .where('driverId', '==', null)
-        .where('createdAt', '>=', start);
+    let ordersQuery = db.collection('orders')
+        .where('status', '==', 'vendor_ready')
+        .where('rider_trip_id', '==', null);
     if (vendorId) {
-        ordersQuery = ordersQuery.where('vendorId', '==', vendorId);
+        ordersQuery = ordersQuery.where('vendor_id', '==', vendorId);
     }
-    if (vendorId) {
-        ordersQuery = ordersQuery.where('status', '==', 'ready');
+    if (slot) {
+        ordersQuery = ordersQuery.where('delivery_slot', '==', slot);
     }
     const ordersSnap = await ordersQuery.get();
     if (ordersSnap.empty) {
         return { success: true, message: 'No pending unassigned orders found.' };
     }
-    let unassignedOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    if (slot) {
-        unassignedOrders = unassignedOrders.filter(o => o.scheduledSlot === slot);
-    }
+    const unassignedOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const vendorOrdersMap = new Map();
     const vendorIds = new Set();
     unassignedOrders.forEach(order => {
-        if (order.status !== 'delivered' && order.status !== 'failed_attempt' && order.status !== 'failed') {
-            const vId = order.vendorId;
-            vendorIds.add(vId);
-            if (!vendorOrdersMap.has(vId)) {
-                vendorOrdersMap.set(vId, []);
-            }
-            vendorOrdersMap.get(vId).push(order);
+        const vId = order.vendor_id;
+        vendorIds.add(vId);
+        if (!vendorOrdersMap.has(vId)) {
+            vendorOrdersMap.set(vId, []);
         }
+        vendorOrdersMap.get(vId).push(order);
     });
-    if (vendorIds.size === 0) {
-        return { success: true, message: 'No valid pending orders to assign.' };
-    }
     const vendorsSnap = await db.collection('users')
         .where(admin.firestore.FieldPath.documentId(), 'in', Array.from(vendorIds))
         .get();
@@ -118,7 +110,8 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             continue;
         const selectedTiffins = availableTiffins.slice(0, 20);
         const selectedOrderIds = selectedTiffins.map(o => o.id);
-        const selectedVendorIds = Array.from(new Set(selectedTiffins.map(o => o.vendorId)));
+        const selectedVendorIds = Array.from(new Set(selectedTiffins.map(o => o.vendor_id)));
+        const selectedBatchIds = Array.from(new Set(selectedTiffins.map(o => o.batch_id).filter(Boolean)));
         const isPartialLoad = selectedTiffins.length < 20;
         const pickupStops = [];
         let currentLat = rLat;
@@ -157,6 +150,7 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             riderId: rider.id,
             assignedOrderIds: selectedOrderIds,
             vendorIds: selectedVendorIds,
+            batch_ids: selectedBatchIds,
             pickupStops,
             status: 'pickup_pending',
             isPartialLoad,
@@ -164,14 +158,24 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         for (const order of selectedTiffins) {
-            const orderRef = db.collection('delivery_orders').doc(order.id);
+            const orderRef = db.collection('orders').doc(order.id);
             batch.update(orderRef, {
-                driverId: rider.id,
-                status: 'preparing'
+                rider_trip_id: tripRef.id,
+                status: 'rider_assigned',
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
-            const vOrders = vendorOrdersMap.get(order.vendorId);
+            const logRef = db.collection('order_status_logs').doc();
+            batch.set(logRef, {
+                id: logRef.id,
+                order_id: order.id,
+                from_status: order.status,
+                to_status: 'rider_assigned',
+                actor: rider.id,
+                timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
+            const vOrders = vendorOrdersMap.get(order.vendor_id);
             if (vOrders) {
-                vendorOrdersMap.set(order.vendorId, vOrders.filter(o => o.id !== order.id));
+                vendorOrdersMap.set(order.vendor_id, vOrders.filter(o => o.id !== order.id));
             }
         }
         await (0, events_1.publishEvent)('rider_new_trip', rider.id, 'rider', `rider_trip_assigned_${tripRef.id}`, { stopCount: pickupStops.length });
@@ -210,12 +214,12 @@ exports.computeDropRoute = functions.firestore
     }
     const allOrders = [];
     for (const chunk of chunks) {
-        const snap = await db.collection('delivery_orders')
+        const snap = await db.collection('orders')
             .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
             .get();
         snap.docs.forEach(d => allOrders.push({ id: d.id, ...d.data() }));
     }
-    const pendingDrops = allOrders.filter((o) => o.status !== 'delivered' && o.status !== 'failed' && o.status !== 'failed_attempt');
+    const pendingDrops = allOrders.filter((o) => o.status !== 'delivered' && o.status !== 'failed');
     if (pendingDrops.length === 0)
         return null;
     const dropStops = [];
@@ -225,8 +229,8 @@ exports.computeDropRoute = functions.firestore
         let nearest = null;
         let shortestDist = Infinity;
         for (const order of unvisited) {
-            const oLat = order.address?.lat ?? 0;
-            const oLng = order.address?.lng ?? 0;
+            const oLat = order.delivery_address?.lat ?? 0;
+            const oLng = order.delivery_address?.lng ?? 0;
             const d = (0, geo_1.getDistanceInKm)(currentLat, currentLng, oLat, oLng);
             if (d < shortestDist) {
                 shortestDist = d;
@@ -237,16 +241,16 @@ exports.computeDropRoute = functions.firestore
             break;
         dropStops.push({
             orderId: nearest.id,
-            customerId: nearest.customerId,
-            location: { lat: nearest.address?.lat ?? 0, lng: nearest.address?.lng ?? 0 },
-            address: nearest.address?.line1 ?? '',
-            landmark: nearest.address?.landmark ?? '',
+            customerId: nearest.user_id,
+            location: { lat: nearest.delivery_address?.lat ?? 0, lng: nearest.delivery_address?.lng ?? 0 },
+            address: nearest.delivery_address?.line1 ?? '',
+            landmark: nearest.delivery_address?.landmark ?? '',
             sequence,
             distanceKm: shortestDist,
             status: 'pending',
         });
-        currentLat = nearest.address?.lat ?? currentLat;
-        currentLng = nearest.address?.lng ?? currentLng;
+        currentLat = nearest.delivery_address?.lat ?? currentLat;
+        currentLng = nearest.delivery_address?.lng ?? currentLng;
         unvisited = unvisited.filter((o) => o.id !== nearest.id);
         sequence++;
     }
@@ -293,13 +297,23 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
             status: allDone ? 'pickup_complete' : 'picking_up',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        const ordersQuery = db.collection('delivery_orders')
-            .where('assigned_to', '==', tripData?.riderId)
-            .where('vendorId', '==', vendorId)
-            .where('status', 'in', ['ready', 'preparing', 'pending']);
+        const ordersQuery = db.collection('orders')
+            .where('rider_trip_id', '==', tripId)
+            .where('vendor_id', '==', vendorId)
+            .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created']);
         const ordersSnap = await t.get(ordersQuery);
         ordersSnap.forEach((doc) => {
-            t.update(doc.ref, { status: 'picked_up', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            const order = doc.data();
+            t.update(doc.ref, { status: 'picked_up', updated_at: admin.firestore.FieldValue.serverTimestamp() });
+            const logRef = db.collection('order_status_logs').doc();
+            t.set(logRef, {
+                id: logRef.id,
+                order_id: doc.id,
+                from_status: order.status,
+                to_status: 'picked_up',
+                actor: tripData?.riderId || 'rider',
+                timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
         });
         return { success: true, message: 'OTP verified successfully. Orders picked up.', tripId, vendorId };
     });

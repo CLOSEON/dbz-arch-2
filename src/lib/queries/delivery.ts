@@ -646,7 +646,8 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
     }
   }
 
-  let creditsEarned = 0.5;
+  // Tiered credit logic: 0.5 before 12hrs, 0.2 after, no hard cutoff (if batched, allowed up to delivery)
+  let creditsEarned = hoursRemaining >= 12 ? 0.5 : 0.2;
 
   await awardUserCredit({
     user_id: userId,

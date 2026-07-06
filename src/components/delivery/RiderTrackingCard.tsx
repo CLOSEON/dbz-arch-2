@@ -223,6 +223,8 @@ export function RiderTrackingCard({
                 center={[driverLocation.lat, driverLocation.lng]}
                 zoom={15}
                 scrollWheelZoom={false}
+                dragging={false}
+                touchZoom={false}
                 style={{ height: 240, width: '100%' }}
                 zoomControl={false}
               >

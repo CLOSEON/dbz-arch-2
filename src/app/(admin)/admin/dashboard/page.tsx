@@ -61,6 +61,7 @@ export default function AdminDashboard() {
 
   const QUICK_ACTIONS = [
     { label: 'Generate', icon: Package, color: 'text-brand', bg: 'bg-brand/10', href: '/admin/orders?action=generate' },
+    { label: 'Kitchens', icon: Store, color: 'text-orange-500', bg: 'bg-orange-50', href: '/admin/batches' },
     { label: 'Approve', icon: CheckCircle, color: 'text-rose-500', bg: 'bg-rose-50', href: '/admin/vendors?filter=pending' },
     { label: 'Tickets', icon: MessageSquare, color: 'text-blue-500', bg: 'bg-blue-50', href: '/admin/support' },
     { label: 'Broadcast', icon: Bell, color: 'text-purple-500', bg: 'bg-purple-50', href: '/admin/notifications?action=broadcast' },

@@ -311,7 +311,7 @@ export interface FreeMealVoucher {
   used_at?: FirestoreTimestamp;
 }
 
-export type AuditLogType = 'swap_initiated' | 'swap_matched' | 'credit_earned' | 'credit_redeemed' | 'delivery_cancelled';
+export type AuditLogType = 'swap_initiated' | 'swap_matched' | 'credit_earned' | 'credit_redeemed' | 'delivery_cancelled' | 'undo_skip';
 
 export interface AuditLog {
   id: string;

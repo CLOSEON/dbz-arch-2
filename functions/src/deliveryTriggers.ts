@@ -5,179 +5,49 @@ import * as admin from 'firebase-admin';
 import { publishEvent } from './utils/events';
 
 /**
- * Cloud Function triggered on every updates in a delivery order document.
- * Detects order status updates and dispatches push alerts (FCM) to customers, kitchens and admins.
+ * Cloud Function triggered on every updates in a canonical order document.
+ * Detects order status updates and dispatches system_events for push alerts.
  */
-export const onDeliveryStatusChange = onDocumentUpdated('delivery_orders/{orderId}', async (event) => {
-  const change = event.data;
-  if (!change) {
-    console.log('[onDeliveryStatusChange] No data change payload.');
-    return;
-  }
+export const onOrderStatusChange = onDocumentUpdated('orders/{orderId}', async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
 
-  const beforeData = change.before.data();
-  const afterData = change.after.data();
+  if (!before || !after) return;
+  if (before.status === after.status) return;
 
-  if (!beforeData || !afterData) {
-    console.log('[onDeliveryStatusChange] Document state empty.');
-    return;
-  }
-
-  const beforeStatus = beforeData.status;
-  const afterStatus = afterData.status;
-
-  // Return early if order status is unchanged
-  if (beforeStatus === afterStatus) {
-    console.log(`[onDeliveryStatusChange] Status unchanged (${afterStatus}). Returning.`);
-    return;
-  }
-
-  const db = admin.firestore();
-  const messaging = admin.messaging();
+  const afterStatus = after.status;
+  const customerId = after.user_id;
   const orderId = event.params.orderId;
 
-  console.log(`[onDeliveryStatusChange] Transit status updated: ${beforeStatus} -> ${afterStatus} for order: ${orderId}`);
+  console.log(`[onOrderStatusChange] Order ${orderId} transitioned: ${before.status} -> ${afterStatus}`);
 
   try {
-    const customerId = afterData.customerId;
-    const vendorId = afterData.vendorId;
-
-    if (afterStatus === 'picked_up') {
-      // Notification to customer:
-      // Title: "Your tiffin is on the way!"
-      // Body: "Picked up from {vendorName}. Estimated delivery: {eta}"
-      const vendorSnap = await db.collection('users').doc(vendorId).get();
-      const vendorName = vendorSnap.exists
-        ? (vendorSnap.data()?.name || 'Dabzo Partner Kitchen')
-        : 'Dabzo Partner Kitchen';
-      
-      let eta = '1:30 PM';
-      if (afterData.scheduledSlot === '8am') eta = '8:30 AM';
-      else if (afterData.scheduledSlot === '11am') eta = '11:30 AM';
-      else if (afterData.scheduledSlot === '8pm' || afterData.meal?.type === 'dinner') eta = '8:30 PM';
-
-      await sendFCMToUser(customerId, {
-        title: 'Your tiffin is on the way!',
-        body: `Picked up from ${vendorName}. Estimated delivery: ${eta}`,
+    if (afterStatus === 'vendor_notified') {
+      await publishEvent('order_confirmed', customerId, 'customer', `confirmed_${orderId}`, {
+        mealType: after.meal_type || 'meal',
+        slot: after.delivery_slot || 'your requested time'
       });
-
-    } else if (afterStatus === 'out_for_delivery') {
-      // Notification to customer:
-      // Title: "Driver is nearby"
-      // Body: "Your OTP is {otp}. Show it to confirm delivery."
-      const otp = afterData.otp || '0000';
-
-      await sendFCMToUser(customerId, {
-        title: 'Driver is nearby',
-        body: `Your OTP is ${otp}. Show it to confirm delivery.`,
-      });
-
-    } else if (afterStatus === 'delivered') {
-      // Notification to customer:
-      // Title: "Delivered!"
-      // Body: "Enjoy your meal! Rate your experience."
-      // Notification to vendor:
-      // Title: "Delivery confirmed"
-      // Body: "{customerName}'s order delivered successfully."
-      const customerSnap = await db.collection('users').doc(customerId).get();
-      const customerName = customerSnap.exists
-        ? (customerSnap.data()?.name || 'Subscriber')
-        : 'Subscriber';
-
-      await Promise.all([
-        sendFCMToUser(customerId, {
-          title: 'Delivered!',
-          body: 'Enjoy your meal! Rate your experience.',
-        }),
-        sendFCMToUser(vendorId, {
-          title: 'Delivery confirmed',
-          body: `${customerName}'s order delivered successfully.`,
-        }),
-      ]);
-
-    } else if (afterStatus === 'failed') {
-      // Notification to administrative fleet owners:
-      // Title: "Delivery failed"
-      // Body: "Order {orderId} failed. Review in admin panel."
-      const adminSnap = await db.collection('users').where('role', '==', 'admin').get();
-      const adminTokens: string[] = [];
-
-      adminSnap.forEach((docSnap) => {
-        const u = docSnap.data();
-        if (u.fcmToken) {
-          adminTokens.push(u.fcmToken);
-        }
-        if (u.push_tokens && Array.isArray(u.push_tokens)) {
-          adminTokens.push(...u.push_tokens);
-        }
-      });
-
-      if (adminTokens.length > 0) {
-        const uniqueTokens = Array.from(new Set(adminTokens));
-        await sendMulticastFCM(uniqueTokens, {
-          title: 'Delivery failed',
-          body: `Order ${orderId} failed. Review in admin panel.`,
+    } else if (afterStatus === 'vendor_preparing' || afterStatus === 'vendor_ready') {
+      // markBatchReady already publishes meal_prep_started when the batch is ready, 
+      // but we add this specifically for vendor_preparing if the vendor triggers it manually.
+      if (afterStatus === 'vendor_preparing') {
+        await publishEvent('meal_prep_started', customerId, 'customer', `prep_${orderId}`, {
+          mealType: after.meal_type || 'meal'
         });
       }
+    } else if (afterStatus === 'picked_up') {
+      await publishEvent('meal_picked_up', customerId, 'customer', `pickup_${orderId}`, {});
+    } else if (afterStatus === 'out_for_delivery') {
+      await publishEvent('rider_en_route', customerId, 'customer', `enroute_${orderId}`, {});
+    } else if (afterStatus === 'delivered') {
+      await publishEvent('meal_delivered', customerId, 'customer', `deliv_${orderId}`, {});
+    } else if (afterStatus === 'failed') {
+      await publishEvent('delivery_failed', customerId, 'customer', `fail_${orderId}`, {
+        reason: after.failureReason || 'Unknown error'
+      });
     }
   } catch (err) {
-    console.error(`[onDeliveryStatusChange] Failed processing push trigger for ${orderId}:`, err);
-  }
-
-  // Scoped utility function to send notification to a user based on their UID
-  async function sendFCMToUser(uid: string, payload: { title: string; body: string }) {
-    const userSnap = await db.collection('users').doc(uid).get();
-    if (!userSnap.exists) {
-      console.log(`[onDeliveryStatusChange] User profile not found: ${uid}`);
-      return;
-    }
-
-    const userData = userSnap.data()!;
-    const tokens: string[] = [];
-    if (userData.fcmToken) {
-      tokens.push(userData.fcmToken);
-    }
-    if (userData.push_tokens && Array.isArray(userData.push_tokens)) {
-      tokens.push(...userData.push_tokens);
-    }
-
-    if (tokens.length === 0) {
-      console.log(`[onDeliveryStatusChange] No device FCM token registered for ${uid}`);
-      return;
-    }
-
-    const uniqueTokens = Array.from(new Set(tokens));
-    await sendMulticastFCM(uniqueTokens, payload);
-  }
-
-  // Scoped utility function to dispatch multicast messaging
-  async function sendMulticastFCM(tokens: string[], payload: { title: string; body: string }) {
-    console.log(`[onDeliveryStatusChange] Dispatching multicast to ${tokens.length} channels...`);
-    try {
-      await messaging.sendEachForMulticast({
-        tokens,
-        notification: {
-          title: payload.title,
-          body: payload.body,
-        },
-        android: {
-          notification: {
-            channelId: 'default',
-            priority: 'high',
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'default',
-            },
-          },
-        },
-      });
-      console.log('[onDeliveryStatusChange] Multicast push dispatched successfully.');
-    } catch (e) {
-      console.error('[onDeliveryStatusChange] Messaging payload transmission failure:', e);
-    }
+    console.error(`[onOrderStatusChange] Failed processing push trigger for ${orderId}:`, err);
   }
 });
 

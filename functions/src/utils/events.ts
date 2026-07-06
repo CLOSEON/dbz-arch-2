@@ -11,7 +11,9 @@ export type EventType =
   | 'meal_delivered'
   | 'delivery_failed'
   // Vendor events
-  | 'tiffin_count_confirmed'
+  | 'batch_created'
+  | 'batch_count_updated'
+  | 'vendor_prep_deadline_approaching'
   | 'vendor_rider_assigned'
   | 'vendor_pickup_confirmed'
   // Rider events

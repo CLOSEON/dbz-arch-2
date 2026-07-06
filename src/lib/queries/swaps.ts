@@ -319,6 +319,19 @@ export async function acceptSwap(broadcastId: string, recipientUserId: string): 
     reqData = reqSnap.data() as SwapRequest & { delivery_id: string };
     if (reqData.status !== 'broadcasted') return; // Someone else got it or it expired
 
+    // Check if either order has been batched (meaning the 4hr deadline passed and batches formed)
+    const initOrderRef = doc(db, 'orders', reqData.order_id);
+    const initOrderSnap = await transaction.get(initOrderRef);
+    if (initOrderSnap.exists() && initOrderSnap.data().batch_id) {
+      throw new Error('Swap expired: Initiator order is already locked for preparation.');
+    }
+    
+    const recipOrderRef = doc(db, 'orders', broadcastData.recipient_order_id);
+    const recipOrderSnap = await transaction.get(recipOrderRef);
+    if (recipOrderSnap.exists() && recipOrderSnap.data().batch_id) {
+      throw new Error('Swap expired: Your order is already locked for preparation.');
+    }
+
     // We are the first! Claim it.
     transaction.update(reqRef, {
       status: 'matched',

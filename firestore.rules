@@ -132,6 +132,32 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── NEW SCHEMA (DBZ ARCH 2) ─────────────────────────────────────────────
+    match /orders/{orderId} {
+      allow list: if request.auth != null;
+      allow get: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if isAdmin();
+    }
+    
+    match /order_status_logs/{logId} {
+      allow list: if request.auth != null;
+      allow get: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+    
+    match /batches/{batchId} {
+      allow list: if request.auth != null;
+      allow get: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if isAdmin();
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+
     // Rules for delivery_orders collection
     match /delivery_orders/{orderId} {
       // Allow authenticated list to avoid complex query-based static analysis failures

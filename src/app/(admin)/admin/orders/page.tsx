@@ -3,174 +3,103 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
-import { subscribeToAllDriverLocations, updateDeliveryStatus, reassignDriver } from '@/lib/queries/delivery';
-import type { DeliveryOrder, DriverProfile, DeliveryStatus } from '@/types/delivery';
+import { collection, query, where, getDocs, doc, getDoc, limit, orderBy } from 'firebase/firestore';
 import { 
-  Package, Search, Clock, CheckCircle2, User, UserCheck, Key, 
-  MapPin, Loader2, ArrowRightLeft, ShieldAlert, X
+  Package, Search, Clock, ArrowRightLeft, ShieldAlert, X,
+  MapPin, Loader2, User, UserCheck, Calendar, Activity, CheckCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Order, OrderStatusLog, Batch } from '@/types';
+import type { RiderTrip } from '@/types/delivery';
 
 export default function AdminOrdersTrackingPage() {
   const { user, isHydrated } = useAuthStore();
-  const [orders, setOrders] = useState<DeliveryOrder[]>([]);
-  const [drivers, setDrivers] = useState<DriverProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [driverFilter, setDriverFilter] = useState('all');
+  const [isSearching, setIsSearching] = useState(false);
   
-  // Modals state
-  const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
-  const [showReassignModal, setShowReassignModal] = useState(false);
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [showOTPModal, setShowOTPModal] = useState(false);
+  // Results
+  const [order, setOrder] = useState<Order | null>(null);
+  const [statusLogs, setStatusLogs] = useState<OrderStatusLog[]>([]);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  const [riderTrip, setRiderTrip] = useState<RiderTrip | null>(null);
+  const [relatedRecords, setRelatedRecords] = useState<any[]>([]);
 
-  // Load orders for today and active subscriptions for projection
-  useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) return;
+    
+    setIsSearching(true);
+    const toastId = toast.loading('Searching order...');
+    
+    try {
+      // 1. Fetch Order
+      const orderRef = doc(db, 'orders', searchQuery.trim());
+      const orderSnap = await getDoc(orderRef);
+      
+      if (!orderSnap.exists()) {
+        toast.error('Order not found', { id: toastId });
+        setOrder(null);
+        return;
+      }
+      
+      const orderData = orderSnap.data() as Order;
+      setOrder(orderData);
+      toast.success('Order found', { id: toastId });
 
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(now);
-    end.setDate(end.getDate() + 2);
-    end.setHours(23, 59, 59, 999);
+      // 2. Fetch Status Logs
+      const logsQ = query(
+        collection(db, 'order_status_logs'),
+        where('order_id', '==', orderData.id)
+      );
+      const logsSnap = await getDocs(logsQ);
+      setStatusLogs(logsSnap.docs.map(d => d.data() as OrderStatusLog).sort((a, b) => {
+        const tA = (a.timestamp as any)?.seconds || 0;
+        const tB = (b.timestamp as any)?.seconds || 0;
+        return tB - tA;
+      }));
 
-    const qOrders = query(
-      collection(db, 'delivery_orders'),
-      where('createdAt', '>=', Timestamp.fromDate(start)),
-      where('createdAt', '<=', Timestamp.fromDate(end))
-    );
-
-    const qSubs = query(
-      collection(db, 'subscriptions'),
-      where('status', '==', 'active')
-    );
-
-    let realOrdersList: DeliveryOrder[] = [];
-    let subsList: any[] = [];
-
-    const toMs = (ts: any) => {
-      if (!ts) return 0;
-      if (typeof ts.toMillis === 'function') return ts.toMillis();
-      if (ts.seconds) return ts.seconds * 1000;
-      return 0;
-    };
-
-    const mergeAndSet = () => {
-      // 1. Map real orders by slot to avoid projecting over them
-      const slotMap = new Set<string>();
-      realOrdersList.forEach(o => {
-        const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date());
-        slotMap.add(`${d.toLocaleDateString('en-CA')}_${o.customerId}_${o.meal?.type || 'lunch'}`);
-      });
-
-      // 2. Project future orders from active subscriptions
-      const projectedOrders: any[] = [];
-      for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
-        const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-        const dateKey = targetDate.toLocaleDateString('en-CA');
-        
-        subsList.forEach((sub) => {
-          const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
-          mealTypes.forEach((mealType) => {
-            if (slotMap.has(`${dateKey}_${sub.user_id}_${mealType}`)) return; // Already exists as real order
-            
-            // Assume preference from sub if available, else default
-            const scheduledSlot: string = mealType === 'lunch' ? '11am' : '8pm'; 
-            const slotHour = scheduledSlot === '8am' ? 8 : scheduledSlot === '11am' ? 11 : 20;
-            const slotDate = new Date(targetDate);
-            slotDate.setHours(slotHour, 0, 0, 0);
-            
-            if (slotDate.getTime() < now.getTime()) return; // Skip past slots
-
-            projectedOrders.push({
-              id: `projected_${dateKey}_${mealType}_${sub.id}`,
-              subscriptionId: sub.id,
-              customerId: sub.user_id,
-              vendorId: sub.vendor_id,
-              status: 'pending',
-              meal: { type: mealType, name: mealType === 'lunch' ? 'Lunch (Projected)' : 'Dinner (Projected)' },
-              scheduledSlot,
-              address: { line1: 'From active subscription' },
-              createdAt: { toDate: () => targetDate, seconds: targetDate.getTime() / 1000 },
-              isProjected: true
-            });
-          });
-        });
+      // 3. Fetch Batch
+      if (orderData.batch_id) {
+        const batchSnap = await getDoc(doc(db, 'batches', orderData.batch_id));
+        if (batchSnap.exists()) {
+          setBatch(batchSnap.data() as Batch);
+        }
+      } else {
+        setBatch(null);
       }
 
-      const combined = [...realOrdersList, ...projectedOrders];
-      setOrders(combined.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt)));
-    };
+      // 4. Fetch Rider Trip
+      if (orderData.rider_trip_id) {
+        const tripSnap = await getDoc(doc(db, 'rider_trips', orderData.rider_trip_id));
+        if (tripSnap.exists()) {
+          setRiderTrip(tripSnap.data() as RiderTrip);
+        }
+      } else {
+        setRiderTrip(null);
+      }
 
-    const unsubOrders = onSnapshot(qOrders, (snap) => {
-      realOrdersList = snap.docs.map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder));
-      mergeAndSet();
-    });
+      // 5. Fetch Related Records (Swaps, Skips)
+      const related: any[] = [];
+      
+      const swapsQ = query(collection(db, 'swap_requests'), where('order_id', '==', orderData.id));
+      const swapsSnap = await getDocs(swapsQ);
+      swapsSnap.forEach(d => related.push({ type: 'Swap Request', id: d.id, ...d.data() }));
 
-    const unsubSubs = onSnapshot(qSubs, (snap) => {
-      subsList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      mergeAndSet();
-    });
+      const skipsQ = query(collection(db, 'skip_requests'), where('order_id', '==', orderData.id));
+      const skipsSnap = await getDocs(skipsQ);
+      skipsSnap.forEach(d => related.push({ type: 'Skip Record', id: d.id, ...d.data() }));
 
-    return () => {
-      unsubOrders();
-      unsubSubs();
-    };
-  }, [isHydrated, user]);
+      // Also fetch credits where source_reference_id = order_id
+      const creditsQ = query(collection(db, 'user_credits'), where('source_reference_id', '==', orderData.id));
+      const creditsSnap = await getDocs(creditsQ);
+      creditsSnap.forEach(d => related.push({ type: 'Credit Record', id: d.id, ...d.data() }));
 
-  // Load active drivers
-  useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
-    const unsubscribe = subscribeToAllDriverLocations((driversList) => {
-      setDrivers(driversList);
-    });
-    return () => unsubscribe();
-  }, [isHydrated, user]);
+      setRelatedRecords(related);
 
-  const getDriverName = (driverId: string | null) => {
-    if (!driverId) return 'Unassigned';
-    const driver = drivers.find(d => d.uid === driverId);
-    return driver?.name || 'Unknown Driver';
-  };
-
-  const filteredOrders = orders.filter(o => {
-    const matchesSearch = o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          o.customerId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          o.vendorId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          getDriverName(o.driverId).toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
-    const matchesDriver = driverFilter === 'all' || 
-                          (driverFilter === 'unassigned' && !o.driverId) ||
-                          o.driverId === driverFilter;
-    return matchesSearch && matchesStatus && matchesDriver;
-  });
-
-  const handleStatusUpdate = async (newStatus: DeliveryStatus) => {
-    if (!selectedOrder) return;
-    const toastId = toast.loading('Updating status...');
-    try {
-      await updateDeliveryStatus(selectedOrder.id, newStatus, selectedOrder.driverId);
-      toast.success('Status updated successfully', { id: toastId });
-      setShowStatusModal(false);
-      setSelectedOrder(null);
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`, { id: toastId });
-    }
-  };
-
-  const handleReassign = async (newDriverId: string) => {
-    if (!selectedOrder) return;
-    const toastId = toast.loading('Reassigning driver...');
-    try {
-      await reassignDriver(selectedOrder.id, newDriverId);
-      toast.success('Driver reassigned successfully', { id: toastId });
-      setShowReassignModal(false);
-      setSelectedOrder(null);
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`, { id: toastId });
+    } catch (err: any) {
+      toast.error('Search failed: ' + err.message, { id: toastId });
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -182,242 +111,154 @@ export default function AdminOrdersTrackingPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
-            Logistics Control
+            Support Tools
           </span>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight mt-2.5">
-            Order Tracking
+            Order Lookup
           </h1>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-64">
+        <form onSubmit={handleSearch} className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search orders..."
+              placeholder="Search exact order ID (e.g. ORD-2026-...)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-2xl focus:outline-none focus:border-brand/40 bg-white text-slate-900 font-medium placeholder-slate-400 shadow-sm"
             />
           </div>
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-4 text-xs border border-slate-200 rounded-2xl focus:outline-none focus:border-brand/40 bg-white text-slate-900 font-medium shadow-sm appearance-none cursor-pointer"
-            >
-              <option value="all">All Statuses</option>
-              <option value="preparing">Preparing</option>
-              <option value="picked_up">Picked Up</option>
-              <option value="out_for_delivery">Out for Delivery</option>
-              <option value="delivered">Delivered</option>
-              <option value="failed_attempt">Failed Attempt</option>
-            </select>
-            <select
-              value={driverFilter}
-              onChange={(e) => setDriverFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-4 text-xs border border-slate-200 rounded-2xl focus:outline-none focus:border-brand/40 bg-white text-slate-900 font-medium shadow-sm appearance-none cursor-pointer"
-            >
-              <option value="all">All Drivers</option>
-              <option value="unassigned">Unassigned Only</option>
-              {drivers.map(d => (
-                <option key={d.uid} value={d.uid}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+          <button
+            type="submit"
+            disabled={isSearching || !searchQuery.trim()}
+            className="w-full md:w-auto py-2.5 px-6 bg-brand text-white rounded-2xl text-xs font-black hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            Search
+          </button>
+        </form>
       </div>
 
-      {/* Orders Table */}
-      <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 uppercase font-black text-[9px] tracking-wider border-b border-slate-100">
-                <th className="p-4 rounded-tl-xl">Order ID & Item</th>
-                <th className="p-4">Customer</th>
-                <th className="p-4">Vendor</th>
-                <th className="p-4">Assigned Driver</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right rounded-tr-xl">Admin Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-12 text-center text-slate-400 text-sm font-bold">
-                    <Package className="w-8 h-8 mx-auto text-slate-200 mb-3" />
-                    No orders found for today.
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4">
-                      <p className="font-black text-slate-900">#{order.id.slice(-6).toUpperCase()}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{order.meal?.name ?? '—'}</p>
-                    </td>
-                    <td className="p-4">
-                      <p className="font-bold text-slate-800">Cust: {order.customerId?.slice(0,6).toUpperCase() ?? '—'}</p>
-                      <p className="text-[10px] text-slate-500 max-w-[150px] truncate" title={order.address?.line1}>
-                        {order.address?.line1 ?? '—'}
-                      </p>
-                    </td>
-                    <td className="p-4 font-bold text-slate-800">Vend: {order.vendorId?.slice(0,6).toUpperCase() ?? '—'}</td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        {order.driverId ? (
-                          <UserCheck className="w-4 h-4 text-brand" />
-                        ) : (
-                          <User className="w-4 h-4 text-slate-300" />
-                        )}
-                        <span className={order.driverId ? 'text-slate-900 font-black' : 'text-slate-400'}>
-                          {getDriverName(order.driverId)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wide ${
-                        order.status === 'delivered' ? 'bg-emerald-100 text-emerald-800' : 
-                        order.status === 'out_for_delivery' ? 'bg-blue-100 text-blue-800' :
-                        order.status === 'preparing' ? 'bg-amber-100 text-amber-800' :
-                        order.status === 'picked_up' ? 'bg-purple-100 text-purple-800' :
-                        'bg-slate-100 text-slate-800'
-                      }`}>
-                        {order.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => { setSelectedOrder(order); setShowOTPModal(true); }}
-                          className="p-2 bg-slate-50 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
-                          title="View OTP"
-                        >
-                          <Key className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { setSelectedOrder(order); setShowReassignModal(true); }}
-                          className="p-2 bg-brand/5 text-brand hover:bg-brand/10 rounded-xl transition-colors"
-                          title="Reassign Driver"
-                        >
-                          <ArrowRightLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { setSelectedOrder(order); setShowStatusModal(true); }}
-                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl transition-colors"
-                          title="Override Status"
-                        >
-                          <ShieldAlert className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {!order && !isSearching && (
+        <div className="bg-slate-50 border border-slate-100 rounded-3xl p-12 text-center text-slate-400">
+          <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
+          <p className="text-sm font-bold text-slate-500">Enter a specific order ID to view its full lifecycle</p>
         </div>
-      </div>
+      )}
 
-      {/* Reassign Driver Modal */}
-      {showReassignModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-black text-slate-900">Reassign Driver</h2>
-              <button onClick={() => setShowReassignModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
+      {order && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Order Details */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-6">
+              <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="w-5 h-5 text-brand" />
+                    <h2 className="text-xl font-black text-slate-900">{order.id}</h2>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium flex items-center gap-2">
+                    <Calendar className="w-3 h-3" /> {order.date} • {order.delivery_slot} • {order.meal_type}
+                  </p>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-800">
+                  {order.status.replace(/_/g, ' ')}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customer ID</p>
+                  <p className="text-sm font-bold text-slate-900">{order.user_id}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendor ID</p>
+                  <p className="text-sm font-bold text-slate-900">{order.vendor_id || 'Not Assigned'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Delivery Address</p>
+                  <p className="mt-1.5 text-xs font-medium text-slate-600 line-clamp-2">{order.delivery_address}</p>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-slate-500">
-              Select a new active driver for Order <span className="font-bold text-slate-900">#{selectedOrder.id.slice(-6).toUpperCase()}</span>.
-            </p>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {drivers.length === 0 ? (
-                <p className="text-xs text-center text-slate-400 p-4">No active drivers found.</p>
-              ) : (
-                drivers.map(driver => (
-                  <button
-                    key={driver.uid}
-                    onClick={() => handleReassign(driver.uid)}
-                    className="w-full text-left p-3 rounded-2xl border border-slate-100 hover:border-brand/40 hover:bg-brand/5 transition-all flex items-center justify-between group"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-900 text-sm group-hover:text-brand">{driver.name}</p>
-                      <p className="text-[10px] text-slate-400">{driver.phone}</p>
+
+            {/* Related Records */}
+            {relatedRecords.length > 0 && (
+              <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4">
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-brand" /> Associated Records
+                </h3>
+                <div className="space-y-3">
+                  {relatedRecords.map((r, i) => (
+                    <div key={i} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{r.type}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{r.id}</span>
+                      </div>
+                      <pre className="text-[9px] text-slate-600 overflow-x-auto whitespace-pre-wrap font-mono">
+                        {JSON.stringify(r, null, 2)}
+                      </pre>
                     </div>
-                    {selectedOrder.driverId === driver.uid && (
-                      <span className="text-[9px] font-black uppercase text-brand bg-brand/10 px-2 py-0.5 rounded">Current</span>
-                    )}
-                  </button>
-                ))
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Batch & Rider Info */}
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4">
+              <h3 className="text-sm font-black text-slate-900">Logistics</h3>
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 mb-1">Batch Assignment</p>
+                  {batch ? (
+                    <>
+                      <p className="text-xs font-bold text-amber-900 break-all">{batch.id}</p>
+                      <p className="text-[10px] text-amber-800 mt-1">Status: {batch.status}</p>
+                    </>
+                  ) : (
+                    <p className="text-xs font-bold text-amber-900/50">Pending Formation</p>
+                  )}
+                </div>
+                
+                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-1">Rider Trip</p>
+                  {riderTrip ? (
+                    <>
+                      <p className="text-xs font-bold text-emerald-900 break-all">{riderTrip.id}</p>
+                      <p className="text-[10px] text-emerald-800 mt-1">Rider: {riderTrip.riderId} • Status: {riderTrip.status}</p>
+                    </>
+                  ) : (
+                    <p className="text-xs font-bold text-emerald-900/50">Pending Assignment</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Lifecycle Logs */}
+            <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4 max-h-[500px] overflow-y-auto">
+              <h3 className="text-sm font-black text-slate-900">Lifecycle Audit</h3>
+              {statusLogs.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No logs found.</p>
+              ) : (
+                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                  {statusLogs.map((log, i) => (
+                    <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                      <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-white bg-slate-200 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2"></div>
+                      <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.25rem)] p-3 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-brand">{log.to_status.replace(/_/g, ' ')}</span>
+                          <span className="text-[9px] text-slate-400 font-bold">{log.timestamp ? new Date((log.timestamp as any).seconds * 1000).toLocaleTimeString() : 'N/A'}</span>
+                        </div>
+                          {log.from_status && <p className="text-[10px] text-slate-500">From: {log.from_status.replace(/_/g, ' ')}</p>}
+                        <p className="text-[9px] text-slate-400 mt-1 uppercase">By: {log.actor}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Force Status Modal */}
-      {showStatusModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-black text-rose-600 flex items-center gap-2">
-                <ShieldAlert className="w-5 h-5" /> Override Status
-              </h2>
-              <button onClick={() => setShowStatusModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              Force update the status for Order <span className="font-bold text-slate-900">#{selectedOrder.id.slice(-6).toUpperCase()}</span>.
-              This action skips standard checks and directly modifies the database.
-            </p>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {['preparing', 'picked_up', 'out_for_delivery', 'delivered'].map((status) => (
-                <button
-                  key={status}
-                  onClick={() => handleStatusUpdate(status as DeliveryStatus)}
-                  disabled={selectedOrder.status === status}
-                  className={`p-3 rounded-2xl border text-xs font-black uppercase tracking-wider transition-all ${
-                    selectedOrder.status === status 
-                      ? 'bg-slate-50 border-slate-100 text-slate-400 opacity-50 cursor-not-allowed' 
-                      : 'border-slate-200 hover:border-brand text-slate-700 hover:text-brand hover:bg-brand/5'
-                  }`}
-                >
-                  {status.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View OTP Modal */}
-      {showOTPModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-8 max-w-xs w-full shadow-2xl text-center space-y-4">
-            <button onClick={() => setShowOTPModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
-              <X className="w-5 h-5" />
-            </button>
-            <div className="w-16 h-16 bg-brand/10 text-brand rounded-full flex items-center justify-center mx-auto mb-2">
-              <Key className="w-8 h-8" />
-            </div>
-            <h2 className="text-xl font-black text-slate-900">Security OTP</h2>
-            <p className="text-xs text-slate-500">
-              For Order <span className="font-bold text-slate-900">#{selectedOrder.id.slice(-6).toUpperCase()}</span>
-            </p>
-            <div className="bg-slate-50 rounded-2xl py-4 border border-slate-100">
-              <span className="text-4xl font-black tracking-widest text-slate-900 font-mono">
-                {selectedOrder.otp || 'NONE'}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowOTPModal(false)}
-              className="w-full py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-colors mt-4"
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
