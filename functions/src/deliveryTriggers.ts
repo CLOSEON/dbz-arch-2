@@ -219,14 +219,14 @@ async function processDailyDeliveries(force: boolean = false) {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const existingSnap = await db.collection('delivery_orders')
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-      .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
+    const existingSnap = await db.collection('orders')
+      .where('created_at', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+      .where('created_at', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
       .get();
 
     existingSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => {
       const docData = d.data();
-      if (docData.subscriptionId) existingSubIds.add(docData.subscriptionId);
+      if (docData.subscription_id) existingSubIds.add(docData.subscription_id);
     });
   }
 
@@ -271,36 +271,32 @@ async function processDailyDeliveries(force: boolean = false) {
 
         const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
 
-        const newOrderRef = db.collection('delivery_orders').doc();
+        const newOrderRef = db.collection('orders').doc();
+        const todayStr = new Date().toISOString().split('T')[0];
+        
         batch.set(newOrderRef, {
-          subscriptionId: subId,
-          customerId: sub.user_id,
-          customerPhone: user.phone || user.phoneNumber || '',
-          vendorId: sub.vendor_id,
-          vendorPhone: vendor.phone || vendor.phoneNumber || '',
-          driverId: assignedDriverId,
-          status: 'preparing',
-          otp,
-          otpVerified: false,
-          meal: {
-            name: `${vendor.kitchen_name || vendor.name}'s ${mealName}`,
-            type: mealType, // 'lunch' or 'dinner'
-          },
-          address: {
+          order_id: newOrderRef.id,
+          user_id: sub.user_id,
+          customer_phone: user.phone || user.phoneNumber || '',
+          subscription_id: subId,
+          date: todayStr,
+          meal_type: mealType,
+          delivery_slot: scheduledSlot,
+          vendor_id: sub.vendor_id,
+          vendor_phone: vendor.phone || vendor.phoneNumber || '',
+          batch_id: null,
+          delivery_address: {
             line1: user.address || `${user.name}'s Location`,
-            landmark: '',
             lat: userLat,
             lng: userLng,
           },
-          driverLocation: null,
-          scheduledSlot: scheduledSlot,
-          timestamps: {
-            preparedAt: null,
-            pickedAt: null,
-            outAt: null,
-            deliveredAt: null,
-          },
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'created',
+          otp: otp,
+          rider_trip_id: null,
+          swap_ref: null,
+          skip_ref: null,
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp()
         });
 
         // Customer: Order Confirmed
@@ -392,7 +388,7 @@ export const markBatchReady = onCall(async (request) => {
   const db = admin.firestore();
   const batchRef = db.collection('batches').doc(batch_id);
 
-  return await db.runTransaction(async (t) => {
+  const result = await db.runTransaction(async (t) => {
     const batchDoc = await t.get(batchRef);
     if (!batchDoc.exists) {
       throw new HttpsError('not-found', `Batch ${batch_id} not found`);
@@ -409,19 +405,29 @@ export const markBatchReady = onCall(async (request) => {
       return { success: false, message: `Batch is already in status: ${batch.status}` };
     }
 
-    // 1. Transition Batch to ready
+    // Fetch all order documents first to satisfy Firestore read-before-write rules
+    const orderIds: string[] = batch.order_ids || [];
+    const orderDocs: FirebaseFirestore.DocumentSnapshot[] = [];
+    
+    for (const orderId of orderIds) {
+      const orderRef = db.collection('orders').doc(orderId);
+      const orderDoc = await t.get(orderRef);
+      orderDocs.push(orderDoc);
+    }
+
+    // 1. Generate Pickup OTP and Transition Batch to ready
+    const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+
     t.update(batchRef, {
       status: 'ready',
+      pickup_otp: pickupOTP,
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // 2. Cascade to every non-skipped order in the batch
-    const orderIds: string[] = batch.order_ids || [];
     let cascadeCount = 0;
 
-    for (const orderId of orderIds) {
-      const orderRef = db.collection('orders').doc(orderId);
-      const orderDoc = await t.get(orderRef);
+    for (const orderDoc of orderDocs) {
       if (!orderDoc.exists) continue;
 
       const order = orderDoc.data()!;
@@ -429,7 +435,7 @@ export const markBatchReady = onCall(async (request) => {
       const skipStatuses = ['skipped', 'swapped_out', 'failed', 'completed'];
       if (skipStatuses.includes(order.status)) continue;
 
-      t.update(orderRef, {
+      t.update(orderDoc.ref, {
         status: 'vendor_ready',
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -438,7 +444,7 @@ export const markBatchReady = onCall(async (request) => {
       const logRef = db.collection('order_status_logs').doc();
       t.set(logRef, {
         id: logRef.id,
-        order_id: orderId,
+        order_id: orderDoc.id,
         from_status: order.status,
         to_status: 'vendor_ready',
         actor: vendorId,
@@ -450,7 +456,7 @@ export const markBatchReady = onCall(async (request) => {
         'meal_prep_started',
         order.user_id,
         'customer',
-        `meal_prep_${orderId}`,
+        `meal_prep_${orderDoc.id}`,
         { mealType: order.meal_type || 'meal' }
       ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
 
@@ -459,6 +465,17 @@ export const markBatchReady = onCall(async (request) => {
 
     return { success: true, message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.` };
   });
+
+  // Automatically trigger rider assignment for this vendor now that the batch is ready
+  // MUST BE AWAITED so the Cloud Function doesn't suspend before assignment finishes
+  try {
+    const m = await import('./matchingTriggers');
+    await m.coreAssignRiderTrips(vendorId);
+  } catch (e) {
+    console.error('[markBatchReady] Auto-assign failed:', e);
+  }
+
+  return result;
 });
 
 /**
@@ -608,4 +625,170 @@ export const onSubscriptionCancelled = onDocumentUpdated('subscriptions/{subId}'
 
   await batch.commit();
   console.log(`[onSubscriptionCancelled] Cancelled ${ordersSnap.size} delivery orders for sub ${subId}`);
+});
+
+/**
+ * Generates a mock delivery flow for testing purposes.
+ * Hardcodes user, vendor, and rider assignments using specified phone numbers.
+ */
+export const generateTestDelivery = onCall(async (request) => {
+  const { auth } = request;
+  if (!auth) throw new HttpsError('unauthenticated', 'Must be authenticated');
+  
+  // Verify Admin role
+  if (auth.token.role !== 'admin') {
+    const callerDoc = await admin.firestore().collection('users').doc(auth.uid).get();
+    if (!callerDoc.exists || callerDoc.data()?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Must be an admin to run test delivery flow');
+    }
+  }
+
+  const db = admin.firestore();
+
+  // Find the required users by phone number
+  const findUser = async (phone: string, role: string) => {
+    const snap = await db.collection('users').where('phone', '==', phone).limit(1).get();
+    if (snap.empty) {
+      throw new HttpsError('not-found', `Could not find ${role} with phone ${phone}`);
+    }
+    return snap.docs[0];
+  };
+
+  const [userDoc, vendorDoc, riderDoc] = await Promise.all([
+    findUser('+919900990011', 'customer'),
+    findUser('+919900990022', 'vendor'),
+    findUser('+919900990044', 'rider')
+  ]);
+
+  const customerId = userDoc.id;
+  const vendorId = vendorDoc.id;
+  const riderId = riderDoc.id;
+
+  // Use local timezone string to match the vendor dashboard
+  const todayStr = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+
+  // Optional: clear existing test trips for today for this vendor/rider to keep it clean
+  const existingOrders = await db.collection('orders')
+    .where('user_id', '==', customerId)
+    .where('date', '==', todayStr)
+    .get();
+  
+  for (const doc of existingOrders.docs) {
+    await doc.ref.delete();
+  }
+  
+  // Clear any existing test batches for this vendor to remove stuck ghosts
+  const existingBatches = await db.collection('batches')
+    .where('vendor_id', '==', vendorId)
+    .get();
+  
+  for (const doc of existingBatches.docs) {
+    await doc.ref.delete();
+  }
+
+  // Clear any existing test trips for this rider to remove stuck ghosts
+  const existingTrips = await db.collection('rider_trips')
+    .where('riderId', '==', riderId)
+    .get();
+  
+  for (const doc of existingTrips.docs) {
+    await doc.ref.delete();
+  }
+
+  const batchId = `TEST_BATCH_${vendorId}_${todayStr}`;
+  const tripId = `TEST_TRIP_${riderId}_${todayStr}`;
+
+  const vendorLocation = vendorDoc.data()?.location || { lat: 0, lng: 0 };
+  const customerLocation = userDoc.data()?.location || { lat: 0, lng: 0 };
+  const customerAddress = userDoc.data()?.address || { line1: 'Test Address' };
+
+  // 1. Create a Pending Order
+  const orderRef = db.collection('orders').doc();
+  const orderData = {
+    id: orderRef.id,
+    user_id: customerId,
+    vendor_id: vendorId,
+    agent_id: riderId,
+    rider_trip_id: tripId,
+    // Add camelCase variants for frontend components that expect DeliveryOrder format
+    driverId: riderId,
+    customerId: customerId,
+    vendorId: vendorId,
+    address: customerAddress,
+    date: todayStr,
+    status: 'vendor_ready', // Let's skip directly to ready for pickup
+    delivery_slot: '11am',
+    meal_type: 'lunch',
+    otp: Math.floor(1000 + Math.random() * 9000).toString(),
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await orderRef.set(orderData);
+
+  // 2. Create the Batch
+  const batchRef = db.collection('batches').doc(batchId);
+  const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+
+  const batchData = {
+    id: batchId,
+    vendor_id: vendorId,
+    date: todayStr,
+    slot: '11am',
+    order_ids: [orderRef.id],
+    status: 'ready',
+    pickup_otp: pickupOTP,
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await batchRef.set(batchData);
+
+  // 3. Create the Rider Trip assignment
+  const tripRef = db.collection('rider_trips').doc(tripId);
+
+  const tripData = {
+    id: tripId,
+    riderId: riderId,
+    batch_ids: [batchId],
+    assignedOrderIds: [orderRef.id],
+    vendorIds: [vendorId],
+    status: 'pickup_pending',
+    pickupStops: [
+      {
+        vendorId: vendorId,
+        vendorPhone: vendorDoc.data()?.phone,
+        location: vendorLocation,
+        sequence: 1,
+        distanceKm: 0,
+        status: 'pending',
+        pickupOTP: pickupOTP
+      }
+    ],
+    dropoffStops: [
+      {
+        orderId: orderRef.id,
+        customerId: customerId,
+        address: 'Test Customer Address',
+        status: 'pending',
+        lat: 21.1500,
+        lng: 79.0900
+      }
+    ],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await tripRef.set(tripData);
+
+  // 4. Update the Batch to show it's assigned
+  await batchRef.update({
+    status: 'ready', // vendor is waiting for rider to pick up
+    agent_id: riderId
+  });
+
+  return { 
+    success: true, 
+    orderId: orderRef.id, 
+    batchId: batchId, 
+    tripId: tripId,
+    message: 'Test delivery flow successfully generated!'
+  };
 });

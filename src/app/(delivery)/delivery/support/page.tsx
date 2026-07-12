@@ -34,7 +34,6 @@ export default function DeliverySupportPage() {
       setLoading(false);
     }
   };
-
   return (
     <div className="space-y-6 pb-6 animate-fade-in">
       <div>

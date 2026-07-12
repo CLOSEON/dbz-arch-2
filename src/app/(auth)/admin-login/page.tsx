@@ -45,7 +45,7 @@ export default function AdminLoginPage() {
           <span className="text-2xl">👑</span>
         </div>
         <h1 className="text-2xl font-black text-white tracking-tight">Admin Access</h1>
-        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Dabzo Control Panel</p>
+        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Dabzzo Control Panel</p>
       </div>
 
       <div className="w-full max-w-sm bg-slate-900 rounded-3xl border border-slate-800 p-8">
@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@dabzo.com"
+              placeholder="admin@dabzzo.com"
               className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-5 py-4 text-sm font-semibold text-white placeholder:text-slate-600 outline-none focus:border-brand/50 transition-all"
             />
           </div>

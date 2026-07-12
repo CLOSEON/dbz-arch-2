@@ -13,13 +13,16 @@ import {
   serverTimestamp,
   writeBatch,
   orderBy,
-  runTransaction
+  runTransaction,
+  limit,
+  startAfter,
+  type DocumentSnapshot,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import type { Delivery, DeliveryStatus as OldDeliveryStatus } from '@/types';
 import type { DeliveryOrder, DriverProfile, DeliveryStatus, RiderTrip, PickupStop, DropStop } from '@/types/delivery';
-import { awardUserCredit } from './swaps';
+import { awardUserCredit, consumeUserCreditsTx } from './swaps';
 import { createAuditLog } from './audit';
 
 // ==========================================
@@ -53,7 +56,25 @@ export function subscribeToAgentDeliveries(
       end.setHours(23, 59, 59, 999);
 
       const list = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder))
+        .map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            ...data,
+            // Map canonical schema to legacy DeliveryOrder schema
+            subscriptionId: data.subscription_id || data.subscriptionId,
+            customerId: data.user_id || data.customerId,
+            customerPhone: data.customer_phone || data.customerPhone || '',
+            vendorId: data.vendor_id || data.vendorId,
+            vendorPhone: data.vendor_phone || data.vendorPhone || '',
+            driverId: data.driverId || data.rider_id || null,
+            createdAt: data.created_at || data.createdAt,
+            meal: data.meal || { type: data.meal_type || 'lunch', name: 'Tiffin' },
+            address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
+            scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
+            status: data.status,
+          } as DeliveryOrder;
+        })
         .filter((order) => {
           // Filter to only include today's orders
           if (!order.createdAt) return false;
@@ -119,7 +140,7 @@ export async function getUserDeliveries(userId: string): Promise<Delivery[]> {
 }
 
 // ==========================================
-// MODERN DABZO 2.0 DELIVERY ENGINE PIPELINE
+// MODERN DABZZO 2.0 DELIVERY ENGINE PIPELINE
 // ==========================================
 
 /**
@@ -135,16 +156,11 @@ export function subscribeToMyDelivery(
   date: string,
   callback: (order: DeliveryOrder | null) => void
 ): () => void {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-
+  // Query by user_id and date string directly (canonical DBZ ARCH 2 schema)
   const q = query(
     collection(db, 'orders'),
-    where('customerId', '==', customerId),
-    where('createdAt', '>=', Timestamp.fromDate(start)),
-    where('createdAt', '<=', Timestamp.fromDate(end))
+    where('user_id', '==', customerId),
+    where('date', '==', date)
   );
 
   return onSnapshot(q, (snap) => {
@@ -152,7 +168,22 @@ export function subscribeToMyDelivery(
       callback(null);
     } else {
       const d = snap.docs[0];
-      callback({ id: d.id, ...d.data() } as DeliveryOrder);
+      const data = d.data();
+      callback({
+        id: d.id,
+        ...data,
+        subscriptionId: data.subscription_id || data.subscriptionId,
+        customerId: data.user_id || data.customerId,
+        customerPhone: data.customer_phone || data.customerPhone || '',
+        vendorId: data.vendor_id || data.vendorId,
+        vendorPhone: data.vendor_phone || data.vendorPhone || '',
+        driverId: data.driverId || data.rider_id || null,
+        createdAt: data.created_at || data.createdAt,
+        meal: data.meal || { type: data.meal_type || 'lunch', name: 'Tiffin' },
+        address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
+        scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
+        status: data.status,
+      } as DeliveryOrder);
     }
   });
 }
@@ -195,15 +226,45 @@ export async function getVendorTodayOrders(
   end.setDate(end.getDate() + 5);
   end.setHours(23, 59, 59, 999);
 
+  // Query only by vendor_id (or vendorId) to avoid composite index requirement
   const q = query(
     collection(db, 'orders'),
-    where('vendorId', '==', vendorId),
-    where('createdAt', '>=', Timestamp.fromDate(start)),
-    where('createdAt', '<=', Timestamp.fromDate(end))
+    where('vendor_id', '==', vendorId)
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder));
+  
+  let docs = snap.empty ? [] : snap.docs;
+  
+  // Try camelCase if snake_case is empty
+  if (snap.empty) {
+    const q2 = query(
+      collection(db, 'orders'),
+      where('vendorId', '==', vendorId)
+    );
+    const snap2 = await getDocs(q2);
+    docs = snap2.docs;
+  }
+  
+  const startTime = start.getTime();
+  const endTime = end.getTime();
+  
+  return docs
+    .map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder))
+    .filter((o: any) => {
+      // In-memory date filtering
+      const createdAt = o.createdAt || o.created_at;
+      if (!createdAt) return false;
+      
+      let timeMs = 0;
+      if (createdAt instanceof Date) timeMs = createdAt.getTime();
+      else if (typeof createdAt === 'string') timeMs = new Date(createdAt).getTime();
+      else if (createdAt.toDate && typeof createdAt.toDate === 'function') timeMs = createdAt.toDate().getTime();
+      else if (createdAt.seconds) timeMs = createdAt.seconds * 1000;
+      else if (createdAt._seconds) timeMs = createdAt._seconds * 1000;
+      
+      return timeMs >= startTime && timeMs <= endTime;
+    });
 }
 
 /**
@@ -516,6 +577,8 @@ export async function reassignDelivery(orderId: string, newDriverId: string): Pr
   const orderRef = doc(db, 'orders', orderId);
   await updateDoc(orderRef, {
     driverId: newDriverId,
+    rider_id: newDriverId,
+    rider_trip_id: null,
     driverLocation: null, // Reset live marker tracking
   });
 }
@@ -547,20 +610,27 @@ export async function rescheduleDelivery(orderId: string): Promise<void> {
     throw new Error('Delivery order does not exist in collection.');
   }
 
-  const data = orderSnap.data() as DeliveryOrder;
+  const data = orderSnap.data() as any;
 
   // Calculate tomorrow's exact date bounds
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-  // Generate a clean transaction record in the delivery orders stream
+  // Generate a clean transaction record in the orders stream with canonical fields
   const newOrderRef = doc(collection(db, 'orders'));
   await setDoc(newOrderRef, {
     ...data,
     id: newOrderRef.id,
+    user_id: data.user_id || data.customerId || '',
+    customerId: data.customerId || data.user_id || '',
+    vendor_id: data.vendor_id || data.vendorId || '',
+    vendorId: data.vendorId || data.vendor_id || '',
+    date: tomorrowStr,
     driverId: null, // Reset driver allocation
     driverLocation: null,
     status: 'preparing',
+    otp: Math.floor(1000 + Math.random() * 9000).toString(), // New fresh OTP for tomorrow
     otpVerified: false,
     timestamps: {
       preparedAt: null,
@@ -569,6 +639,7 @@ export async function rescheduleDelivery(orderId: string): Promise<void> {
       deliveredAt: null,
     },
     createdAt: Timestamp.fromDate(tomorrow),
+    created_at: Timestamp.fromDate(tomorrow),
   });
 }
 
@@ -602,21 +673,161 @@ export async function generateTodayDeliveries(force = false): Promise<GenerateRe
   }
 }
 
+export async function generateTestDeliveryFn(): Promise<any> {
+  try {
+    const generateTest = httpsCallable<any, any>(functions, 'generateTestDelivery');
+    const result = await generateTest({});
+    return result.data;
+  } catch (err: any) {
+    console.error('generateTestDelivery Error:', err);
+    throw err;
+  }
+}
+
+export async function forceAssignRiders(vendorId?: string, slot?: string): Promise<any> {
+  try {
+    const assignFn = httpsCallable<any, any>(functions, 'assignRiderTrips');
+    const result = await assignFn({ vendorId, slot });
+    return result.data;
+  } catch (err: any) {
+    console.error('forceAssignRiders Error:', err);
+    throw err;
+  }
+}
+
+export async function forceFormBatches(): Promise<{ success: boolean; batchesCreated: number, debugStr?: string }> {
+  try {
+    const todayStr = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+    
+    // Instead of querying strictly by `date`, we fetch orders that need batching
+    // (i.e. not delivered, not failed, and typically missing a batch_id).
+    // We'll query orders that are 'created', 'preparing', or 'vendor_ready'
+    const q1 = query(collection(db, 'orders'), where('status', '==', 'created'));
+    const q2 = query(collection(db, 'orders'), where('status', '==', 'preparing'));
+    const q3 = query(collection(db, 'orders'), where('status', '==', 'vendor_ready'));
+    
+    const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+    
+    const allDocs = [...snap1.docs, ...snap2.docs, ...snap3.docs];
+    
+    if (allDocs.length === 0) {
+      return { success: true, batchesCreated: 0, debugStr: `No eligible unbatched orders found for date ${todayStr}` };
+    }
+
+    const vendorOrders = new Map<string, any[]>();
+    let unbatchedCount = 0;
+    
+    allDocs.forEach(doc => {
+      const order = doc.data();
+      // Only batch orders that don't already have a valid batch
+      if (!order.batch_id || order.batch_id.trim() === '') {
+        unbatchedCount++;
+        const vId = order.vendor_id || order.vendorId;
+        if (vId) {
+          if (!vendorOrders.has(vId)) vendorOrders.set(vId, []);
+          vendorOrders.get(vId)!.push({ id: doc.id, ...order });
+        }
+      }
+    });
+
+    if (unbatchedCount === 0) {
+       return { success: true, batchesCreated: 0, debugStr: `Found ${allDocs.length} active orders, but all already have a batch_id!` };
+    }
+
+    const batch = writeBatch(db);
+    let batchesCreated = 0;
+
+    for (const [vendorId, orders] of Array.from(vendorOrders.entries())) {
+      const slot = orders[0].delivery_slot || '11am';
+      const batchId = `BATCH-${vendorId}-${todayStr}-${slot}-${Date.now()}`;
+      const batchRef = doc(db, 'batches', batchId);
+      
+      const orderIds = orders.map(o => o.id);
+      
+      batch.set(batchRef, {
+        id: batchId,
+        vendor_id: vendorId,
+        date: todayStr,
+        slot: slot,
+        order_ids: orderIds,
+        status: 'notified',
+        total_count: orderIds.length,
+        last_notified_count: orderIds.length,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+
+      orders.forEach(o => {
+        const orderRef = doc(db, 'orders', o.id);
+        batch.update(orderRef, {
+          batch_id: batchId,
+          // If they were already vendor_ready, keep them vendor_ready, otherwise vendor_notified
+          status: o.status === 'vendor_ready' ? 'vendor_ready' : 'vendor_notified',
+          updated_at: serverTimestamp()
+        });
+      });
+      batchesCreated++;
+    }
+
+    await batch.commit();
+    return { success: true, batchesCreated, debugStr: `Batched ${unbatchedCount} orders into ${batchesCreated} batches.` };
+  } catch (err: any) {
+    console.error('forceFormBatches Error:', err);
+    throw err;
+  }
+}
+
 
 // ==========================================
 // USER: CANCEL SCHEDULED TIFFIN (SKIP DAY)
 // ==========================================
 export async function cancelScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; creditsEarned: number }> {
-  const deliveryRef = doc(db, 'orders', delivery.id);
-  
-  const snap = await getDoc(deliveryRef);
-  if (!snap.exists()) throw new Error('Order not found.');
-  const data = snap.data() as any;
+  // Try canonical orders first
+  let deliveryRef = doc(db, 'orders', delivery.id);
+  let snap = await getDoc(deliveryRef);
+  let isLegacy = false;
+
+  if (!snap.exists()) {
+    // Try legacy delivery_orders
+    const legacyRef = doc(db, 'delivery_orders', delivery.id);
+    snap = await getDoc(legacyRef);
+    if (snap.exists()) {
+      deliveryRef = legacyRef;
+      isLegacy = true;
+    }
+  }
+
+  let data: any = {};
+  let isNewProjected = false;
+
+  if (!snap.exists()) {
+    if (delivery.isProjected) {
+      // It's a projected order that doesn't exist yet, so we create it as skipped.
+      isNewProjected = true;
+      deliveryRef = doc(collection(db, 'orders')); // Create in canonical collection
+      data = {
+        ...delivery,
+        id: deliveryRef.id,
+        user_id: userId,
+        customerId: userId,
+        status: 'pending',
+        createdAt: delivery.createdAt || serverTimestamp(),
+        created_at: delivery.createdAt || serverTimestamp(),
+      };
+    } else {
+      throw new Error('Order not found.');
+    }
+  } else {
+    data = snap.data() as any;
+  }
+
   if (data.user_id && data.user_id !== userId) throw new Error('Unauthorized.');
+  if (data.customerId && data.customerId !== userId) throw new Error('Unauthorized.');
   
-  const currentStatus = data.status;
+  const currentStatus = data.status || 'scheduled';
   const batchId = data.batch_id;
-  const scheduledSlot = data.delivery_slot;
+  // Normalize scheduled slot (support both code paths: scheduledSlot or delivery_slot)
+  const scheduledSlot = data.scheduledSlot || data.delivery_slot || delivery.scheduledSlot || delivery.delivery_slot;
 
   if (['swapped_out', 'swapped_in', 'skipped', 'picked_up', 'out_for_delivery', 'delivered', 'completed', 'failed'].includes(currentStatus)) {
     throw new Error(`Cannot skip delivery in status: ${currentStatus}`);
@@ -624,8 +835,19 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
 
   const now = new Date();
   let deliveryDate = new Date();
+  
+  // Extract delivery date robustly
   if (data.date) {
-    deliveryDate = new Date(data.date);
+    // If it's a date string, handle timezone safely by appending time
+    deliveryDate = typeof data.date === 'string' && data.date.length === 10 
+      ? new Date(data.date + 'T00:00:00') 
+      : new Date(data.date);
+  } else if (data.createdAt?.toDate) {
+    deliveryDate = data.createdAt.toDate();
+  } else if (data.created_at?.toDate) {
+    deliveryDate = data.created_at.toDate();
+  } else if (delivery.createdAt?.toDate) {
+    deliveryDate = delivery.createdAt.toDate();
   }
   
   if (scheduledSlot === '8am') {
@@ -634,7 +856,10 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
     deliveryDate.setHours(11, 0, 0, 0);
   } else if (scheduledSlot === '8pm') {
     deliveryDate.setHours(20, 0, 0, 0);
+  } else if (scheduledSlot === '13' || scheduledSlot === '1pm' || scheduledSlot === 'lunch') {
+    deliveryDate.setHours(13, 0, 0, 0);
   } else {
+    // default to 13:00 for lunch-like slots
     deliveryDate.setHours(13, 0, 0, 0);
   }
 
@@ -649,11 +874,14 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
   // Tiered credit logic: 0.5 before 12hrs, 0.2 after, no hard cutoff (if batched, allowed up to delivery)
   let creditsEarned = hoursRemaining >= 12 ? 0.5 : 0.2;
 
+  // Use the original delivery.id (projected ids) as the source_reference if available so undo/lookup can match UI-projected skips
+  const sourceRefId = delivery?.id || deliveryRef.id;
+
   await awardUserCredit({
     user_id: userId,
     credit_amount: creditsEarned,
     source: 'cancellation',
-    source_reference_id: deliveryRef.id,
+    source_reference_id: sourceRefId,
   });
 
   // Handle Batch logic if order was locked
@@ -674,10 +902,22 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
     }
   }
 
-  await updateDoc(deliveryRef, {
-    status: 'skipped',
-    updated_at: serverTimestamp()
-  });
+  if (isNewProjected) {
+    await setDoc(deliveryRef, {
+      ...data,
+      status: 'skipped',
+      updatedAt: serverTimestamp(),
+      date: delivery.date,
+      // Store both naming conventions for compatibility with front-end and legacy code
+      delivery_slot: scheduledSlot,
+      scheduledSlot: scheduledSlot,
+    });
+  } else {
+    await updateDoc(deliveryRef, {
+      status: 'skipped',
+      updatedAt: serverTimestamp()
+    });
+  }
   
   // Create OrderStatusLog
   const logRef = doc(collection(db, 'order_status_logs'));
@@ -696,11 +936,24 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
 }
 
 export async function undoSkipScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; mode: 'credit' | 'day' }> {
-  const deliveryRef = doc(db, 'orders', delivery.id);
-  const snap = await getDoc(deliveryRef);
-  if (!snap.exists()) throw new Error('Order not found.');
+  // Try canonical orders first
+  let deliveryRef = doc(db, 'orders', delivery.id);
+  let snap = await getDoc(deliveryRef);
+
+  if (!snap.exists()) {
+    // Try legacy delivery_orders
+    const legacyRef = doc(db, 'delivery_orders', delivery.id);
+    snap = await getDoc(legacyRef);
+    if (snap.exists()) {
+      deliveryRef = legacyRef;
+    } else {
+      throw new Error('Order not found.');
+    }
+  }
+  
   const data = snap.data() as any;
   if (data.user_id && data.user_id !== userId) throw new Error('Unauthorized.');
+  if (data.customerId && data.customerId !== userId) throw new Error('Unauthorized.');
 
   if (data.status !== 'skipped') {
     throw new Error(`Order is not skipped. Current status: ${data.status}`);
@@ -708,26 +961,48 @@ export async function undoSkipScheduledTiffin(delivery: any, userId: string): Pr
 
   // ── Time constraint: only block if delivery time has already passed ────────
   const now = new Date();
-  let baseDate = data.date ? new Date(data.date) : now;
+  let deliveryMoment = new Date();
   
-  const deliveryMoment = new Date(baseDate);
-  if (data.delivery_slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
-  else if (data.delivery_slot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
-  else if (data.delivery_slot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
+  if (data.date) {
+    deliveryMoment = typeof data.date === 'string' && data.date.length === 10
+      ? new Date(data.date + 'T00:00:00')
+      : new Date(data.date);
+  } else if (data.createdAt?.toDate) {
+    deliveryMoment = data.createdAt.toDate();
+  } else if (data.created_at?.toDate) {
+    deliveryMoment = data.created_at.toDate();
+  } else if (delivery.createdAt?.toDate) {
+    deliveryMoment = delivery.createdAt.toDate();
+  }
+  
+  const scheduledSlot = data.scheduledSlot || data.delivery_slot || delivery.scheduledSlot || delivery.delivery_slot;
+  if (scheduledSlot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+  else if (scheduledSlot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
+  else if (scheduledSlot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
+  else if (scheduledSlot === '13' || scheduledSlot === '1pm' || scheduledSlot === 'lunch') deliveryMoment.setHours(13, 0, 0, 0);
   else deliveryMoment.setHours(13, 0, 0, 0);
 
   if (deliveryMoment.getTime() < now.getTime()) {
     throw new Error('Cannot undo a skip — the delivery time has already passed.');
   }
 
-  // ── Fetch ALL user credit docs ─────────────────────────────────────────────
+  // 1. Fetch unredeemed credits OUTSIDE transaction
+  const q = query(
+    collection(db, 'user_credits'),
+    where('user_id', '==', userId),
+    where('redeemed', '==', false)
+  );
+  const unredeemedSnap = await getDocs(q);
+  const candidateRefs = unredeemedSnap.docs.map(d => d.ref);
+
+  // 2. Fetch the specific credit awarded for this skip
   const allCreditsSnap = await getDocs(
     query(collection(db, 'user_credits'), where('user_id', '==', userId))
   );
 
   let skipCreditDoc = allCreditsSnap.docs.find(d => d.data().source_reference_id === delivery.id) ?? null;
   if (!skipCreditDoc) {
-    const deliveryDateStr = baseDate.toLocaleDateString('en-CA');
+    const deliveryDateStr = deliveryMoment.toLocaleDateString('en-CA');
     skipCreditDoc = allCreditsSnap.docs.find(d => {
       const cData = d.data();
       if (cData.source !== 'cancellation') return false;
@@ -737,51 +1012,58 @@ export async function undoSkipScheduledTiffin(delivery: any, userId: string): Pr
     }) ?? null;
   }
 
-  const totalAvailableCredits = allCreditsSnap.docs.reduce((sum, d) => {
-    const cData = d.data();
-    if (cData.redeemed === true) return sum;
-    return sum + (cData.credit_amount ?? 0);
-  }, 0);
-
-  const useCredit = totalAvailableCredits >= 0.5;
-  let creditDocToDelete = skipCreditDoc && skipCreditDoc.data().redeemed !== true
-    ? skipCreditDoc
-    : allCreditsSnap.docs.find(d => d.data().redeemed !== true && d.data().credit_amount === 0.5) ?? null;
+  const creditsToRepay = skipCreditDoc ? (skipCreditDoc.data().credit_amount || 0.5) : 0.5;
 
   const subId = data.subscription_id ?? null;
   let subRef: ReturnType<typeof doc> | null = null;
 
-  if (!useCredit) {
-    if (subId) {
-      const directSnap = await getDocs(
-        query(collection(db, 'subscriptions'),
-          where('user_id', '==', userId),
-          where('status', '==', 'active'))
-      );
-      const matchedDoc = directSnap.docs.find(d => d.id === subId) ?? directSnap.docs[0] ?? null;
-      if (matchedDoc) subRef = matchedDoc.ref;
-    }
-    if (!subRef) {
-      const subSnap = await getDocs(
-        query(collection(db, 'subscriptions'),
-          where('user_id', '==', userId),
-          where('status', '==', 'active'))
-      );
-      if (!subSnap.empty) subRef = subSnap.docs[0].ref;
-    }
+  if (subId) {
+    const directSnap = await getDocs(
+      query(collection(db, 'subscriptions'),
+        where('user_id', '==', userId),
+        where('status', '==', 'active'))
+    );
+    const matchedDoc = directSnap.docs.find(d => d.id === subId) ?? directSnap.docs[0] ?? null;
+    if (matchedDoc) subRef = matchedDoc.ref;
+  }
+  if (!subRef) {
+    const subSnap = await getDocs(
+      query(collection(db, 'subscriptions'),
+        where('user_id', '==', userId),
+        where('status', '==', 'active'))
+    );
+    if (!subSnap.empty) subRef = subSnap.docs[0].ref;
   }
 
+  let mode: 'credit' | 'day' = 'credit';
+
   await runTransaction(db, async (transaction) => {
+    // Fetch fresh data inside transaction
+    const creditDocs = [];
+    let totalUnredeemed = 0;
+    
+    for (const ref of candidateRefs) {
+      const docSnap = await transaction.get(ref);
+      if (docSnap.exists() && docSnap.data().redeemed === false) {
+        const docData = docSnap.data();
+        creditDocs.push({ ref, data: docData });
+        totalUnredeemed += docData.credit_amount;
+      }
+    }
+
+    const useCredit = totalUnredeemed >= creditsToRepay;
+    mode = useCredit ? 'credit' : 'day';
+
     let subData: Record<string, any> | null = null;
     if (subRef) {
       const subSnap = await transaction.get(subRef);
       if (subSnap.exists()) subData = subSnap.data();
     }
 
-    const newStatus = data.batch_id ? 'vendor_ready' : 'created';
+    const newStatus = data.batch_id ? 'vendor_ready' : 'pending';
     transaction.update(deliveryRef, {
       status: newStatus,
-      updated_at: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
     
     const logRef = doc(collection(db, 'order_status_logs'));
@@ -795,10 +1077,9 @@ export async function undoSkipScheduledTiffin(delivery: any, userId: string): Pr
     });
 
     if (useCredit) {
-      if (creditDocToDelete) transaction.delete(creditDocToDelete.ref);
+      const consumed = consumeUserCreditsTx(transaction, creditsToRepay, creditDocs);
+      if (!consumed) throw new Error("Insufficient credits during transaction.");
     } else {
-      if (skipCreditDoc) transaction.delete(skipCreditDoc.ref);
-
       if (subRef && subData) {
         let nextBilling: Date = subData.next_billing_date?.toDate?.() ?? null;
         if (!nextBilling) {
@@ -814,21 +1095,23 @@ export async function undoSkipScheduledTiffin(delivery: any, userId: string): Pr
           updated_at: serverTimestamp(),
         });
 
-        const refundRef = doc(collection(db, 'user_credits'));
-        transaction.set(refundRef, {
-          user_id: userId,
-          source: 'cancel_skip_refund',
-          credit_amount: 0.5,
-          redeemed: false,
-          created_at: serverTimestamp(),
-          source_reference_id: delivery.id,
-        });
+        if (1 - creditsToRepay > 0) {
+          const refundRef = doc(collection(db, 'user_credits'));
+          transaction.set(refundRef, {
+            user_id: userId,
+            source: 'cancel_skip_refund',
+            credit_amount: 1 - creditsToRepay,
+            redeemed: false,
+            created_at: serverTimestamp(),
+            source_reference_id: delivery.id,
+          });
+        }
       }
     }
   });
 
-  await createAuditLog('undo_skip', userId, undefined, useCredit ? -0.5 : 0.5, { orderId: delivery.id });
-  return { success: true, mode: useCredit ? 'credit' : 'day' };
+  await createAuditLog('undo_skip', userId, undefined, mode === 'credit' ? -creditsToRepay : (1 - creditsToRepay), { orderId: delivery.id });
+  return { success: true, mode };
 }
 
 /**

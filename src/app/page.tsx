@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import type { UserRole } from '@/types';
 import { Capacitor } from '@capacitor/core';
-import { DabzoLoadingScreen } from '@/components/ui/loading';
+import { DabzzoLoadingScreen } from '@/components/ui/loading';
 
 const ROLE_DASHBOARDS: Record<UserRole, string> = {
   admin: '/admin/dashboard',
@@ -39,5 +39,5 @@ export default function RootRedirect() {
   }, [user, isHydrated, router]);
 
   // Show a simple loading state while figuring out where to route them
-  return <DabzoLoadingScreen />;
+  return <DabzzoLoadingScreen />;
 }

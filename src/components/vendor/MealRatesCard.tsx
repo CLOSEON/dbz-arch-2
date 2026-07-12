@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { updateUser } from '@/lib/queries/users';
-import { IndianRupee, TrendingUp, Clock, RotateCcw, Calendar } from 'lucide-react';
+import { IndianRupee, TrendingUp, Clock, RotateCcw, Calendar, Loader2, Sparkles } from 'lucide-react';
 
 export function MealRatesCard() {
   const user     = useAuthStore((s) => s.user);
@@ -54,36 +54,36 @@ export function MealRatesCard() {
   }
 
   const subRows = [
-    { label: '☀️  Lunch',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
-    { label: '🌙  Dinner',        weekly: 'dinner_weekly', monthly: 'dinner_monthly' },
-    { label: '🍱  Lunch + Dinner', weekly: 'both_weekly',  monthly: 'both_monthly'   },
+    { label: '☀️ Lunch Plan',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
+    { label: '🌙 Dinner Plan',        weekly: 'dinner_weekly', monthly: 'dinner_monthly' },
+    { label: '🍱 Combo Plan (Both)',  weekly: 'both_weekly',  monthly: 'both_monthly'   },
   ] as const;
 
   return (
-    <div className="card space-y-6">
+    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-card space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+      <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
           <IndianRupee className="w-5 h-5" />
         </div>
         <div>
-          <h3 className="text-lg font-bold text-slate-900 leading-none">Pricing Plans</h3>
-          <p className="text-xs font-medium text-slate-400 mt-1.5">Set rates for each plan type</p>
+          <h3 className="text-lg font-black text-slate-900 leading-none">Subscription Pricing Plans</h3>
+          <p className="text-xs font-semibold text-slate-400 mt-1.5">Set meal rates for single and repeat subscriptions</p>
         </div>
       </div>
 
       {/* ── One-time ── */}
-      <div>
+      <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100/50">
         <div className="flex items-center gap-2 mb-3">
-          <Clock className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">One-time</span>
-          <span className="text-[10px] text-slate-400 font-medium ml-1">· flat price per meal</span>
+          <Clock className="w-4 h-4 text-slate-400" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Trial Meal Rate</span>
+          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-slate-100">One-Time Trial</span>
         </div>
-        <div className="relative max-w-[180px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">₹</span>
+        <div className="relative max-w-[200px]">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm pointer-events-none">₹</span>
           <input
             type="number" min="0"
-            className="input text-center pl-7 py-3 text-lg font-bold"
+            className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-8 pr-4 text-center text-lg font-extrabold text-slate-900 focus:outline-none focus:border-brand/40"
             placeholder="0"
             value={rates.onetime || ''}
             onChange={(e) => set('onetime', e.target.value)}
@@ -91,37 +91,36 @@ export function MealRatesCard() {
         </div>
       </div>
 
-      <div className="h-px bg-slate-100" />
-
       {/* ── Subscription Plans ── */}
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
-          Subscription Plans
-        </p>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-400" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Subscription Rate Cards</span>
+        </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-3 gap-2 mb-2">
+        <div className="grid grid-cols-[1.1fr_0.9fr_0.9fr] gap-3 mb-1 px-1">
           <div />
-          <div className="flex items-center justify-center gap-1.5">
+          <div className="flex items-center justify-center gap-1">
             <RotateCcw className="w-3 h-3 text-slate-400" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Weekly</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Weekly (₹)</span>
           </div>
-          <div className="flex items-center justify-center gap-1.5">
+          <div className="flex items-center justify-center gap-1">
             <Calendar className="w-3 h-3 text-slate-400" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Monthly</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Monthly (₹)</span>
           </div>
         </div>
 
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {subRows.map(({ label, weekly, monthly }) => (
-            <div key={weekly} className="grid grid-cols-3 gap-2 items-center">
-              <span className="text-xs font-bold text-slate-700 leading-tight">{label}</span>
+            <div key={weekly} className="grid grid-cols-[1.1fr_0.9fr_0.9fr] gap-3 items-center bg-slate-50/20 hover:bg-slate-50/50 p-2 rounded-2xl border border-slate-100 transition-colors">
+              <span className="text-xs font-black text-slate-800 leading-tight pl-1">{label}</span>
               {[weekly, monthly].map((field) => (
                 <div key={field} className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold pointer-events-none">₹</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-black pointer-events-none">₹</span>
                   <input
                     type="number" min="0"
-                    className="input text-center pl-5 pr-1 py-2.5 text-sm w-full"
+                    className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-6 pr-2 text-center text-xs font-extrabold text-slate-900 focus:outline-none focus:border-brand/40 focus:shadow-sm"
                     placeholder="0"
                     value={rates[field as keyof typeof rates] || ''}
                     onChange={(e) => set(field as keyof typeof rates, e.target.value)}
@@ -136,12 +135,14 @@ export function MealRatesCard() {
       <button
         onClick={handleSave}
         disabled={loading}
-        className="w-full btn-primary py-4 h-auto text-sm shadow-xl shadow-brand/20"
+        className="w-full py-4 bg-brand text-white text-xs font-black uppercase tracking-widest rounded-2xl transition-colors active:scale-95 shadow-lg shadow-brand/20 disabled:opacity-50 flex items-center justify-center gap-2"
       >
-        <div className="flex items-center justify-center gap-2">
-          {!loading && <TrendingUp className="w-4 h-4" />}
-          {loading ? 'Saving…' : 'Save Pricing Plans'}
-        </div>
+        {loading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <TrendingUp className="w-3.5 h-3.5" />
+        )}
+        {loading ? 'Saving rates...' : 'Save Pricing Plans'}
       </button>
     </div>
   );

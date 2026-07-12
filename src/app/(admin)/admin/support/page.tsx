@@ -44,7 +44,7 @@ export default function AdminSupport() {
         selectedTicket.id,
         {
           from_role: 'admin',
-          from_name: 'Dabzo Admin',
+          from_name: 'Dabzzo Admin',
           message: replyText.trim(),
         },
         selectedTicket.replies
@@ -54,7 +54,7 @@ export default function AdminSupport() {
       // Update local state
       const updatedTickets = tickets.map(t => 
         t.id === selectedTicket.id 
-          ? { ...t, status: 'in_progress' as TicketStatus, replies: [...t.replies, { from_role: 'admin' as UserRole, from_name: 'Dabzo Admin', message: replyText.trim(), timestamp: { seconds: Date.now()/1000, nanoseconds: 0 } as any }] }
+          ? { ...t, status: 'in_progress' as TicketStatus, replies: [...t.replies, { from_role: 'admin' as UserRole, from_name: 'Dabzzo Admin', message: replyText.trim(), timestamp: { seconds: Date.now()/1000, nanoseconds: 0 } as any }] }
           : t
       );
       setTickets(updatedTickets);

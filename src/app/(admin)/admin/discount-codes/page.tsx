@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/utils';
 import { useUiStore } from '@/store/uiStore';
 import { getAllUsers } from '@/lib/queries/users';
 import { createDiscountCode } from '@/lib/queries/discounts';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 export default function AdminDiscountCodesPage() {
   const [codes, setCodes] = useState<DiscountCode[]>([]);
@@ -21,6 +22,21 @@ export default function AdminDiscountCodesPage() {
   const [newCode, setNewCode] = useState('');
   const [discountPct, setDiscountPct] = useState('');
   const [targetVendor, setTargetVendor] = useState('global');
+
+  // Custom confirmation dialog state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     loadData();
@@ -71,14 +87,23 @@ export default function AdminDiscountCodesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Permanently delete this discount code?')) return;
-    try {
-      await deleteDoc(doc(db, 'discount_codes', id));
-      setCodes(codes.filter(c => c.id !== id));
-      addToast('Code deleted successfully', 'info');
-    } catch (err) {
-      addToast('Failed to delete code', 'error');
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Discount Code?',
+      message: 'Are you sure you want to permanently delete this discount code? Users will no longer be able to apply it to subscriptions.',
+      confirmLabel: 'Delete Code',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await deleteDoc(doc(db, 'discount_codes', id));
+          setCodes(codes.filter(c => c.id !== id));
+          addToast('Code deleted successfully', 'info');
+        } catch (err) {
+          addToast('Failed to delete code', 'error');
+        }
+      }
+    });
   }
 
   const getVendorName = (id?: string) => {
@@ -204,6 +229,16 @@ export default function AdminDiscountCodesPage() {
           ))
         )}
       </div>
+      {/* Custom Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        variant={confirmConfig.variant}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

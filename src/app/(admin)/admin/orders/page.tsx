@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, limit, orderBy, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { 
   Package, Search, Clock, ArrowRightLeft, ShieldAlert, X,
   MapPin, Loader2, User, UserCheck, Calendar, Activity, CheckCircle
@@ -11,6 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import { Order, OrderStatusLog, Batch } from '@/types';
 import type { RiderTrip } from '@/types/delivery';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 export default function AdminOrdersTrackingPage() {
   const { user, isHydrated } = useAuthStore();
@@ -23,6 +24,87 @@ export default function AdminOrdersTrackingPage() {
   const [batch, setBatch] = useState<Batch | null>(null);
   const [riderTrip, setRiderTrip] = useState<RiderTrip | null>(null);
   const [relatedRecords, setRelatedRecords] = useState<any[]>([]);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [isLoadingActive, setIsLoadingActive] = useState(true);
+
+  // Custom confirmation dialog state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+    
+    const fetchActiveOrders = async () => {
+      setIsLoadingActive(true);
+      try {
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const q = query(collection(db, 'orders'), where('date', '==', todayStr));
+        const snap = await getDocs(q);
+        const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Order);
+        
+        // Filter out completed/cancelled to show only "ongoing"
+        const ongoing = allOrders.filter(o => !['delivered', 'failed', 'cancelled', 'skipped'].includes(o.status));
+        setActiveOrders(ongoing.sort((a, b) => (b.id || '').localeCompare(a.id || '')));
+      } catch (err) {
+        console.error('Failed to load active orders', err);
+      } finally {
+        setIsLoadingActive(false);
+      }
+    };
+    
+    fetchActiveOrders();
+  }, [user]);
+
+  const forceStatusUpdate = async (newStatus: string) => {
+    if (!order) return;
+
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Force Status Update?',
+      message: `Are you sure you want to force change this order status from "${order.status}" to "${newStatus}"? This alters delivery pipeline metrics.`,
+      confirmLabel: 'Force Update',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        const toastId = toast.loading('Forcing status update...');
+        try {
+          await updateDoc(doc(db, 'orders', order.id), {
+            status: newStatus,
+            updated_at: serverTimestamp()
+          });
+          
+          const logRef = doc(collection(db, 'order_status_logs'));
+          await setDoc(logRef, {
+            id: logRef.id,
+            order_id: order.id,
+            from_status: order.status,
+            to_status: newStatus,
+            actor: user?.id || 'admin',
+            timestamp: serverTimestamp()
+          });
+          toast.success('Status forced successfully', { id: toastId });
+          
+          // Refresh current search
+          if (searchQuery === order.id) {
+            handleSearch();
+          }
+        } catch (err: any) {
+          toast.error('Failed to force status: ' + err.message, { id: toastId });
+        }
+      }
+    });
+  };
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -42,7 +124,7 @@ export default function AdminOrdersTrackingPage() {
         return;
       }
       
-      const orderData = orderSnap.data() as Order;
+      const orderData = { id: orderSnap.id, ...orderSnap.data() } as Order;
       setOrder(orderData);
       toast.success('Order found', { id: toastId });
 
@@ -62,7 +144,7 @@ export default function AdminOrdersTrackingPage() {
       if (orderData.batch_id) {
         const batchSnap = await getDoc(doc(db, 'batches', orderData.batch_id));
         if (batchSnap.exists()) {
-          setBatch(batchSnap.data() as Batch);
+          setBatch({ id: batchSnap.id, ...batchSnap.data() } as Batch);
         }
       } else {
         setBatch(null);
@@ -72,7 +154,7 @@ export default function AdminOrdersTrackingPage() {
       if (orderData.rider_trip_id) {
         const tripSnap = await getDoc(doc(db, 'rider_trips', orderData.rider_trip_id));
         if (tripSnap.exists()) {
-          setRiderTrip(tripSnap.data() as RiderTrip);
+          setRiderTrip({ id: tripSnap.id, ...tripSnap.data() } as RiderTrip);
         }
       } else {
         setRiderTrip(null);
@@ -139,9 +221,33 @@ export default function AdminOrdersTrackingPage() {
       </div>
 
       {!order && !isSearching && (
-        <div className="bg-slate-50 border border-slate-100 rounded-3xl p-12 text-center text-slate-400">
-          <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
-          <p className="text-sm font-bold text-slate-500">Enter a specific order ID to view its full lifecycle</p>
+        <div className="space-y-6">
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-12 text-center text-slate-400">
+            <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
+            <p className="text-sm font-bold text-slate-500">Enter a specific order ID to view its full lifecycle, or select an ongoing order below.</p>
+          </div>
+          
+          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+            <h3 className="text-lg font-black text-slate-900 mb-4">Ongoing Orders (Today)</h3>
+            {isLoadingActive ? (
+              <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+            ) : activeOrders.length === 0 ? (
+              <p className="text-sm text-slate-500 italic text-center p-4">No ongoing orders currently.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {activeOrders.map(o => (
+                  <div key={o.id} onClick={() => { setSearchQuery(o.id); setTimeout(() => document.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })), 100); }} className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl cursor-pointer transition-colors">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-black text-slate-800">{o.id}</p>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-brand">{o.status.replace(/_/g, ' ')}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-bold truncate">Vendor: {o.vendor_id || 'Unassigned'}</p>
+                    <p className="text-[10px] text-slate-500 font-bold truncate">Customer: {o.user_id}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -160,9 +266,29 @@ export default function AdminOrdersTrackingPage() {
                     <Calendar className="w-3 h-3" /> {order.date} • {order.delivery_slot} • {order.meal_type}
                   </p>
                 </div>
-                <span className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-800">
-                  {order.status.replace(/_/g, ' ')}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-800">
+                    {order.status.replace(/_/g, ' ')}
+                  </span>
+                  <select 
+                    className="text-[10px] font-bold bg-white border border-slate-200 rounded p-1 text-slate-600 outline-none"
+                    value={order.status}
+                    onChange={(e) => forceStatusUpdate(e.target.value)}
+                  >
+                    <option value={order.status} disabled>Force Change Status</option>
+                    <option value="pending">pending</option>
+                    <option value="vendor_notified">vendor_notified</option>
+                    <option value="vendor_preparing">vendor_preparing</option>
+                    <option value="vendor_ready">vendor_ready</option>
+                    <option value="rider_assigned">rider_assigned</option>
+                    <option value="rider_en_route_pickup">rider_en_route_pickup</option>
+                    <option value="picked_up">picked_up</option>
+                    <option value="out_for_delivery">out_for_delivery</option>
+                    <option value="delivered">delivered</option>
+                    <option value="failed">failed</option>
+                    <option value="cancelled">cancelled</option>
+                  </select>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -176,7 +302,9 @@ export default function AdminOrdersTrackingPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Delivery Address</p>
-                  <p className="mt-1.5 text-xs font-medium text-slate-600 line-clamp-2">{order.delivery_address}</p>
+                  <p className="mt-1.5 text-xs font-medium text-slate-600 line-clamp-2">
+                    {typeof order.delivery_address === 'object' ? (order.delivery_address as any)?.line1 : order.delivery_address || (order as any).address?.line1 || 'No address provided'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -262,6 +390,16 @@ export default function AdminOrdersTrackingPage() {
           </div>
         </div>
       )}
+      {/* Custom Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        variant={confirmConfig.variant}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

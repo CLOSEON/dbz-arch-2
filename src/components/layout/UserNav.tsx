@@ -43,18 +43,18 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5',
                 active 
                   ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
                   : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
               )}
             >
               {active && (
-                <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full" />
+                <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full pulse-ring" />
               )}
               <div className={cn(
                 "transition-all duration-300",
-                active ? "text-brand" : "text-slate-400 group-hover:text-slate-600"
+                active ? "text-brand scale-110" : "text-slate-400 group-hover:scale-110 group-hover:text-slate-600"
               )}>
                 <item.icon className="h-5 w-5" strokeWidth={2.4} />
               </div>
@@ -79,11 +79,11 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1 transition-all duration-200 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
-                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
+                'group flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
+                active ? 'text-brand -translate-y-1' : 'text-slate-400 hover:-translate-y-0.5 hover:text-slate-600'
               )}
             >
-              <item.icon className="h-5 w-5" strokeWidth={2.4} />
+              <item.icon className={cn('h-5 w-5 transition-transform duration-300', active ? 'scale-110' : 'group-hover:scale-110')} strokeWidth={2.4} />
               <span className={cn(
                 'text-[10px] font-black uppercase tracking-[0.08em] transition-opacity duration-200',
                 active ? 'opacity-100' : 'opacity-60'

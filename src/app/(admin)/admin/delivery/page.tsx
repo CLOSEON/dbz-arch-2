@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subscribeToAllDriverLocations } from '@/lib/queries/delivery';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { 
   Users, 
   AlertTriangle, 
@@ -21,41 +21,10 @@ import toast from 'react-hot-toast';
 import type { DriverProfile, RiderTrip } from '@/types/delivery';
 import { riderPaymentConverter, RiderPayment } from '@/types/payout';
 import type { Order } from '@/types';
+import { MissedDeliveryModal } from '@/components/admin/MissedDeliveryModal';
 
 /* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
 declare global {
-  namespace google {
-    namespace maps {
-      interface Map {
-        panTo(latLng: { lat: number; lng: number }): void;
-        setZoom(zoom: number): void;
-      }
-      interface Marker {
-        setMap(map: Map | null): void;
-        setPosition(latLng: { lat: number; lng: number }): void;
-        addListener(event: string, handler: () => void): void;
-      }
-      interface InfoWindow {
-        setContent(content: string): void;
-        open(map: Map, marker: Marker): void;
-      }
-      class Map {
-        constructor(el: HTMLElement | null, options: unknown);
-      }
-      class Marker {
-        constructor(options: unknown);
-      }
-      class InfoWindow {
-        constructor();
-      }
-      var SymbolPath: {
-        CIRCLE: unknown;
-      };
-      var event: {
-        trigger(instance: unknown, eventName: string, ...args: unknown[]): void;
-      };
-    }
-  }
   interface Window {
     google?: typeof google;
     initGoogleMap?: () => void;
@@ -85,21 +54,22 @@ export default function AdminDeliveryOversightPage() {
   
   const [inactiveDriverAlerts, setInactiveDriverAlerts] = useState<DriverProfile[]>([]);
   const [pickUpAnomalyAlerts, setPickUpAnomalyAlerts] = useState<Order[]>([]);
+  const [resolveOrder, setResolveOrder] = useState<Order | null>(null);
 
   const selectedDriver = activeDrivers.find(d => d.uid === selectedDriverId) || null;
 
   // Payments
   useEffect(() => {
-    if (!user || user.role !== 'admin') return;
+    if (!isHydrated || !user || user.role !== 'admin') return;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'rider_payments').withConverter(riderPaymentConverter),
-      where('calculatedAt', '>=', startOfDay)
+      where('calculatedAt', '>=', Timestamp.fromDate(startOfDay))
     );
     const unsub = onSnapshot(q, snap => setPayments(snap.docs.map(d => d.data())));
     return () => unsub();
-  }, [user]);
+  }, [isHydrated, user]);
 
   // Anomalies
   useEffect(() => {
@@ -185,6 +155,7 @@ export default function AdminDeliveryOversightPage() {
 
   // Location listener & Marker updates
   useEffect(() => {
+    if (!isHydrated || !user || user.role !== 'admin') return;
     if (!isMapLoaded || !googleMapRef.current) return;
     const unsub = subscribeToAllDriverLocations((driversList) => {
       setActiveDrivers(driversList);
@@ -226,7 +197,7 @@ export default function AdminDeliveryOversightPage() {
       });
     });
     return () => unsub();
-  }, [isMapLoaded]);
+  }, [isMapLoaded, isHydrated, user]);
 
   // Data Listeners: Orders and RiderTrips for today
   useEffect(() => {
@@ -234,15 +205,15 @@ export default function AdminDeliveryOversightPage() {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const unsubOrders = onSnapshot(query(collection(db, 'orders'), where('date', '==', todayStr)), snap => {
-      setOrders(snap.docs.map(d => d.data() as Order));
-    });
+      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+    }, err => console.warn("Admin Orders listener error:", err.message));
 
     // RiderTrips don't have a 'date' field, but their assigned orders do, or we can just fetch active ones.
     // For simplicity, fetch all RiderTrips created since start of today.
     const start = new Date(); start.setHours(0,0,0,0);
-    const unsubTrips = onSnapshot(query(collection(db, 'rider_trips'), where('createdAt', '>=', start)), snap => {
+    const unsubTrips = onSnapshot(query(collection(db, 'rider_trips'), where('createdAt', '>=', Timestamp.fromDate(start))), snap => {
       setRiderTrips(snap.docs.map(d => ({ id: d.id, ...d.data() } as RiderTrip)));
-    });
+    }, err => console.warn("Admin Trips listener error:", err.message));
 
     return () => { unsubOrders(); unsubTrips(); };
   }, [isHydrated, user]);
@@ -271,9 +242,79 @@ export default function AdminDeliveryOversightPage() {
           <span className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">Security & Fleet</span>
           <h1 className="text-3xl font-black text-slate-900 mt-2">Logistics Oversight</h1>
         </div>
-        <button onClick={() => toast.success('Stats synced!')} className="h-10 px-4 bg-white border border-slate-100 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2">
-          <RefreshCw className="w-3 h-3" /> Force Sync
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={async () => {
+              try {
+                const { generateTestDeliveryFn } = await import('@/lib/queries/delivery');
+                toast.promise(generateTestDeliveryFn(), {
+                  loading: 'Generating test flow...',
+                  success: (res: any) => res.message || 'Test flow generated',
+                  error: 'Failed to generate test flow'
+                });
+              } catch (err: any) {
+                toast.error(err.message);
+              }
+            }} 
+            className="h-10 px-4 bg-purple-600 text-white border border-purple-500/10 hover:bg-purple-700 transition-colors rounded-xl text-xs font-bold shadow-sm flex items-center gap-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Gen. Test Flow (9900...)
+          </button>
+          <button 
+            onClick={async () => {
+              try {
+                const { generateTodayDeliveries } = await import('@/lib/queries/delivery');
+                toast.promise(generateTodayDeliveries(), {
+                  loading: 'Generating deliveries for today...',
+                  success: (res: any) => `Generated: ${res.created}, Skipped: ${res.skipped}`,
+                  error: 'Failed to generate deliveries'
+                });
+              } catch (err: any) {
+                toast.error(err.message);
+              }
+            }} 
+            className="h-10 px-4 bg-brand text-white border border-brand/10 hover:bg-brand/90 transition-colors rounded-xl text-xs font-bold shadow-sm flex items-center gap-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Generate Deliveries
+          </button>
+          <button 
+            onClick={async () => {
+              try {
+                const { forceFormBatches } = await import('@/lib/queries/delivery');
+                toast.promise(forceFormBatches(), {
+                  loading: 'Forming batches...',
+                  success: (res: any) => res.debugStr || `Batches created: ${res.batchesCreated}`,
+                  error: 'Failed to form batches'
+                });
+              } catch (err: any) {
+                toast.error(err.message);
+              }
+            }} 
+            className="h-10 px-4 bg-indigo-500 text-white border border-indigo-600 hover:bg-indigo-600 transition-colors rounded-xl text-xs font-bold shadow-sm flex items-center gap-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Form Batches
+          </button>
+          <button 
+            onClick={async () => {
+              try {
+                const { forceAssignRiders } = await import('@/lib/queries/delivery');
+                toast.promise(forceAssignRiders(), {
+                  loading: 'Assigning riders...',
+                  success: (res: any) => res.message || 'Riders assigned',
+                  error: 'Failed to assign riders'
+                });
+              } catch (err: any) {
+                toast.error(err.message);
+              }
+            }} 
+            className="h-10 px-4 bg-emerald-500 text-white border border-emerald-600 hover:bg-emerald-600 transition-colors rounded-xl text-xs font-bold shadow-sm flex items-center gap-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Assign Riders
+          </button>
+          <button onClick={() => toast.success('Stats synced!')} className="h-10 px-4 bg-white border border-slate-100 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2">
+            <RefreshCw className="w-3 h-3" /> Force Sync
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -339,6 +380,12 @@ export default function AdminDeliveryOversightPage() {
                           <span className="text-[9px] font-black uppercase text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded">Transit Lag</span>
                           <p className="text-xs font-black mt-2">Order {o.id.slice(-6)}</p>
                           <p className="text-[10px] text-slate-400">Picked up &gt; 60m ago.</p>
+                          <button 
+                            onClick={() => setResolveOrder(o)}
+                            className="mt-3 w-full bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-lg transition-colors"
+                          >
+                            Resolve Issue
+                          </button>
                         </div>
                       ))}
                     </>
@@ -363,9 +410,31 @@ export default function AdminDeliveryOversightPage() {
                           <span>Progress</span>
                           <span className="text-brand">{drvOrders.filter(o => o.status === 'delivered').length} / {drvOrders.length}</span>
                         </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-4">
                           <div className="h-full bg-brand transition-all" style={{ width: `${drvOrders.length ? (drvOrders.filter(o => o.status === 'delivered').length / drvOrders.length) * 100 : 0}%` }} />
                         </div>
+                        
+                        {/* List Active Orders for Reassignment */}
+                        {drvOrders.length > 0 && (
+                          <div className="mt-4 space-y-2 max-h-48 overflow-y-auto">
+                            {drvOrders.map(o => (
+                              <div key={o.id} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Order {o.id.slice(-4)}</p>
+                                  <p className="text-xs font-bold text-slate-700 mt-0.5">{o.status.replace(/_/g, ' ')}</p>
+                                </div>
+                                {o.status !== 'delivered' && (
+                                  <button
+                                    onClick={() => setResolveOrder(o)}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-[10px] font-black text-slate-600 rounded-lg shadow-sm hover:bg-slate-50 transition-colors"
+                                  >
+                                    Manage
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -375,6 +444,16 @@ export default function AdminDeliveryOversightPage() {
           </AnimatePresence>
         </div>
       </div>
+      
+      {resolveOrder && (
+        <MissedDeliveryModal
+          isOpen={!!resolveOrder}
+          onClose={() => setResolveOrder(null)}
+          order={resolveOrder as any}
+          activeDrivers={activeDrivers}
+          onSuccess={() => setResolveOrder(null)}
+        />
+      )}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export const useAuthStore = create<AuthState>()(
       setHydrated: () => set({ isHydrated: true }),
     }),
     {
-      name: 'dabzo-auth',
+      name: 'dabzzo-auth',
       // Only persist the user field
       partialize: (state) => ({ user: state.user }),
       onRehydrateStorage: () => (state) => {

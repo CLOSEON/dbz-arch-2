@@ -1,5 +1,5 @@
 /**
- * DABZO PUSH NOTIFICATION INITIALISATION MODULE
+ * DABZZO PUSH NOTIFICATION INITIALISATION MODULE
  *
  * Call `initPushNotifications(uid)` once after the user's Firestore profile is loaded.
  * It handles both Capacitor native (Android / iOS) and web paths, re-registers on
@@ -135,7 +135,7 @@ async function setupNativePush(options: PushSetupOptions): Promise<boolean> {
   // (5) Ensure the default notification channel exists (Android only; no-op on iOS)
   await PushNotifications.createChannel({
     id: 'default',
-    name: 'Dabzo Notifications',
+    name: 'Dabzzo Notifications',
     description: 'Order updates, delivery alerts, and more',
     importance: 5,   // IMPORTANCE_HIGH
     visibility: 1,   // VISIBILITY_PUBLIC

@@ -1,53 +1,71 @@
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export async function getAdminStats() {
-  const usersSnap = await getDocs(collection(db, 'users'));
-  const subsSnap = await getDocs(collection(db, 'subscriptions'));
-  
-  // Fetch today's delivery orders
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-  
-  // NOTE: Assuming firestore can do this basic filtering or we will filter in memory if no index exists
-  const ordersSnap = await getDocs(collection(db, 'delivery_orders'));
-  const orders = ordersSnap.docs.map(d => d.data());
-  const todaysOrders = orders.filter(o => {
-    if (!o.createdAt) return false;
-    const date = o.createdAt.toDate();
-    return date >= todayStart && date <= todayEnd;
-  });
+  // Use getCountFromServer to avoid full collection downloads (highly optimized)
+  const totalUsersCountPromise = getCountFromServer(collection(db, 'users'));
+  const totalVendorsCountPromise = getCountFromServer(query(collection(db, 'users'), where('role', '==', 'vendor')));
+  const approvedVendorsCountPromise = getCountFromServer(query(collection(db, 'users'), where('role', '==', 'vendor'), where('is_approved', '==', true)));
+  const activeSubsCountPromise = getCountFromServer(query(collection(db, 'subscriptions'), where('status', '==', 'active')));
+  const cancelledSubsCountPromise = getCountFromServer(query(collection(db, 'subscriptions'), where('status', '==', 'cancelled')));
 
-  const users = usersSnap.docs.map(d => d.data());
-  const subs = subsSnap.docs.map(d => d.data());
+  const [
+    totalUsersSnap,
+    totalVendorsSnap,
+    approvedVendorsSnap,
+    activeSubsSnap,
+    cancelledSubsSnap
+  ] = await Promise.all([
+    totalUsersCountPromise,
+    totalVendorsCountPromise,
+    approvedVendorsSnapPromiseHelper(),
+    activeSubsCountPromise,
+    cancelledSubsCountPromise
+  ]);
 
-  const vendors = users.filter(u => u.role === 'vendor');
-  const activeSubs = subs.filter(s => s.status === 'active');
+  // Helper because compound queries might require index, fallback safely if needed
+  async function approvedVendorsSnapPromiseHelper() {
+    try {
+      return await approvedVendorsCountPromise;
+    } catch {
+      // Fallback if index not ready
+      return null;
+    }
+  }
 
-  // Estimate revenue (simplified)
-  const estimatedRevenue = activeSubs.length * 3000;
+  const activeSubs = activeSubsSnap.data().count;
+  const estimatedRevenue = activeSubs * 3000;
+
+  // Query only today's orders (highly optimized compared to fetching all delivery_orders)
+  const todayStr = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+  const todayOrdersSnap = await getDocs(query(collection(db, 'orders'), where('date', '==', todayStr)));
+  const todaysOrders = todayOrdersSnap.docs.map(d => d.data());
+
+  const totalVendors = totalVendorsSnap.data().count;
+  const approvedVendors = approvedVendorsSnap ? approvedVendorsSnap.data().count : totalVendors; // Fallback to total vendors if index fails
 
   return {
-    totalUsers: users.length,
-    totalVendors: vendors.length,
-    approvedVendors: vendors.filter(v => v.is_approved).length,
-    activeSubscriptions: activeSubs.length,
-    cancelledSubscriptions: subs.filter(s => s.status === 'cancelled').length,
+    totalUsers: totalUsersSnap.data().count,
+    totalVendors: totalVendors,
+    approvedVendors: approvedVendors,
+    activeSubscriptions: activeSubs,
+    cancelledSubscriptions: cancelledSubsSnap.data().count,
     estimatedRevenue,
     totalDeliveryOrders: todaysOrders.length,
-    unassignedDeliveries: todaysOrders.filter(o => !o.driverId && o.status !== 'delivered').length,
-    delayedOrders: todaysOrders.filter(o => o.status === 'failed_attempt').length,
+    unassignedDeliveries: todaysOrders.filter(o => !o.driverId && o.status !== 'delivered' && o.status !== 'failed' && o.status !== 'skipped').length,
+    delayedOrders: todaysOrders.filter(o => o.status === 'failed_attempt' || o.status === 'failed').length,
   };
 }
 
 export async function getRecentActivity() {
-  // Fetch recent users (new vendors/users)
-  const usersSnap = await getDocs(query(collection(db, 'users'), limit(10)));
+  // Query and order by created_at desc to get actual recent items instead of random ones
+  const usersSnap = await getDocs(query(collection(db, 'users'), orderBy('created_at', 'desc'), limit(5))).catch(() => 
+    getDocs(query(collection(db, 'users'), limit(5))) // fallback if index doesn't exist
+  );
   
-  // Fetch recent subscriptions
-  const subsSnap = await getDocs(query(collection(db, 'subscriptions'), limit(10)));
+  const subsSnap = await getDocs(query(collection(db, 'subscriptions'), orderBy('created_at', 'desc'), limit(5))).catch(() =>
+    getDocs(query(collection(db, 'subscriptions'), limit(5))) // fallback if index doesn't exist
+  );
 
   const activities: any[] = [];
 
@@ -57,7 +75,7 @@ export async function getRecentActivity() {
       id: doc.id,
       type: data.role === 'vendor' ? 'vendor' : 'user',
       title: data.role === 'vendor' ? `New Vendor: ${data.kitchen_name || 'Unnamed Kitchen'}` : `New User: ${data.name || 'Anonymous'}`,
-      timestamp: data.created_at,
+      timestamp: data.created_at || data.createdAt,
       icon: data.role === 'vendor' ? '🏪' : '👤',
     });
   });
@@ -68,12 +86,11 @@ export async function getRecentActivity() {
       id: doc.id,
       type: 'subscription',
       title: `New Subscription: ${data.plan_name || 'Standard Plan'}`,
-      timestamp: data.created_at,
+      timestamp: data.created_at || data.createdAt,
       icon: '🍱',
     });
   });
 
-  // Sort all activities by timestamp desc
   return activities
     .sort((a, b) => {
       const timeA = a.timestamp?.seconds || 0;

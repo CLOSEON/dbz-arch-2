@@ -40,7 +40,7 @@ interface DeliveryMapProps {
   centerLng?: number;
 }
 
-export default function DeliveryMap({ markers, centerLat, centerLng }: DeliveryMapProps) {
+export default function DeliveryMap({ markers = [], centerLat, centerLng }: DeliveryMapProps) {
   if (typeof window === 'undefined') {
     return (
       <div className="flex h-64 items-center justify-center rounded-[1.5rem] border border-slate-100 bg-slate-50 px-4 text-center">

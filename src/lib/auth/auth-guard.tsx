@@ -1,5 +1,5 @@
 /**
- * DABZO AUTH GUARD — Role-Based Route Protection
+ * DABZZO AUTH GUARD — Role-Based Route Protection
  * 
  * Protects routes by checking:
  * 1. User is authenticated (redirects to /login if not)

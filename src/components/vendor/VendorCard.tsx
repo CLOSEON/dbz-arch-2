@@ -3,7 +3,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Vendor } from '@/types';
-import { Star } from 'lucide-react';
 import { getImageUrl } from '@/lib/storage';
 
 interface VendorCardProps {
@@ -11,8 +10,12 @@ interface VendorCardProps {
 }
 
 export function VendorCard({ vendor }: VendorCardProps) {
-  const prices = [vendor.rate_lunch, vendor.rate_dinner, vendor.rate_both]
-    .filter((p): p is number => typeof p === 'number' && p > 0);
+  const prices = [
+    vendor.rate_lunch_weekly, vendor.rate_lunch_monthly, vendor.rate_lunch,
+    vendor.rate_dinner_weekly, vendor.rate_dinner_monthly, vendor.rate_dinner,
+    vendor.rate_both_weekly, vendor.rate_both_monthly, vendor.rate_both,
+    vendor.rate_onetime,
+  ].filter((p): p is number => typeof p === 'number' && p > 0);
   const startingPrice = prices.length ? Math.min(...prices) : null;
   const ratingValue = vendor.rating_avg || vendor.rating || 4.5;
   const rating = Number(ratingValue).toFixed(1);
@@ -20,7 +23,7 @@ export function VendorCard({ vendor }: VendorCardProps) {
   return (
     <Link
       href={`/vendor/detail?id=${vendor.id}`}
-      className="card group !p-0 block overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.10)] active:scale-[0.99]"
+      className="card interactive-card group !p-0 block overflow-hidden transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_52px_rgba(15,23,42,0.12)] active:scale-[0.99]"
     >
       <div className="relative h-44 bg-slate-100">
         {vendor.image ? (
@@ -28,7 +31,7 @@ export function VendorCard({ vendor }: VendorCardProps) {
             src={getImageUrl(vendor.image)}
             alt={vendor.name}
             fill
-            className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            className="object-cover transition-transform duration-700 group-hover:scale-[1.06]"
             sizes="(max-width: 500px) 100vw, 500px"
           />
         ) : (
@@ -39,14 +42,14 @@ export function VendorCard({ vendor }: VendorCardProps) {
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/35 to-transparent" />
         
         {/* Premium Rating Badge */}
-        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.12)] border border-white/70">
-          <span className="text-brand text-xs">★</span>
+        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.12)] border border-white/70 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_12px_26px_rgba(255,204,0,0.22)]">
+          <span className="text-brand text-xs transition-transform duration-300 group-hover:rotate-12 group-hover:scale-125">★</span>
           <span className="text-slate-900 text-xs font-bold leading-none">{rating}</span>
         </div>
 
         {/* Status Badge */}
         {vendor.is_approved && (
-          <div className="absolute top-3 left-3 bg-emerald-600/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm border border-white/20">
+          <div className="absolute top-3 left-3 bg-emerald-600/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm border border-white/20 transition-all duration-300 group-hover:-translate-y-0.5">
             <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
             <span className="text-white text-[9px] font-black uppercase tracking-widest leading-none">Verified</span>
           </div>
@@ -56,7 +59,7 @@ export function VendorCard({ vendor }: VendorCardProps) {
       <div className="p-5">
         <div className="flex justify-between items-start mb-2">
           <div className="min-w-0 pr-4">
-            <h3 className="truncate font-black text-slate-950 text-[17px] leading-tight tracking-tight">
+            <h3 className="truncate font-black text-slate-950 text-[17px] leading-tight tracking-tight transition-colors duration-300 group-hover:text-brand">
               {vendor.name}
             </h3>
             <div className="flex min-w-0 flex-wrap items-center gap-2 mt-2">

@@ -12,9 +12,9 @@ class LocationTrackerService {
   private lastWriteTime = 0;
   private lastWriteCoords: { lat: number; lng: number } | null = null;
 
-  // Constants
-  private readonly DISTANCE_THRESHOLD_METERS = 20;
-  private readonly TIME_THRESHOLD_MS = 15000; // 15 seconds
+  // Constants - OPTIMIZED for reduced writes
+  private readonly DISTANCE_THRESHOLD_METERS = 50;   // Increased from 20 (2.5x less writes)
+  private readonly TIME_THRESHOLD_MS = 30000;        // Increased from 15s (2x less writes)
 
   public haversineDistance(
     lat1: number,
@@ -194,11 +194,14 @@ class LocationTrackerService {
   public async stopTracking(force: boolean = false): Promise<void> {
     if (typeof window === 'undefined') return;
 
-    this.activeSubscribers--;
-    if (!force && this.activeSubscribers > 0) {
-      return; // Still in use by another mounted component
+    if (!force) {
+      this.activeSubscribers = Math.max(0, this.activeSubscribers - 1);
+      if (this.activeSubscribers > 0) {
+        return; // Still in use by another mounted component
+      }
+    } else {
+      this.activeSubscribers = 0; // Force reset
     }
-    this.activeSubscribers = 0; // Prevent negative
 
     if (this.watchId !== null) {
       try {
@@ -212,12 +215,13 @@ class LocationTrackerService {
     }
 
     if (this.currentDriverId) {
+      const driverId = this.currentDriverId;
       try {
-        await setDoc(doc(db, 'driver_profiles', this.currentDriverId), {
+        await setDoc(doc(db, 'driver_profiles', driverId), {
           isActive: false,
-          uid: this.currentDriverId
+          uid: driverId
         }, { merge: true });
-        console.log(`[LocationTracker] Driver ${this.currentDriverId} set to inactive.`);
+        console.log(`[LocationTracker] Driver ${driverId} set to inactive.`);
       } catch (err) {
         console.error('[LocationTracker] Failed to mark driver inactive:', err);
       } finally {

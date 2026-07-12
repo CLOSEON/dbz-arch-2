@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/lib/auth';
 import { PermissionGuard } from '@/components/shared/PermissionGuard';
+import { PageTransition } from '@/components/ui/PageTransition';
 
 const jakarta = Plus_Jakarta_Sans({ 
   subsets: ['latin'],
@@ -20,7 +21,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   manifest: '/manifest.json',
-  title: 'Dabzo | Smart Meal Subscriptions',
+  title: 'Dabzzo | Smart Meal Subscriptions',
   description: 'Premium daily tiffin service with smart tracking',
   icons: {
     icon: [
@@ -45,7 +46,9 @@ export default function RootLayout({
         <Toaster position="top-center" />
         <PermissionGuard />
         <AuthProvider>
-          {children}
+          <PageTransition>
+            {children}
+          </PageTransition>
         </AuthProvider>
       </body>
     </html>

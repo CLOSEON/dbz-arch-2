@@ -17,6 +17,17 @@ export const broadcastNotificationV1 = functions.https.onCall(async (data, conte
     );
   }
 
+  // Admin Role Check
+  if (context.auth.token.role !== 'admin') {
+    const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+    if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only admins can broadcast notifications.'
+      );
+    }
+  }
+
   const { target, title, message } = data;
 
   if (!title || !message) {

@@ -5,20 +5,12 @@ import { publishEvent } from './utils/events';
 
 const db = admin.firestore();
 
-export const assignRiderTrips = functions.https.onCall(async (data, context) => {
-  if (!context?.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-  }
-
-  const { vendorId, slot } = data || {};
-
+export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, overrideRadius: number = 2.0, batchId?: string) => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
 
-  // 1. Fetch unassigned canonical orders that are ready for pickup
   let ordersQuery = db.collection('orders')
-    .where('status', '==', 'vendor_ready')
-    .where('rider_trip_id', '==', null);
+    .where('status', '==', 'vendor_ready');
   
   if (vendorId) {
     ordersQuery = ordersQuery.where('vendor_id', '==', vendorId);
@@ -33,9 +25,14 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
     return { success: true, message: 'No pending unassigned orders found.' };
   }
 
-  const unassignedOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+  const unassignedOrders = ordersSnap.docs
+    .map(doc => ({ id: doc.id, ...(doc.data() as any) }))
+    .filter(order => !order.rider_trip_id);
 
-  // 2. Group unassigned orders by vendor
+  if (unassignedOrders.length === 0) {
+    return { success: true, message: 'No pending unassigned orders found.' };
+  }
+
   const vendorOrdersMap = new Map<string, any[]>();
   const vendorIds = new Set<string>();
   
@@ -48,7 +45,6 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
     vendorOrdersMap.get(vId)!.push(order);
   });
 
-  // 3. Fetch locations of these vendors
   const vendorsSnap = await db.collection('users')
     .where(admin.firestore.FieldPath.documentId(), 'in', Array.from(vendorIds))
     .get();
@@ -61,7 +57,6 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
     }
   });
 
-  // 4. Fetch active riders and locations
   const driversSnap = await db.collection('driver_profiles')
     .where('isActive', '==', true)
     .get();
@@ -77,12 +72,12 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
   const batch = db.batch();
   let assignmentsMade = 0;
 
-  // 5. Match riders to vendors within 2km
   for (const rider of activeRiders) {
     const rLat = rider.currentLocation.lat;
     const rLng = rider.currentLocation.lng;
 
-    let availableTiffins: any[] = [];
+    // Collect all vendors within 2km strictly
+    const eligibleVendors: { vId: string; distance: number; orders: any[] }[] = [];
 
     for (const [vId, orders] of vendorOrdersMap.entries()) {
       if (orders.length === 0) continue;
@@ -91,22 +86,42 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
       if (!vLoc) continue;
 
       const distance = getDistanceInKm(rLat, rLng, vLoc.lat, vLoc.lng);
-      if (distance <= 2.0) {
-        availableTiffins.push(...orders);
+      // Check if vendor is within the allowed radius
+      if (distance <= overrideRadius) {
+        eligibleVendors.push({ vId, distance, orders });
       }
     }
 
-    if (availableTiffins.length === 0) continue;
+    if (eligibleVendors.length === 0) continue;
 
-    // Pick up to 20 tiffins
-    const selectedTiffins = availableTiffins.slice(0, 20);
+    // Sort eligible vendors by proximity to rider
+    eligibleVendors.sort((a, b) => a.distance - b.distance);
+
+    let selectedTiffins: any[] = [];
+    const maxTiffins = 20; // Hard cap
+    const selectedVendorsSet = new Set<string>();
+
+    for (const vendor of eligibleVendors) {
+      const remainingCapacity = maxTiffins - selectedTiffins.length;
+      if (remainingCapacity <= 0) break;
+
+      const ordersToTake = vendor.orders.slice(0, remainingCapacity);
+      selectedTiffins.push(...ordersToTake);
+      selectedVendorsSet.add(vendor.vId);
+
+      // Remove taken orders from the map so another rider doesn't grab them
+      const vOrders = vendorOrdersMap.get(vendor.vId)!;
+      vendorOrdersMap.set(vendor.vId, vOrders.filter(o => !ordersToTake.includes(o)));
+    }
+
+    if (selectedTiffins.length === 0) continue;
+
     const selectedOrderIds = selectedTiffins.map(o => o.id);
-    const selectedVendorIds = Array.from(new Set(selectedTiffins.map(o => o.vendor_id)));
+    const selectedVendorIds = Array.from(selectedVendorsSet);
     const selectedBatchIds = Array.from(new Set(selectedTiffins.map(o => o.batch_id).filter(Boolean)));
     
-    const isPartialLoad = selectedTiffins.length < 20;
+    const isPartialLoad = selectedTiffins.length < maxTiffins;
 
-    // 6. Routing algorithm (Nearest-Neighbor) for pickups
     const pickupStops: any[] = [];
     let currentLat = rLat;
     let currentLng = rLng;
@@ -128,15 +143,17 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
         }
       }
 
-      const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+      const vendorOrdersCount = selectedTiffins.filter(o => o.vendor_id === nearestVendor).length;
+      const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString(); // Generate OTP
 
       pickupStops.push({
         vendorId: nearestVendor,
         location: nearestLoc,
         sequence,
         distanceKm: shortestDistance,
-        status: 'pending',
-        pickupOTP
+        expectedTiffinCount: vendorOrdersCount,
+        pickupOTP,
+        status: 'pending'
       });
 
       unvisitedVendors = unvisitedVendors.filter(v => v !== nearestVendor);
@@ -145,7 +162,6 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
       sequence++;
     }
 
-    // Create RiderTrip
     const tripRef = db.collection('rider_trips').doc();
     batch.set(tripRef, {
       riderId: rider.id,
@@ -159,11 +175,14 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Assign canonical orders to the rider
     for (const order of selectedTiffins) {
       const orderRef = db.collection('orders').doc(order.id);
       batch.update(orderRef, {
         rider_trip_id: tripRef.id,
+        driverId: rider.id,
+        agentName: rider.name || 'Dabzzo Rider',
+        agentPhone: rider.phone || rider.phoneNumber || '9999999999',
+        vehicleNumber: rider.vehicleNumber || 'MH12 AB1234',
         status: 'rider_assigned',
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -177,11 +196,6 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
         actor: rider.id,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
-      
-      const vOrders = vendorOrdersMap.get(order.vendor_id);
-      if (vOrders) {
-        vendorOrdersMap.set(order.vendor_id, vOrders.filter(o => o.id !== order.id));
-      }
     }
 
     await publishEvent(
@@ -211,6 +225,23 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
   } else {
     return { success: true, message: 'No riders were within 2km of pending vendors.' };
   }
+};
+
+export const assignRiderTrips = functions.https.onCall(async (data, context) => {
+  if (!context?.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+  }
+
+  // Admin Check
+  if (context.auth.token.role !== 'admin') {
+    const userDoc = await db.collection('users').doc(context.auth.uid).get();
+    if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Only admins can assign rider trips.');
+    }
+  }
+
+  const { vendorId, slot } = data || {};
+  return await coreAssignRiderTrips(vendorId, slot);
 });
 
 /**
@@ -338,6 +369,12 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
     }
 
     const tripData = tripSnap.data();
+    
+    // Auth check: Must be the assigned rider or an admin
+    if (tripData?.riderId !== context.auth.uid && context.auth.token.role !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Only the assigned rider or admin can verify the pickup OTP.');
+    }
+
     const pickupStops = tripData?.pickupStops || [];
     const stopIndex = pickupStops.findIndex((s: any) => s.vendorId === vendorId);
     if (stopIndex === -1) {
@@ -353,6 +390,13 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
       return { success: false, message: 'Already picked up' };
     }
 
+    // Mark canonical orders as picked_up
+    const ordersQuery = db.collection('orders')
+      .where('rider_trip_id', '==', tripId)
+      .where('vendor_id', '==', vendorId)
+      .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created', 'preparing', 'pending', 'notified']);
+    const ordersSnap = await t.get(ordersQuery);
+
     // Mark stop completed
     pickupStops[stopIndex].status = 'completed';
     
@@ -363,16 +407,12 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp() 
     });
 
-    // Mark canonical orders as picked_up
-    const ordersQuery = db.collection('orders')
-      .where('rider_trip_id', '==', tripId)
-      .where('vendor_id', '==', vendorId)
-      .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created']);
-    const ordersSnap = await t.get(ordersQuery);
+    const batchIds = new Set<string>();
 
     ordersSnap.forEach((doc) => {
       const order = doc.data();
       t.update(doc.ref, { status: 'picked_up', updated_at: admin.firestore.FieldValue.serverTimestamp() });
+      if (order.batch_id) batchIds.add(order.batch_id);
       
       const logRef = db.collection('order_status_logs').doc();
       t.set(logRef, {
@@ -382,6 +422,14 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
         to_status: 'picked_up',
         actor: tripData?.riderId || 'rider',
         timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    batchIds.forEach(batchId => {
+      const batchRef = db.collection('batches').doc(batchId);
+      t.update(batchRef, {
+        status: 'completed',
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
     });
 
@@ -402,9 +450,18 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
 });
 
 export const regeneratePickupOTP = functions.https.onCall(async (data, context) => {
+  if (!context?.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
   const { tripId, vendorId } = data || {};
   if (!tripId || !vendorId) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing tripId or vendorId');
+  }
+
+  // Auth check: Must be the vendor associated with this stop or an admin
+  if (vendorId !== context.auth.uid && context.auth.token.role !== 'admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Only the vendor associated with this stop or an admin can regenerate the OTP.');
   }
 
   const tripRef = db.collection('rider_trips').doc(tripId);

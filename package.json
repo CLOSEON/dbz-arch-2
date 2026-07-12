@@ -1,9 +1,9 @@
 {
-  "name": "dabzo-v2",
+  "name": "dabzzo-v2",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -19,6 +19,7 @@
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/ios": "^8.4.1",
     "@capacitor/push-notifications": "^8.0.4",
+    "@vis.gl/react-google-maps": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "firebase": "^12.13.0",
@@ -27,6 +28,7 @@
     "lucide-react": "^1.14.0",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
+    "razorpay": "^2.9.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hot-toast": "^2.6.0",
@@ -46,5 +48,5 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "description": "Dabzo Food Subscription Marketplace — v2"
+  "description": "Dabzzo Food Subscription Marketplace — v2"
 }

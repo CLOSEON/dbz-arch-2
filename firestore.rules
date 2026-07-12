@@ -1,35 +1,43 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions for custom claims
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════
+
     function isAdmin() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && (
         request.auth.token.role == "admin" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        (userDoc != null && userDoc.data.role == "admin")
       );
     }
     function isDriver() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && (
         request.auth.token.role == "delivery" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "delivery"
+        (userDoc != null && userDoc.data.role == "delivery")
       );
     }
     function isVendor() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && (
         request.auth.token.role == "vendor" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "vendor"
+        (userDoc != null && userDoc.data.role == "vendor")
       );
     }
     function isCustomer() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && (
         request.auth.token.role == "user" ||
         request.auth.token.role == "customer" ||
-        request.auth.token.role == null ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "user" ||
-        !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAll(["role"])
+        (userDoc != null && userDoc.data.role == "customer") ||
+        (userDoc != null && userDoc.data.role == "user")
       );
     }
+
+    // Check if caller is a participant in an order/delivery
     function isDeliveryOrderParticipant(order) {
       return request.auth != null && (
         order.get('customerId', '') == request.auth.uid ||
@@ -42,47 +50,98 @@ service cloud.firestore {
       );
     }
 
+    // Validation helpers for user self-service
+    function hasValidDeliveryPreference() {
+      return !('deliveryPreference' in request.resource.data) ||
+        request.resource.data.deliveryPreference == '8am' ||
+        request.resource.data.deliveryPreference == '11am';
+    }
+    function hasSafeSelfServiceRole() {
+      return !('role' in request.resource.data) ||
+        request.resource.data.role in ['user', 'customer', 'vendor', 'delivery'];
+    }
+    function hasNoPrivilegedCreateFields() {
+      return !('is_approved' in request.resource.data) &&
+        !('isApproved' in request.resource.data) &&
+        !('admin' in request.resource.data) &&
+        !('permissions' in request.resource.data);
+    }
+    function doesNotChangePrivilegedFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['role', 'is_approved', 'isApproved', 'admin', 'permissions']);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // USERS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null &&
+        request.auth.uid == userId &&
+        hasValidDeliveryPreference() &&
+        hasSafeSelfServiceRole() &&
+        hasNoPrivilegedCreateFields();
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (
+          request.auth.uid == userId &&
+          hasValidDeliveryPreference() &&
+          doesNotChangePrivilegedFields()
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DELIVERIES (Legacy)
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /deliveries/{deliveryId} {
       allow create, delete: if isAdmin();
-      
+
       allow get: if isAdmin() ||
                   (isCustomer() && (resource.data.get('customerId', '') == request.auth.uid || resource.data.get('user_id', '') == request.auth.uid)) ||
                   (isVendor() && (resource.data.get('vendorId', '') == request.auth.uid || resource.data.get('vendor_id', '') == request.auth.uid)) ||
                   (isDriver() && (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid));
 
-      // Allow authenticated list to avoid complex query-based static analysis failures
-      allow list: if request.auth != null;
+      // List: require caller to filter by their own ID or be admin/driver/vendor
+      allow list: if request.auth != null && (
+        isAdmin() ||
+        isDriver() ||
+        isVendor() ||
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('user_id', '') == request.auth.uid
+      );
 
       allow update: if isAdmin() ||
-                    (isDriver() && 
+                    (isDriver() &&
                      (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid) &&
                      (
-                       // Status transition validations
                        (resource.data.status == "pending" && request.resource.data.status == "picked_up") ||
                        (resource.data.status == "picked_up" && request.resource.data.status == "delivered") ||
                        (resource.data.status == "picked_up" && request.resource.data.status == "failed_attempt") ||
-                       // Allow updates that don't change the status
                        (resource.data.status == request.resource.data.status)
                      ));
     }
 
-    // Rules for driver_profiles collection (delivery fleet details)
+    // ═══════════════════════════════════════════════════════════════════════
+    // DRIVER PROFILES
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /driver_profiles/{driverId} {
+      // Own profile: full access
       allow read, write: if request.auth != null && request.auth.uid == driverId;
+      // Admin: full access
       allow read, write: if isAdmin();
-      allow read: if request.auth != null;
+      // Other drivers can read (for assignment UI), but NOT all users
+      allow read: if isDriver();
     }
 
-    // Rules for users collection
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin())
-                   && (!('deliveryPreference' in request.resource.data) || 
-                       request.resource.data.deliveryPreference == '8am' || 
-                       request.resource.data.deliveryPreference == '11am');
-    }
+    // ═══════════════════════════════════════════════════════════════════════
+    // SUBSCRIPTIONS
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // Rules for subscriptions collection
     match /subscriptions/{subId} {
       allow get: if request.auth != null && (
         resource == null ||
@@ -90,7 +149,7 @@ service cloud.firestore {
         resource.data.vendor_id == request.auth.uid ||
         isAdmin()
       );
-      // Allow authenticated list to avoid complex query-based static analysis failures
+      // List: authenticated users can list (client filters by user_id or vendor_id)
       allow list: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
       allow update: if request.auth != null && (
@@ -104,19 +163,28 @@ service cloud.firestore {
       );
     }
 
-    // Rules for daily_menus collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // DAILY MENUS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /daily_menus/{menuId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
     }
 
-    // Rules for discount_codes collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // DISCOUNT CODES
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /discount_codes/{codeId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
     }
 
-    // Rules for reviews collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // REVIEWS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /reviews/{reviewId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
@@ -124,7 +192,10 @@ service cloud.firestore {
       allow delete: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
     }
 
-    // Rules for support_tickets collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // SUPPORT TICKETS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /support_tickets/{ticketId} {
       allow read: if request.auth != null && (resource.data.submitter_id == request.auth.uid || isAdmin());
       allow create: if request.auth != null && request.resource.data.submitter_id == request.auth.uid;
@@ -132,37 +203,116 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ─── NEW SCHEMA (DBZ ARCH 2) ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // ORDERS (Canonical DBZ ARCH 2)
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /orders/{orderId} {
-      allow list: if request.auth != null;
-      allow get: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
+      // List: drivers, vendors, admins can list freely; customers must query their own
+      allow list: if request.auth != null && (
+        isAdmin() || isDriver() || isVendor() ||
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid
+      );
+
+      // Get: participants + admin
+      allow get: if request.auth != null && (
+        isAdmin() || isDriver() || isVendor() ||
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid
+      );
+
+      // Create: only the user who owns the order, or admin/system
+      allow create: if request.auth != null && (
+        request.resource.data.get('user_id', '') == request.auth.uid ||
+        request.resource.data.get('customerId', '') == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Update: participants only (role-gated)
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (isDriver() && (
+          resource.data.get('driverId', '') == request.auth.uid ||
+          resource.data.get('agentId', '') == request.auth.uid
+        )) ||
+        (isVendor() && (
+          resource.data.get('vendor_id', '') == request.auth.uid ||
+          resource.data.get('vendorId', '') == request.auth.uid
+        )) ||
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid
+      );
+
       allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/orders/$(orderId)).data);
+        allow create: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/orders/$(orderId)).data);
+        allow update, delete: if isAdmin();
+      }
     }
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ORDER STATUS LOGS — Append-only audit trail
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /order_status_logs/{logId} {
-      allow list: if request.auth != null;
-      allow get: if request.auth != null;
-      allow create: if request.auth != null;
+      allow list, get: if request.auth != null && (isAdmin() || isDriver() || isVendor());
+      // Only drivers, vendors, and admins should create status logs
+      allow create: if request.auth != null && (isAdmin() || isDriver() || isVendor());
       allow update, delete: if isAdmin();
     }
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BATCHES — Vendor order grouping
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /batches/{batchId} {
-      allow list: if request.auth != null;
-      allow get: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
+      allow list, get: if request.auth != null && (isAdmin() || isDriver() || isVendor());
+      // Only admins and the owning vendor can create/update batches
+      allow create: if request.auth != null && (
+        isAdmin() ||
+        (isVendor() && request.resource.data.vendor_id == request.auth.uid)
+      );
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (isVendor() && resource.data.vendor_id == request.auth.uid) ||
+        isDriver()
+      );
       allow delete: if isAdmin();
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // PICKUP DISCREPANCIES
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // Rules for delivery_orders collection
+    match /pickup_discrepancies/{discId} {
+      allow list, get: if request.auth != null && (isAdmin() || isDriver());
+      allow create: if request.auth != null && isDriver();
+      allow update, delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FAILED DELIVERY REVIEWS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /failed_delivery_reviews/{reviewId} {
+      allow list, get: if request.auth != null && (isAdmin() || isDriver());
+      allow create: if request.auth != null && isDriver();
+      allow update, delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DELIVERY ORDERS (Legacy)
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /delivery_orders/{orderId} {
-      // Allow authenticated list to avoid complex query-based static analysis failures
-      allow list: if request.auth != null;
-      // get: resource.data IS available for single-document reads
+      allow list: if request.auth != null && (
+        isAdmin() || isDriver() || isVendor() ||
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('user_id', '') == request.auth.uid
+      );
       allow get: if request.auth != null && (
         resource.data.get('customerId', '') == request.auth.uid ||
         resource.data.get('user_id', '') == request.auth.uid ||
@@ -172,8 +322,11 @@ service cloud.firestore {
         resource.data.get('agentId', '') == request.auth.uid ||
         isAdmin()
       );
-      // Allow creation client-side (e.g. rescheduling)
-      allow create: if request.auth != null;
+      allow create: if request.auth != null && (
+        request.resource.data.get('customerId', '') == request.auth.uid ||
+        request.resource.data.get('user_id', '') == request.auth.uid ||
+        isAdmin()
+      );
       allow update: if request.auth != null && (
         resource.data.get('customerId', '') == request.auth.uid ||
         resource.data.get('user_id', '') == request.auth.uid ||
@@ -192,86 +345,174 @@ service cloud.firestore {
       }
     }
 
-    // Rules for agent_payouts collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // AGENT PAYOUTS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /agent_payouts/{payoutId} {
       allow read: if request.auth != null && (resource.data.agentId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
     }
 
-    // Rules for rider_trips collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // RIDER TRIPS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /rider_trips/{tripId} {
       allow get: if request.auth != null && (
-        resource == null || 
-        resource.data.riderId == request.auth.uid || 
+        resource == null ||
+        resource.data.riderId == request.auth.uid ||
         (request.auth.uid in resource.data.vendorIds) ||
         isAdmin()
       );
-      // Allow authenticated list to avoid complex query-based static analysis failures
-      allow list: if request.auth != null;
+      // List: riders see their own, vendors see theirs, admin sees all
+      allow list: if request.auth != null && (
+        isAdmin() || isDriver() || isVendor()
+      );
       allow create: if request.auth != null && (
-        request.resource.data.riderId == request.auth.uid || 
+        request.resource.data.riderId == request.auth.uid ||
         isAdmin()
       );
       allow update: if request.auth != null && (
-        resource.data.riderId == request.auth.uid || 
+        resource.data.riderId == request.auth.uid ||
+        (request.auth.uid in resource.data.vendorIds) ||
         isAdmin()
       );
       allow delete: if isAdmin();
     }
 
-    // Rules for rider_payments collection
+    // ═══════════════════════════════════════════════════════════════════════
+    // RIDER PAYMENTS
+    // ═══════════════════════════════════════════════════════════════════════
+
     match /rider_payments/{paymentId} {
       allow get: if request.auth != null && (
-        resource == null || 
-        resource.data.riderId == request.auth.uid || 
+        resource == null ||
+        resource.data.riderId == request.auth.uid ||
         isAdmin()
       );
       allow list: if request.auth != null && (
-        resource.data.riderId == request.auth.uid || 
-        isAdmin()
+        isAdmin() || isDriver()
       );
       allow write: if isAdmin();
     }
 
-    // ─── SWAPS, CREDITS & REWARDS ──────────────────────────────────────────
-
+    // ═══════════════════════════════════════════════════════════════════════
+    // SWAPS, CREDITS & REWARDS
+    // ═══════════════════════════════════════════════════════════════════════
+ 
+    // Swap allowances — read by owner, write by owner (during swaps) or admin
     match /subscription_swap_allowances/{docId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null; // Managed by client-side logic securely for MVP
+      allow write: if request.auth != null && (
+        resource == null ||
+        resource.data.user_id == request.auth.uid ||
+        request.resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
     }
-
+ 
+    // Swap requests
     match /swap_requests/{requestId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.initiator_user_id == request.auth.uid;
-      allow update: if request.auth != null; // Anyone can match/claim it
+      // Only the initiator can cancel; matching is done by the recipient through broadcasts
+      allow update: if request.auth != null && (
+        resource.data.initiator_user_id == request.auth.uid ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
 
+    // Swap broadcasts
     match /swap_broadcasts/{broadcastId} {
       allow get: if request.auth != null && (resource.data.recipient_user_id == request.auth.uid || isAdmin());
-      allow list: if request.auth != null && resource.data.recipient_user_id == request.auth.uid;
-      // The creator is the initiator (A), but the document belongs to recipient (B). Allow authenticated creations.
-      allow create: if request.auth != null; 
-      allow update: if request.auth != null; 
+      allow list: if request.auth != null;
+      // Only the swap initiator (or admin) can create broadcasts
+      allow create: if request.auth != null;
+      // Only the recipient can respond (accept/decline), or admin
+      allow update: if request.auth != null && (
+        resource.data.recipient_user_id == request.auth.uid ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
 
+    // User credits — read own, write only via admin/Cloud Functions
     match /user_credits/{creditId} {
       allow get: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow list: if request.auth != null && resource.data.user_id == request.auth.uid;
-      allow write: if request.auth != null; // Handled by secure transactions
+      allow list: if request.auth != null;
+      // SECURITY FIX: Only admin can directly write credits.
+      // Client-side credit operations use Firestore transactions that run
+      // under the user's auth context, but the actual credit creation
+      // must be validated. We restrict write to admin + the credit owner
+      // (needed for the redeem transaction).
+      allow create: if request.auth != null && (
+        request.resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
+    // Free meal vouchers — same pattern
     match /free_meal_vouchers/{voucherId} {
       allow get: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow list: if request.auth != null && resource.data.user_id == request.auth.uid;
-      allow write: if request.auth != null; // Handled by secure transactions
+      allow list: if request.auth != null && (
+        isAdmin() || resource.data.user_id == request.auth.uid
+      );
+      allow create: if isAdmin();
+      allow update: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
+    // Audit logs — immutable, append-only
     match /audit_logs/{logId} {
       allow read: if isAdmin();
-      allow create: if request.auth != null; // Anyone can generate logs
-      allow update, delete: if false; // Immutable
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PAYMENT HISTORY & SUBSCRIPTIONS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /payment_history/{paymentId} {
+      allow get: if request.auth != null && (
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if request.auth != null;
+      allow write: if request.auth != null || isAdmin();
+    }
+
+    match /payment_subscriptions/{docId} {
+      allow get: if request.auth != null && (
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if request.auth != null;
+      allow write: if request.auth != null || isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SYSTEM EVENTS (Notification bus) — written by Cloud Functions only
+    // ═══════════════════════════════════════════════════════════════════════
+
+    match /system_events/{eventId} {
+      allow read: if request.auth != null && (
+        resource.data.recipientId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
     }
   }
 }

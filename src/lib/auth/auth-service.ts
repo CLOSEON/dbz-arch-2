@@ -1,5 +1,5 @@
 /**
- * DABZO AUTH SERVICE — Unified Phone OTP Authentication
+ * DABZZO AUTH SERVICE — Unified Phone OTP Authentication
  * 
  * Dual-platform architecture:
  * - WEB: Firebase JS SDK + RecaptchaVerifier (invisible reCAPTCHA)
@@ -21,6 +21,8 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { FCM_TOKEN_STORAGE_KEY } from '../notifications/constants';
+
+// Removed forced appVerificationDisabledForTesting to allow real numbers to work on localhost
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -59,47 +61,45 @@ let _confirmationResult: ConfirmationResult | null = null;
 
 const isNative = Capacitor.isNativePlatform();
 
-function isTestAccount(phone: string): boolean {
-  const TEST_NUMBERS = ['+919000000001', '+919000000002', '+919000000003', '+919000000004'];
-  return TEST_NUMBERS.includes(phone);
-}
-
 // ─── reCAPTCHA Setup & Web Implementation ──────────────────────────────────────
+
+function initRecaptcha() {
+  if (_recaptchaVerifier) return;
+  
+  let container = document.getElementById('firebase-recaptcha-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'firebase-recaptcha-container';
+    // Ensure the container is hidden to prevent layout shifts
+    container.style.display = 'none';
+    document.body.appendChild(container);
+  }
+
+  _recaptchaVerifier = new RecaptchaVerifier(auth, 'firebase-recaptcha-container', {
+    size: 'invisible',
+    callback: () => console.log('[Auth] reCAPTCHA solved'),
+    'expired-callback': () => {
+      console.warn('[Auth] reCAPTCHA expired, resetting verifier');
+      if (_recaptchaVerifier) {
+        _recaptchaVerifier.clear();
+        _recaptchaVerifier = null;
+      }
+      const oldContainer = document.getElementById('firebase-recaptcha-container');
+      if (oldContainer) {
+        oldContainer.remove();
+      }
+    }
+  });
+}
 
 async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
   console.log('[Auth] Starting robust Web OTP flow...');
 
-  // 1. Purge any ghost reCAPTCHA instances
-  if (_recaptchaVerifier) {
-    try {
-      _recaptchaVerifier.clear();
-    } catch (e) {
-      console.warn('[Auth] Ignored error while clearing old reCAPTCHA', e);
-    }
-    _recaptchaVerifier = null;
-  }
-
-  // 2. Completely remove any old containers from the DOM
-  const oldContainer = document.getElementById('firebase-recaptcha-container');
-  if (oldContainer) {
-    oldContainer.remove();
-  }
-
-  // 3. Create a brand new, isolated container for Firebase
-  const container = document.createElement('div');
-  container.id = 'firebase-recaptcha-container';
-  document.body.appendChild(container);
-
   try {
-    // 4. Initialize fresh verifier on the new container
-    _recaptchaVerifier = new RecaptchaVerifier(auth, container, {
-      size: 'invisible',
-      callback: () => console.log('[Auth] reCAPTCHA solved'),
-      'expired-callback': () => console.warn('[Auth] reCAPTCHA expired')
-    });
+    initRecaptcha();
 
-    // 5. Send the OTP
-    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, _recaptchaVerifier);
+    // 6. Send the OTP
+    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, _recaptchaVerifier!);
     
     console.log('[Auth] Web: OTP sent successfully');
     return {
@@ -108,19 +108,22 @@ async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
     };
   } catch (err: any) {
     console.error('[Auth] Web OTP Error:', err);
-    // Cleanup on failure
+    // Cleanup verifier state on failure so the user can try again safely
     if (_recaptchaVerifier) {
       try { _recaptchaVerifier.clear(); } catch(e){}
       _recaptchaVerifier = null;
     }
-    container.remove();
+    const oldContainer = document.getElementById('firebase-recaptcha-container');
+    if (oldContainer) {
+      oldContainer.remove();
+    }
     
     // Map Firebase errors to human readable
     if (err.code === 'auth/too-many-requests') {
-      return { success: false, error: 'Too many attempts. Please use a Firebase Test Number or wait 15 minutes.' };
+      return { success: false, error: 'Too many attempts. Please wait a few minutes or use a test account.' };
     }
     if (err.code === 'auth/invalid-app-credential') {
-      return { success: false, error: 'App verification failed. Please try again.' };
+      return { success: false, error: 'App verification failed. If on localhost, ensure it is added to Firebase Authorized Domains.' };
     }
     
     return mapFirebaseError(err);
@@ -133,6 +136,10 @@ export function cleanupAuth(): void {
   if (_recaptchaVerifier) {
     _recaptchaVerifier.clear();
     _recaptchaVerifier = null;
+  }
+  const oldContainer = document.getElementById('firebase-recaptcha-container');
+  if (oldContainer) {
+    oldContainer.remove();
   }
   _confirmationResult = null;
 }

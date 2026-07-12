@@ -62,7 +62,7 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   if (variant === 'sidebar') {
     return (
       <nav className="flex flex-col gap-1.5 px-4">
-        {MOBILE_NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
           const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
           return (

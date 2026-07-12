@@ -9,7 +9,8 @@ import {
   updateDoc,
   serverTimestamp,
   runTransaction,
-  Timestamp
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { 
@@ -18,7 +19,8 @@ import type {
   UserCredit, 
   SubscriptionSwapAllowance,
   Delivery,
-  AppUser
+  AppUser,
+  Order
 } from '@/types';
 import { createAuditLog } from './audit';
 
@@ -190,7 +192,8 @@ export async function requestVendorSwap(
   subscriptionId: string,
   deliveryObj: any, // The current canonical order to swap
   targetVendorId: string,
-  targetVendorName: string
+  targetVendorName: string,
+  paymentDetails?: { paymentId: string; orderId: string }
 ): Promise<string> {
   // 1. Instant update of initiator's delivery to the new vendor
   const realDeliveryId = deliveryObj.id;
@@ -203,9 +206,24 @@ export async function requestVendorSwap(
     updated_at: serverTimestamp()
   });
 
+  // Check Swap Allowance
+  let is_paid = true;
+  const allowanceRef = doc(db, 'subscription_swap_allowances', subscriptionId);
+  const allowanceSnap = await getDoc(allowanceRef);
+  
+  if (allowanceSnap.exists()) {
+    const allowance = allowanceSnap.data() as SubscriptionSwapAllowance;
+    if (allowance.free_swaps_used < allowance.free_swaps_total) {
+      is_paid = false;
+      await updateDoc(allowanceRef, {
+        free_swaps_used: allowance.free_swaps_used + 1
+      });
+    }
+  }
+
   // 2. Create SwapRequest
   const reqRef = doc(collection(db, 'swap_requests'));
-  await setDoc(reqRef, {
+  const payload: any = {
     id: reqRef.id,
     initiator_user_id: userId,
     initiator_subscription_id: subscriptionId,
@@ -213,10 +231,17 @@ export async function requestVendorSwap(
     order_id: realDeliveryId,
     target_vendor_id: targetVendorId,
     status: 'broadcasted',
-    is_paid: true,
-    payment_amount: 50,
+    is_paid,
+    payment_amount: is_paid ? 50 : 0,
     created_at: serverTimestamp(),
-  });
+  };
+
+  if (paymentDetails) {
+    payload.payment_id = paymentDetails.paymentId;
+    payload.razorpay_order_id = paymentDetails.orderId;
+  }
+
+  await setDoc(reqRef, payload);
 
   // 3. Find active subscribers of the TARGET vendor for today/tomorrow
   const targetSubQ = query(
@@ -275,11 +300,10 @@ export async function cancelSwapRequest(deliveryId: string, userId: string): Pro
   const snap = await getDocs(q);
   if (snap.empty) throw new Error('No active swap request found for this order.');
   
-  const batch = db;
-  // We don't use batch here easily because we need to query broadcasts too
+  const batch = writeBatch(db);
   for (const requestDoc of snap.docs) {
-    // Delete the request
-    await updateDoc(requestDoc.ref, { status: 'cancelled' });
+    // Cancel the request
+    batch.update(requestDoc.ref, { status: 'cancelled' });
     
     // Cancel broadcasts
     const bQ = query(
@@ -287,14 +311,12 @@ export async function cancelSwapRequest(deliveryId: string, userId: string): Pro
       where('swap_request_id', '==', requestDoc.id)
     );
     const bSnap = await getDocs(bQ);
-    bSnap.docs.forEach(async (bDoc) => {
-      await updateDoc(bDoc.ref, { response: 'cancelled' });
+    bSnap.docs.forEach((bDoc) => {
+      batch.update(bDoc.ref, { response: 'cancelled' });
     });
   }
 
-  // Restore the delivery status just in case (though it might still just be pending/preparing)
-  // Actually, swapping doesn't change the delivery status to 'swapped' until it's matched!
-  // So there's nothing to revert on the delivery doc, other than we just let the UI know it's no longer requested.
+  await batch.commit();
 
   return { success: true };
 }
@@ -449,31 +471,97 @@ export async function awardUserCredit(
   return ref.id;
 }
 
+/**
+ * Helper to safely consume exactly `amountToConsume` credits from a user's wallet within a transaction.
+ * Requires pre-fetched unredeemed credit docs for the user.
+ * 
+ * @param transaction The active Firestore transaction
+ * @param amountToConsume The total credit amount to deduct
+ * @param creditDocs Pre-fetched unredeemed credit documents
+ * @returns boolean true if successfully consumed, false if insufficient credits
+ */
+export function consumeUserCreditsTx(
+  transaction: any,
+  amountToConsume: number,
+  creditDocs: any[]
+): boolean {
+  let totalAvailable = creditDocs.reduce((sum, doc) => sum + (doc.data.credit_amount || 0), 0);
+  if (totalAvailable < amountToConsume) {
+    return false; // Insufficient funds
+  }
+
+  // Sort by oldest first
+  const sortedDocs = [...creditDocs].sort((a, b) => 
+    (a.data.created_at?.seconds || 0) - (b.data.created_at?.seconds || 0)
+  );
+
+  let remainingToConsume = amountToConsume;
+  
+  for (const creditDoc of sortedDocs) {
+    if (remainingToConsume <= 0) break;
+    
+    const amountInDoc = creditDoc.data.credit_amount;
+    if (amountInDoc <= remainingToConsume) {
+      // Consume entire doc
+      transaction.update(creditDoc.ref, { 
+        redeemed: true, 
+        redeemed_at: serverTimestamp() 
+      });
+      remainingToConsume -= amountInDoc;
+    } else {
+      // Consume partial doc
+      const remainder = amountInDoc - remainingToConsume;
+      transaction.update(creditDoc.ref, { 
+        redeemed: true, 
+        redeemed_at: serverTimestamp() 
+      });
+      const newCreditRef = doc(collection(db, 'user_credits'));
+      transaction.set(newCreditRef, {
+        user_id: creditDoc.data.user_id,
+        source: creditDoc.data.source,
+        credit_amount: remainder,
+        redeemed: false,
+        created_at: serverTimestamp(),
+        ...(creditDoc.data.source_reference_id && { source_reference_id: creditDoc.data.source_reference_id })
+      });
+      remainingToConsume = 0;
+    }
+  }
+
+  return true;
+}
+
 export async function redeemCreditsForDays(userId: string, subscriptionId: string): Promise<number> {
-  // 1. Fetch unredeemed credits OUTSIDE transaction
+  // 1. Fetch all unredeemed credits to get references
   const q = query(
     collection(db, 'user_credits'),
-    where('user_id', '==', userId)
+    where('user_id', '==', userId),
+    where('redeemed', '==', false)
   );
   const snap = await getDocs(q);
-  
-  let totalUnredeemed = 0;
-  const creditDocs = snap.docs
-    .map(d => ({ ref: d.ref, data: d.data() as UserCredit }))
-    .filter(c => c.data.redeemed === false);
-  
-  for (const creditDoc of creditDocs) {
-    totalUnredeemed += creditDoc.data.credit_amount;
-  }
-  
-  let daysAdded = Math.floor(totalUnredeemed);
-  if (daysAdded < 1) {
-    throw new Error("Not enough credits to redeem. Minimum 1 credit required.");
-  }
+  const candidateRefs = snap.docs.map(d => d.ref);
 
-  creditDocs.sort((a, b) => (a.data.created_at?.seconds || 0) - (b.data.created_at?.seconds || 0));
+  let daysAdded = 0;
 
   await runTransaction(db, async (transaction) => {
+    // 2. Fetch fresh data inside transaction
+    const creditDocs = [];
+    let totalUnredeemed = 0;
+    
+    for (const ref of candidateRefs) {
+      const docSnap = await transaction.get(ref);
+      if (docSnap.exists() && docSnap.data().redeemed === false) {
+        const data = docSnap.data() as UserCredit;
+        creditDocs.push({ ref, data });
+        totalUnredeemed += data.credit_amount;
+      }
+    }
+
+    daysAdded = Math.floor(totalUnredeemed);
+    if (daysAdded < 1) {
+      throw new Error("Not enough credits to redeem. Minimum 1 credit required.");
+    }
+
     const subRef = doc(db, 'subscriptions', subscriptionId);
     const subSnap = await transaction.get(subRef);
     if (!subSnap.exists()) {
@@ -481,40 +569,13 @@ export async function redeemCreditsForDays(userId: string, subscriptionId: strin
     }
     const subData = subSnap.data();
 
-    let amountToRedeem = daysAdded; // 1 credit = 1 day
-    
-    // 2. Consume credits
-    for (const creditDoc of creditDocs) {
-      if (amountToRedeem <= 0) break;
-      
-      const amountInDoc = creditDoc.data.credit_amount;
-      if (amountInDoc <= amountToRedeem) {
-        transaction.update(creditDoc.ref, { 
-          redeemed: true, 
-          redeemed_at: serverTimestamp() 
-        });
-        amountToRedeem -= amountInDoc;
-      } else {
-        const remainder = amountInDoc - amountToRedeem;
-        transaction.update(creditDoc.ref, { 
-          redeemed: true, 
-          redeemed_at: serverTimestamp() 
-        });
-        const newCreditRef = doc(collection(db, 'user_credits'));
-        transaction.set(newCreditRef, {
-          user_id: creditDoc.data.user_id,
-          source: creditDoc.data.source,
-          credit_amount: remainder,
-          redeemed: false,
-          created_at: serverTimestamp(),
-          ...(creditDoc.data.source_reference_id && { source_reference_id: creditDoc.data.source_reference_id })
-        });
-        amountToRedeem = 0;
-      }
+    // 3. Safely consume credits using helper
+    const consumed = consumeUserCreditsTx(transaction, daysAdded, creditDocs);
+    if (!consumed) {
+      throw new Error("Insufficient credits during transaction.");
     }
     
-    // 3. Add days to subscription
-    
+    // 4. Add days to subscription
     let currentNextBilling = subData.next_billing_date?.toDate?.();
     if (!currentNextBilling) {
       const createdDate = subData.created_at?.toDate?.() || new Date();
@@ -558,11 +619,13 @@ export async function processExpiredSwaps(): Promise<void> {
   );
   
   const snap = await getDocs(q);
-  const batchUpdates = [];
+  const batch = writeBatch(db);
+  let hasUpdates = false;
   const now = new Date();
   
   for (const d of snap.docs) {
-    const data = d.data() as SwapRequest & { delivery_id: string };
+    const data = d.data() as SwapRequest & { order_id?: string; delivery_id?: string };
+    const orderId = data.order_id || data.delivery_id;
     let shouldExpire = false;
 
     // 1. Check if it's been more than 2 hours since creation as a baseline
@@ -573,19 +636,19 @@ export async function processExpiredSwaps(): Promise<void> {
       }
     }
     
-    if (!shouldExpire) {
-      // 2. Fetch associated delivery to see if it's past delivery time or already completed/cancelled
-      const delSnap = await getDoc(doc(db, 'deliveries', data.delivery_id));
-      if (!delSnap.exists()) {
+    if (!shouldExpire && orderId) {
+      // 2. Fetch associated order to see if it's past delivery time or already completed/cancelled
+      const orderSnap = await getDoc(doc(db, 'orders', orderId));
+      if (!orderSnap.exists()) {
         shouldExpire = true; // Orphaned
       } else {
-        const delivery = delSnap.data() as Delivery;
-        if (delivery.status !== 'pending') {
+        const order = orderSnap.data() as Order;
+        if (order.status !== 'created' && order.status !== 'vendor_notified' && order.status !== 'vendor_preparing') {
           shouldExpire = true;
         } else {
           // Check if it's past the delivery window (1:00 PM for lunch, 8:00 PM for dinner)
           const deliveryDate = new Date();
-          if (delivery.meal_type === 'lunch') deliveryDate.setHours(13, 0, 0, 0);
+          if (order.meal_type === 'lunch') deliveryDate.setHours(13, 0, 0, 0);
           else deliveryDate.setHours(20, 0, 0, 0);
           
           if (now.getTime() > deliveryDate.getTime()) {
@@ -596,7 +659,8 @@ export async function processExpiredSwaps(): Promise<void> {
     }
 
     if (shouldExpire) {
-      batchUpdates.push(updateDoc(d.ref, { status: 'company_fulfilled' }));
+      batch.update(d.ref, { status: 'company_fulfilled' });
+      hasUpdates = true;
       // Also expire pending broadcasts for this request
       const bQ = query(
         collection(db, 'swap_broadcasts'),
@@ -605,10 +669,33 @@ export async function processExpiredSwaps(): Promise<void> {
       );
       const bSnap = await getDocs(bQ);
       for (const b of bSnap.docs) {
-        batchUpdates.push(updateDoc(b.ref, { response: 'expired' }));
+        batch.update(b.ref, { response: 'expired' });
       }
     }
   }
   
-  await Promise.all(batchUpdates);
+  if (hasUpdates) {
+    await batch.commit();
+  }
+}
+
+export async function addBoughtSwaps(subscriptionId: string, count: number, userId: string): Promise<void> {
+  const allowanceRef = doc(db, 'subscription_swap_allowances', subscriptionId);
+  const snap = await getDoc(allowanceRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    await updateDoc(allowanceRef, {
+      free_swaps_total: (data.free_swaps_total || 0) + count,
+      updated_at: serverTimestamp()
+    });
+  } else {
+    await setDoc(allowanceRef, {
+      subscription_id: subscriptionId,
+      user_id: userId,
+      free_swaps_total: count,
+      free_swaps_used: 0,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+  }
 }

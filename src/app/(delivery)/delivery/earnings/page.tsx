@@ -80,9 +80,7 @@ export default function DeliveryEarningsPage() {
             </div>
           </div>
         </div>
-        {/* Decorative Circles */}
-        <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/20 rounded-full blur-3xl" />
-        <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl mix-blend-overlay" />
       </div>
 
       {/* History */}

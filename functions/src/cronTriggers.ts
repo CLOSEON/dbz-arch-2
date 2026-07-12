@@ -110,10 +110,10 @@ export const formBatches = onSchedule({
   const targetDateStr = targetDate.toISOString().split('T')[0];
   const targetHour = targetDate.getHours();
   
-  let targetSlot = '11am'; // TEMPORARY FOR TESTING
-  // if (targetHour === 8) targetSlot = '8am';
-  // else if (targetHour === 11) targetSlot = '11am';
-  // else if (targetHour === 20) targetSlot = '8pm';
+  let targetSlot = '';
+  if (targetHour === 8) targetSlot = '8am';
+  else if (targetHour === 11) targetSlot = '11am';
+  else if (targetHour === 20) targetSlot = '8pm';
   
   if (!targetSlot) {
     console.log(`[formBatches] No slot aligned with target hour ${targetHour}. Skipping.`);
@@ -318,4 +318,84 @@ export const checkStuckOrders = onSchedule({
   }
 
   console.log(`[checkStuckOrders] Found and alerted on ${stuckCount} stuck orders.`);
+});
+
+/**
+ * Runs every 5 minutes. Retries dispatching unassigned vendor batches,
+ * expanding the radius progressively (2km -> 4km -> 6km).
+ * If it hits 6km and fails, it triggers an ops alert.
+ */
+export const dispatchRetryAndExpansion = onSchedule({
+  schedule: '*/5 * * * *',
+  timeZone: 'Asia/Kolkata'
+}, async (event) => {
+  const db = admin.firestore();
+  
+  // Find batches that are active but not yet fully assigned
+  // A batch is considered "unassigned" if there are orders in 'vendor_ready' for it 
+  // that don't have a rider_trip_id. For simplicity, we just query all batches that 
+  // have dispatch tracking fields initialized (or we can initialize them here).
+  
+  const todayStr = new Date().toISOString().split('T')[0];
+  const batchesSnap = await db.collection('batches')
+    .where('date', '==', todayStr)
+    .get();
+
+  for (const doc of batchesSnap.docs) {
+    const batch = doc.data();
+    
+    // Check if there are any unassigned orders for this batch's vendor/slot
+    const unassignedOrdersSnap = await db.collection('orders')
+      .where('vendor_id', '==', batch.vendor_id)
+      .where('delivery_slot', '==', batch.slot)
+      .where('status', '==', 'vendor_ready')
+      .get();
+      
+    const unassignedOrders = unassignedOrdersSnap.docs.filter(d => !d.data().rider_trip_id);
+    
+    if (unassignedOrders.length === 0) continue; // All assigned or none ready
+
+    let dispatch_attempts = batch.dispatch_attempts || 0;
+    let current_radius = batch.current_radius || 2.0;
+
+    dispatch_attempts += 1;
+    if (dispatch_attempts === 2) current_radius = 4.0;
+    if (dispatch_attempts === 3) current_radius = 6.0;
+
+    await doc.ref.update({
+      dispatch_attempts,
+      current_radius,
+      dispatch_started_at: batch.dispatch_started_at || admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Dynamically import to avoid circular dependency issues if any
+    const { coreAssignRiderTrips } = await import('./matchingTriggers');
+    
+    await coreAssignRiderTrips(batch.vendor_id, batch.slot, current_radius, doc.id);
+
+    // If we've hit attempt 3 (6km) and we still have unassigned orders, alert ops
+    if (dispatch_attempts >= 3) {
+      // Check again if assignment succeeded
+      const checkSnap = await db.collection('orders')
+        .where('vendor_id', '==', batch.vendor_id)
+        .where('delivery_slot', '==', batch.slot)
+        .where('status', '==', 'vendor_ready')
+        .get();
+      const stillUnassigned = checkSnap.docs.filter(d => !d.data().rider_trip_id);
+      
+      if (stillUnassigned.length > 0) {
+        await publishEvent(
+          'delivery_failed', // Re-using for ops escalation
+          batch.vendor_id,
+          'vendor',
+          `zero_riders_escalation_${doc.id}_${Date.now()}`,
+          { 
+            batch_id: doc.id,
+            vendor_id: batch.vendor_id,
+            message: `URGENT: No riders found for vendor ${batch.vendor_id} after 6km expansion.`
+          }
+        );
+      }
+    }
+  }
 });

@@ -57,6 +57,25 @@ export default function LoginPage() {
     return () => cleanupAuth();
   }, []);
 
+  // Set default selectedRole and prefill phone based on URL query parameters
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('role');
+      if (r === 'vendor' || r === 'delivery' || r === 'user') {
+        setSelectedRole(r as UserRole);
+      }
+      const p = params.get('phone');
+      if (p) {
+        // Strip non-digits and take last 10 characters to ensure clean local format
+        const cleanPhone = p.replace(/\D/g, '').slice(-10);
+        if (cleanPhone.length === 10) {
+          setPhone(cleanPhone);
+        }
+      }
+    }
+  }, []);
+
   // ─── Resend timer ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (resendTimer <= 0) return;
@@ -104,7 +123,7 @@ export default function LoginPage() {
         } else {
           // Brand new user — full onboarding
           setIsExistingUserMissingName(false);
-          addToast('Welcome to Dabzo! Set up your profile 🎉', 'success');
+          addToast('Welcome to Dabzzo! Set up your profile 🎉', 'success');
         }
         setStep('onboarding');
         return;
@@ -165,7 +184,12 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error('[Login] Send OTP error:', err);
-      addToast(err.message || 'Failed to send OTP. Try again.', 'error');
+      
+      let errMsg = err.message || 'Failed to send OTP. Try again.';
+      if (err.message?.includes('invalid-app-credential') || err.code === 'auth/invalid-app-credential') {
+        errMsg = 'App verification failed. On localhost, make sure "localhost" is added to Authorized Domains in your Firebase Console and disable any AdBlockers blocking reCAPTCHA.';
+      }
+      addToast(errMsg, 'error');
     } finally {
       setLoading(false);
     }
@@ -217,13 +241,26 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const user = await completeOnboarding(newUserId, newUserPhone, name.trim(), selectedRole);
+      let vendorDetails: any = undefined;
+      if (selectedRole === 'vendor') {
+        const stored = localStorage.getItem('pending_vendor_onboarding');
+        if (stored) {
+          try {
+            vendorDetails = JSON.parse(stored);
+            localStorage.removeItem('pending_vendor_onboarding');
+          } catch (err) {
+            console.error('Failed to parse pending vendor details:', err);
+          }
+        }
+      }
+
+      const user = await completeOnboarding(newUserId, newUserPhone, name.trim(), selectedRole, vendorDetails);
       setUser(user);
 
       if (selectedRole === 'vendor') {
-        addToast('Account created! Awaiting admin approval.', 'info');
+        addToast('Kitchen registered successfully! Awaiting admin approval.', 'success');
       } else {
-        addToast(`Welcome to Dabzo, ${name}! 🎉`, 'success');
+        addToast(`Welcome to Dabzzo, ${name}! 🎉`, 'success');
       }
 
       routeToRole(user.role);
@@ -276,11 +313,11 @@ export default function LoginPage() {
           <div className="flex flex-col items-center mb-10 animate-fade-in text-center">
             <div className="w-24 h-24 bg-white rounded-[2rem] flex items-center justify-center shadow-lg shadow-slate-200/50 mb-6 p-4">
               {/* Removed brightness-0 invert so the logo is actually visible! */}
-              <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={72} height={72} priority className="object-contain" />
+              <Image src="/assets/dabzzo-logo.png" alt="Dabzzo" width={72} height={72} priority className="object-contain" />
             </div>
 
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-              Welcome to Dabzo
+              Welcome to Dabzzo
             </h1>
             <p className="text-base font-medium text-slate-500">
               {step === 'phone' ? 'Premium meal subscriptions' : step === 'otp' ? 'Verify your number' : 'Complete your profile'}

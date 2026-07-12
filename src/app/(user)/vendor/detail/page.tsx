@@ -17,6 +17,7 @@ import { formatDate, toMillis, cn } from '@/lib/utils';
 import { SkeletonCard } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import type { AppUser, Review, DiscountCode, SubscriptionFrequency } from '@/types';
 import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, ShieldCheck } from 'lucide-react';
 
@@ -156,37 +157,39 @@ export default function VendorDetailPage() {
   }
 
   // One-time = flat per-meal price (no lunch/dinner distinction).
-  // Weekly/monthly = per meal type, with fallback chain: monthly → weekly → base.
+  // Weekly/monthly = per meal type.
+  // Fallback chain: new weekly/monthly fields → legacy rate_lunch/dinner/both fields → 0
+  const _lunchW  = vendor?.rate_lunch_weekly  ?? vendor?.rate_lunch  ?? 0;
+  const _lunchM  = vendor?.rate_lunch_monthly ?? vendor?.rate_lunch  ?? 0;
+  const _dinnerW = vendor?.rate_dinner_weekly  ?? vendor?.rate_dinner ?? 0;
+  const _dinnerM = vendor?.rate_dinner_monthly ?? vendor?.rate_dinner ?? 0;
+  const _bothW   = vendor?.rate_both_weekly    ?? vendor?.rate_both   ?? 0;
+  const _bothM   = vendor?.rate_both_monthly   ?? vendor?.rate_both   ?? 0;
+
   const plans = selectedFrequency === 'one-time'
     ? (vendor?.rate_onetime
         ? [{ id: 'one-time', label: 'Single Meal', price: vendor.rate_onetime, basePrice: vendor.rate_onetime, type: 'Any meal, any time' }]
         : [])
     : [
-        (vendor?.rate_lunch_weekly || vendor?.rate_lunch_monthly) && {
+        (_lunchW || _lunchM) && {
           id: 'lunch',
           label: 'Lunch Plan',
-          price: selectedFrequency === 'monthly'
-            ? (vendor?.rate_lunch_monthly ?? vendor?.rate_lunch_weekly ?? 0)
-            : (vendor?.rate_lunch_weekly ?? 0),
-          basePrice: vendor?.rate_lunch_weekly ?? 0,
+          price: selectedFrequency === 'monthly' ? _lunchM : _lunchW,
+          basePrice: _lunchW,
           type: 'Lunch Only',
         },
-        (vendor?.rate_dinner_weekly || vendor?.rate_dinner_monthly) && {
+        (_dinnerW || _dinnerM) && {
           id: 'dinner',
           label: 'Dinner Plan',
-          price: selectedFrequency === 'monthly'
-            ? (vendor?.rate_dinner_monthly ?? vendor?.rate_dinner_weekly ?? 0)
-            : (vendor?.rate_dinner_weekly ?? 0),
-          basePrice: vendor?.rate_dinner_weekly ?? 0,
+          price: selectedFrequency === 'monthly' ? _dinnerM : _dinnerW,
+          basePrice: _dinnerW,
           type: 'Dinner Only',
         },
-        (vendor?.rate_both_weekly || vendor?.rate_both_monthly) && {
+        (_bothW || _bothM) && {
           id: 'both',
           label: 'Lunch + Dinner',
-          price: selectedFrequency === 'monthly'
-            ? (vendor?.rate_both_monthly ?? vendor?.rate_both_weekly ?? 0)
-            : (vendor?.rate_both_weekly ?? 0),
-          basePrice: vendor?.rate_both_weekly ?? 0,
+          price: selectedFrequency === 'monthly' ? _bothM : _bothW,
+          basePrice: _bothW,
           type: 'Full Day',
         },
       ].filter(Boolean) as { id: string; label: string; price: number; basePrice: number; type: string }[];
@@ -531,38 +534,22 @@ export default function VendorDetailPage() {
               ))}
             </div>
           )}
+          {/* Downgrade Restriction Modal */}
+          <ConfirmDialog
+            isOpen={showDowngradeModal}
+            title="Active Combo Plan"
+            message="You are currently subscribed to the Both (Lunch + Dinner) plan. To switch to a single meal plan, you must first cancel your combo subscription from your Orders page."
+            confirmLabel="Go to My Orders"
+            cancelLabel="Cancel"
+            variant="primary"
+            onConfirm={() => {
+              setShowDowngradeModal(false);
+              router.push('/orders');
+            }}
+            onCancel={() => setShowDowngradeModal(false)}
+          />
         </div>
       </div>
-
-      {/* Downgrade Restriction Modal */}
-      {showDowngradeModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowDowngradeModal(false)}>
-          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl scale-in" onClick={e => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
-              <ShieldCheck className="w-8 h-8 text-rose-500" />
-            </div>
-            <h3 className="text-xl font-black text-slate-900 text-center mb-2">Active Combo Plan</h3>
-            <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
-              You are currently subscribed to the <strong className="text-slate-700">Both (Lunch + Dinner)</strong> plan. 
-              To switch to a single meal plan, you must first cancel your combo subscription from your Orders page.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => router.push('/orders')}
-                className="w-full py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
-              >
-                Go to My Orders
-              </button>
-              <button 
-                onClick={() => setShowDowngradeModal(false)}
-                className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl text-sm font-bold hover:bg-slate-200 transition-all"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Subscription Modal */}
       {vendor && (

@@ -10,9 +10,35 @@ import { updateUser } from '@/lib/queries/users';
 import { uploadImage, getImageUrl } from '@/lib/storage';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Gift, Star, ChevronRight, Calendar, AlertCircle } from 'lucide-react';
+import { Gift, Star, ChevronRight, Calendar, AlertCircle, RefreshCw, Plus, Minus, CreditCard } from 'lucide-react';
 import { PaymentModal } from '@/components/shared/PaymentModal';
-import { redeemCreditsForDays } from '@/lib/queries/swaps';
+import { redeemCreditsForDays, addBoughtSwaps } from '@/lib/queries/swaps';
+import type { SubscriptionSwapAllowance } from '@/types';
+
+// Razorpay SDK loader
+let _checkoutScriptPromise: Promise<void> | null = null;
+function loadCheckoutScript(): Promise<void> {
+  if (_checkoutScriptPromise) return _checkoutScriptPromise;
+  _checkoutScriptPromise = new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && (window as any).Razorpay) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => { _checkoutScriptPromise = null; reject(new Error('Failed to load Razorpay SDK.')); };
+    document.head.appendChild(s);
+  });
+  return _checkoutScriptPromise;
+}
+
+async function readApiError(response: Response, fallback: string) {
+  try {
+    const data = await response.json();
+    return typeof data?.error === 'string' ? data.error : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -30,8 +56,15 @@ export default function ProfilePage() {
   const [selectedSubForPayment, setSelectedSubForPayment] = useState<any>(null);
   const [redeemingCredits, setRedeemingCredits] = useState(false);
 
+  // Buy Swaps state
+  const [swapAllowances, setSwapAllowances] = useState<Record<string, SubscriptionSwapAllowance>>({});
+  const [purchaseQty, setPurchaseQty] = useState<Record<string, number>>({});
+  const [buyingSwapId, setBuyingSwapId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!user) return;
+    
+    // Listen to user credits
     const q = query(
       collection(db, 'user_credits'),
       where('user_id', '==', user.id)
@@ -43,6 +76,7 @@ export default function ProfilePage() {
       setCreditHistory(credits.sort((a, b) => (b.created_at?.seconds ?? 0) - (a.created_at?.seconds ?? 0)).slice(0, 5));
     });
 
+    // Listen to active subscriptions
     const qSubs = query(
       collection(db, 'subscriptions'),
       where('user_id', '==', user.id),
@@ -52,9 +86,26 @@ export default function ProfilePage() {
       setActiveSubscriptions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    // Listen to swap allowances in real-time
+    const qAllowances = query(
+      collection(db, 'subscription_swap_allowances'),
+      where('user_id', '==', user.id)
+    );
+    const unsubAllowances = onSnapshot(qAllowances, (snap) => {
+      const mapping: Record<string, SubscriptionSwapAllowance> = {};
+      snap.docs.forEach(doc => {
+        const data = doc.data() as SubscriptionSwapAllowance;
+        if (data.subscription_id) {
+          mapping[data.subscription_id] = data;
+        }
+      });
+      setSwapAllowances(mapping);
+    });
+
     return () => {
       unsub();
       unsubSubs();
+      unsubAllowances();
     };
   }, [user]);
 
@@ -80,7 +131,7 @@ export default function ProfilePage() {
   }
 
   function handleLogout() {
-    logout(); // Now handles both Zustand clear + Firebase signOut
+    logout();
     router.replace('/login');
     addToast('Signed out successfully', 'info');
   }
@@ -113,7 +164,100 @@ export default function ProfilePage() {
     }
   }
 
-  // Format phone for display: +919876543210 → 98765 43210
+  // Handle buy swaps quantity change
+  function handleSwapQtyChange(subId: string, diff: number) {
+    setPurchaseQty(prev => {
+      const current = prev[subId] || 1;
+      const next = Math.max(1, Math.min(10, current + diff));
+      return { ...prev, [subId]: next };
+    });
+  }
+
+  // Handle purchase of extra swaps using Razorpay (₹29 per swap)
+  async function handleBuySwaps(subId: string) {
+    if (buyingSwapId) return;
+    setBuyingSwapId(subId);
+    const qty = purchaseQty[subId] || 1;
+    const amount = qty * 29;
+
+    try {
+      await loadCheckoutScript();
+      
+      // 1. Create order on the server
+      const res = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amount * 100, // paise
+          currency: 'INR',
+          receipt: `buyswaps_${subId}_${Date.now()}`.slice(0, 40),
+          notes: {
+            user_id: user?.id,
+            subscription_id: subId,
+            qty: String(qty),
+            type: 'buy_swaps'
+          }
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(await readApiError(res, 'Failed to create payment order.'));
+      }
+
+      const { order_id } = await res.json();
+
+      // 2. Open Razorpay Checkout modal
+      const paymentResponse = await new Promise<any>((resolve, reject) => {
+        const rzp = new (window as any).Razorpay({
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+          amount: amount * 100,
+          currency: 'INR',
+          name: 'Dabzzo',
+          description: `Buy ${qty} Extra Meal Swap${qty > 1 ? 's' : ''}`,
+          order_id,
+          prefill: {
+            name: user?.name || '',
+            contact: user?.phone || '',
+            email: user?.email || '',
+          },
+          theme: { color: '#f97316' },
+          modal: {
+            ondismiss: () => reject(new Error('Payment cancelled by user.'))
+          },
+          handler: (response: any) => resolve(response)
+        });
+
+        rzp.on('payment.failed', (resp: any) => {
+          reject(new Error(resp.error?.description || 'Payment failed.'));
+        });
+
+        rzp.open();
+      });
+
+      // 3. Verify Payment
+      const verifyRes = await fetch('/api/razorpay/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentResponse)
+      });
+
+      if (!verifyRes.ok) {
+        throw new Error(await readApiError(verifyRes, 'Payment verification failed.'));
+      }
+
+      // 4. Update allowance in Firestore
+      if (user) {
+        await addBoughtSwaps(subId, qty, user.id);
+        addToast(`Successfully bought ${qty} extra swaps! 🎉`, 'success');
+        setPurchaseQty(prev => ({ ...prev, [subId]: 1 }));
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Swap purchase failed', 'error');
+    } finally {
+      setBuyingSwapId(null);
+    }
+  }
+
   function formatPhone(p?: string) {
     if (!p) return '—';
     const digits = p.replace(/\D/g, '').slice(-10);
@@ -133,7 +277,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in pr-4 pl-4">
       <div className="mb-5">
         <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">My Profile</h1>
         <p className="text-sm text-slate-500 mt-0.5">Identity, account access, and quick links</p>
@@ -217,6 +361,13 @@ export default function ProfilePage() {
               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
               
               const isExpiringSoon = diffDays <= 7;
+
+              // Swap Allowance computations
+              const allowance = swapAllowances[sub.id];
+              const totalSwaps = allowance?.free_swaps_total || 0;
+              const usedSwaps = allowance?.free_swaps_used || 0;
+              const remainingSwaps = Math.max(0, totalSwaps - usedSwaps);
+              const qtyToBuy = purchaseQty[sub.id] || 1;
               
               return (
                 <div key={sub.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
@@ -240,12 +391,52 @@ export default function ProfilePage() {
                         setSelectedSubForPayment(sub);
                         setPaymentModalOpen(true);
                       }}
-                      className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-brand text-white hover:bg-brand-600 active:scale-95 shadow-md shadow-brand/20"
+                      className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-brand text-white hover:bg-brand-600 active:scale-95 shadow-md shadow-brand/20 mb-3"
                     >
                       <AlertCircle className="w-3.5 h-3.5" />
                       Make Payment
                     </button>
                   )}
+
+                  {/* Buy Swaps Section */}
+                  <div className="mt-3 pt-3 border-t border-slate-200/60 flex flex-col gap-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-semibold flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 text-slate-400" /> Swaps Remaining:
+                      </span>
+                      <span className="font-bold text-slate-700">{remainingSwaps} left <span className="text-slate-400 font-normal">(of {totalSwaps})</span></span>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center bg-slate-200/50 rounded-xl px-2 py-1.5 border border-slate-200/40">
+                        <button 
+                          onClick={() => handleSwapQtyChange(sub.id, -1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-brand font-bold focus:outline-none"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-8 text-center text-xs font-black text-slate-800">{qtyToBuy}</span>
+                        <button 
+                          onClick={() => handleSwapQtyChange(sub.id, 1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-brand font-bold focus:outline-none"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => handleBuySwaps(sub.id)}
+                        disabled={buyingSwapId !== null}
+                        className="flex-1 py-2 bg-brand/10 text-brand hover:bg-brand text-[10px] font-black uppercase tracking-wider rounded-xl hover:text-white transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                      >
+                        {buyingSwapId === sub.id ? (
+                          <div className="w-3.5 h-3.5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          `Buy Swaps • ₹${qtyToBuy * 29}`
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -350,7 +541,7 @@ export default function ProfilePage() {
         Sign Out
       </button>
 
-      <p className="text-center text-xs text-slate-400 mt-6 mb-10">Dabzo v2.0 • Smart Meal Subscriptions</p>
+      <p className="text-center text-xs text-slate-400 mt-6 mb-10">Dabzzo v2.0 • Smart Meal Subscriptions</p>
       
       {selectedSubForPayment && (
         <PaymentModal 

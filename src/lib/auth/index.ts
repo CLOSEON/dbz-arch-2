@@ -1,5 +1,5 @@
 /**
- * DABZO AUTH — Public API
+ * DABZZO AUTH — Public API
  * 
  * Single import point for all auth functionality:
  * import { sendOtp, AuthProvider, AuthGuard } from '@/lib/auth';

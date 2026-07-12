@@ -2,22 +2,46 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { getRewardsData, RewardsData } from '@/lib/queries/rewards';
 import { Gift, AlertCircle, ChevronRight, CheckCircle2, Ticket } from 'lucide-react';
 import Link from 'next/link';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function RewardsPage() {
   const user = useAuthStore(s => s.user);
-  const [data, setData] = useState<RewardsData | null>(null);
+  const [totalCredits, setTotalCredits] = useState<number>(0);
+  const [availableVouchers, setAvailableVouchers] = useState<any[]>([]);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      getRewardsData(user.id)
-        .then(setData)
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }
+    if (!user) return;
+    setLoading(true);
+
+    const creditsQ = query(collection(db, 'user_credits'), where('user_id', '==', user.id));
+    const vouchersQ = query(collection(db, 'vouchers'), where('user_id', '==', user.id), where('status', '==', 'available'));
+    const subsQ = query(collection(db, 'subscriptions'), where('user_id', '==', user.id), where('status', '==', 'active'));
+
+    const unsubCredits = onSnapshot(creditsQ, (snap) => {
+      let total = 0;
+      snap.docs.forEach(d => { const c = d.data() as any; if (!c.redeemed) total += (c.credit_amount || 0); });
+      setTotalCredits(Math.round(total * 10) / 10);
+    }, console.error);
+
+    const unsubVouchers = onSnapshot(vouchersQ, (snap) => {
+      setAvailableVouchers(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, console.error);
+
+    const unsubSubs = onSnapshot(subsQ, (snap) => {
+      setHasActiveSubscription(!snap.empty);
+      setLoading(false);
+    }, console.error);
+
+    return () => {
+      unsubCredits();
+      unsubVouchers();
+      unsubSubs();
+    };
   }, [user]);
 
   if (loading) {
@@ -28,7 +52,6 @@ export default function RewardsPage() {
     );
   }
 
-  const { totalCredits = 0, availableVouchers = [], hasActiveSubscription = false } = data || {};
   const progressPercentage = Math.min((totalCredits / 1.0) * 100, 100);
 
   return (

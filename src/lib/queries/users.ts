@@ -30,7 +30,7 @@ export function invalidateUserCache() {
 }
 
 /**
- * DABZO USER PROFILE & DATA SERVICE
+ * DABZZO USER PROFILE & DATA SERVICE
  */
 
 export function formatPhoneE164(phone: string): string {
@@ -41,7 +41,13 @@ export function formatPhoneE164(phone: string): string {
 }
 
 export function isTestAccount(e164: string): boolean {
-  const TEST_NUMBERS = ['+919000000001', '+919000000002', '+919000000003', '+919000000004'];
+  const TEST_NUMBERS = [
+    '+919000000001',
+    '+919000000002',
+    '+919000000003',
+    '+919000000004',
+    '+919930577000' // Added user test phone number
+  ];
   return TEST_NUMBERS.includes(e164);
 }
 
@@ -57,16 +63,17 @@ export async function resolveUserProfile(
     const data = userDoc.data() as Partial<AppUser>;
     if (data.is_rejected) throw new Error('Account rejected.');
     
-    // If the user hasn't set their name, treat them as a new user to trigger onboarding
-    if (!data.name || data.name.trim() === '') {
+    // Treat as new user (onboarding required) if missing name OR role
+    if (!data.name || data.name.trim() === '' || !data.role) {
       return { user: { id: uid, ...data } as AppUser, isNewUser: true };
     }
 
     return { user: { id: uid, ...data } as AppUser, isNewUser: false };
   }
 
+  // Brand new user has no role defined yet so the frontend onboarding form renders the Account Type selector
   return {
-    user: { id: uid, phone, name: '', role: 'user', is_approved: true },
+    user: { id: uid, phone, name: '', is_approved: true } as any,
     isNewUser: true,
   };
 }
@@ -75,7 +82,8 @@ export async function completeOnboarding(
   uid: string,
   phone: string,
   name: string,
-  role: UserRole
+  role: UserRole,
+  vendorDetails?: Partial<AppUser>
 ): Promise<AppUser> {
   const userData: Partial<AppUser> = {
     name,
@@ -89,6 +97,9 @@ export async function completeOnboarding(
   if (role === 'vendor') {
     userData.kitchen_name = `${name}'s Kitchen`;
     userData.is_approved = false;
+    if (vendorDetails) {
+      Object.assign(userData, vendorDetails);
+    }
   }
 
   await setDoc(doc(db, 'users', uid), userData, { merge: true });

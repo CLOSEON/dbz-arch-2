@@ -1,8 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-/**
- */
-export type DeliveryStatus = "pending" | "preparing" | "ready" | "picked_up" | "out_for_delivery" | "delivered" | "failed" | "failed_attempt";
+export type DeliveryStatus = "pending" | "preparing" | "vendor_ready" | "rider_assigned" | "ready" | "picked_up" | "out_for_delivery" | "delivered" | "failed" | "failed_attempt";
 /**
  * Detailed information about a single delivery order in the system.
  */
@@ -127,6 +125,7 @@ export interface DeliveryNotification {
 
 export interface PickupStop {
   vendorId: string;
+  vendorPhone?: string;
   location: { lat: number; lng: number };
   /** 1-indexed order in the optimised route */
   sequence: number;
@@ -134,6 +133,8 @@ export interface PickupStop {
   distanceKm: number;
   status: 'pending' | 'completed';
   pickupOTP?: string;
+  expectedTiffinCount: number;
+  confirmedCount?: number;
 }
 
 export interface DropStop {
@@ -164,4 +165,23 @@ export interface RiderTrip {
   isPartialLoad: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface PickupDiscrepancy {
+  id?: string;
+  batch_id: string;
+  rider_trip_id: string;
+  vendor_declared_count: number;
+  rider_confirmed_count: number;
+  flagged_at: Timestamp;
+  resolved: boolean;
+}
+
+export interface FailedDeliveryReview {
+  id?: string;
+  order_id: string;
+  batch_id?: string;
+  rider_id: string;
+  failed_at: Timestamp;
+  reviewed: boolean;
 }

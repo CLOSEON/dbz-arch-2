@@ -1,11 +1,11 @@
-# Dabzo v2.0 | Technical Documentation
+# Dabzzo v2.0 | Technical Documentation
 
-Dabzo is a premium, mobile-first marketplace for daily meal subscriptions (tiffin services). This documentation provides a comprehensive overview of the architecture, features, and technical implementation details of the project.
+Dabzzo is a premium, mobile-first marketplace for daily meal subscriptions (tiffin services). This documentation provides a comprehensive overview of the architecture, features, and technical implementation details of the project.
 
 ---
 
 ## 1. Project Overview
-Dabzo connects local food vendors with customers looking for consistent, high-quality daily meal plans (Lunch/Dinner). The platform handles the entire lifecycle: from discovery and subscription to daily menu updates and delivery tracking.
+Dabzzo connects local food vendors with customers looking for consistent, high-quality daily meal plans (Lunch/Dinner). The platform handles the entire lifecycle: from discovery and subscription to daily menu updates and delivery tracking.
 
 - **Primary Goal**: Native-level performance on mobile via a single high-quality codebase.
 - **Business Model**: Subscription-based meal plans with automated daily tracking.

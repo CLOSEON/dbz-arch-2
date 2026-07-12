@@ -33,22 +33,17 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.regeneratePickupOTP = exports.verifyPickupOTP = exports.computeDropRoute = exports.assignRiderTrips = void 0;
+exports.regeneratePickupOTP = exports.verifyPickupOTP = exports.computeDropRoute = exports.assignRiderTrips = exports.coreAssignRiderTrips = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const geo_1 = require("./utils/geo");
 const events_1 = require("./utils/events");
 const db = admin.firestore();
-exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
-    if (!context?.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-    }
-    const { vendorId, slot } = data || {};
+const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchId) => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     let ordersQuery = db.collection('orders')
-        .where('status', '==', 'vendor_ready')
-        .where('rider_trip_id', '==', null);
+        .where('status', '==', 'vendor_ready');
     if (vendorId) {
         ordersQuery = ordersQuery.where('vendor_id', '==', vendorId);
     }
@@ -59,7 +54,12 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
     if (ordersSnap.empty) {
         return { success: true, message: 'No pending unassigned orders found.' };
     }
-    const unassignedOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unassignedOrders = ordersSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(order => !order.rider_trip_id);
+    if (unassignedOrders.length === 0) {
+        return { success: true, message: 'No pending unassigned orders found.' };
+    }
     const vendorOrdersMap = new Map();
     const vendorIds = new Set();
     unassignedOrders.forEach(order => {
@@ -94,7 +94,7 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
     for (const rider of activeRiders) {
         const rLat = rider.currentLocation.lat;
         const rLng = rider.currentLocation.lng;
-        let availableTiffins = [];
+        const eligibleVendors = [];
         for (const [vId, orders] of vendorOrdersMap.entries()) {
             if (orders.length === 0)
                 continue;
@@ -102,17 +102,32 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             if (!vLoc)
                 continue;
             const distance = (0, geo_1.getDistanceInKm)(rLat, rLng, vLoc.lat, vLoc.lng);
-            if (distance <= 2.0) {
-                availableTiffins.push(...orders);
+            if (distance <= overrideRadius) {
+                eligibleVendors.push({ vId, distance, orders });
             }
         }
-        if (availableTiffins.length === 0)
+        if (eligibleVendors.length === 0)
             continue;
-        const selectedTiffins = availableTiffins.slice(0, 20);
+        eligibleVendors.sort((a, b) => a.distance - b.distance);
+        let selectedTiffins = [];
+        const maxTiffins = 20;
+        const selectedVendorsSet = new Set();
+        for (const vendor of eligibleVendors) {
+            const remainingCapacity = maxTiffins - selectedTiffins.length;
+            if (remainingCapacity <= 0)
+                break;
+            const ordersToTake = vendor.orders.slice(0, remainingCapacity);
+            selectedTiffins.push(...ordersToTake);
+            selectedVendorsSet.add(vendor.vId);
+            const vOrders = vendorOrdersMap.get(vendor.vId);
+            vendorOrdersMap.set(vendor.vId, vOrders.filter(o => !ordersToTake.includes(o)));
+        }
+        if (selectedTiffins.length === 0)
+            continue;
         const selectedOrderIds = selectedTiffins.map(o => o.id);
-        const selectedVendorIds = Array.from(new Set(selectedTiffins.map(o => o.vendor_id)));
+        const selectedVendorIds = Array.from(selectedVendorsSet);
         const selectedBatchIds = Array.from(new Set(selectedTiffins.map(o => o.batch_id).filter(Boolean)));
-        const isPartialLoad = selectedTiffins.length < 20;
+        const isPartialLoad = selectedTiffins.length < maxTiffins;
         const pickupStops = [];
         let currentLat = rLat;
         let currentLng = rLng;
@@ -131,14 +146,16 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
                     nearestLoc = vLoc;
                 }
             }
+            const vendorOrdersCount = selectedTiffins.filter(o => o.vendor_id === nearestVendor).length;
             const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
             pickupStops.push({
                 vendorId: nearestVendor,
                 location: nearestLoc,
                 sequence,
                 distanceKm: shortestDistance,
-                status: 'pending',
-                pickupOTP
+                expectedTiffinCount: vendorOrdersCount,
+                pickupOTP,
+                status: 'pending'
             });
             unvisitedVendors = unvisitedVendors.filter(v => v !== nearestVendor);
             currentLat = nearestLoc.lat;
@@ -161,6 +178,10 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             const orderRef = db.collection('orders').doc(order.id);
             batch.update(orderRef, {
                 rider_trip_id: tripRef.id,
+                driverId: rider.id,
+                agentName: rider.name || 'Dabzzo Rider',
+                agentPhone: rider.phone || rider.phoneNumber || '9999999999',
+                vehicleNumber: rider.vehicleNumber || 'MH12 AB1234',
                 status: 'rider_assigned',
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -173,10 +194,6 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
                 actor: rider.id,
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
             });
-            const vOrders = vendorOrdersMap.get(order.vendor_id);
-            if (vOrders) {
-                vendorOrdersMap.set(order.vendor_id, vOrders.filter(o => o.id !== order.id));
-            }
         }
         await (0, events_1.publishEvent)('rider_new_trip', rider.id, 'rider', `rider_trip_assigned_${tripRef.id}`, { stopCount: pickupStops.length });
         for (const vId of selectedVendorIds) {
@@ -191,6 +208,14 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
     else {
         return { success: true, message: 'No riders were within 2km of pending vendors.' };
     }
+};
+exports.coreAssignRiderTrips = coreAssignRiderTrips;
+exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
+    if (!context?.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const { vendorId, slot } = data || {};
+    return await (0, exports.coreAssignRiderTrips)(vendorId, slot);
 });
 exports.computeDropRoute = functions.firestore
     .document('rider_trips/{tripId}')
@@ -290,6 +315,11 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
         if (stop.status === 'completed') {
             return { success: false, message: 'Already picked up' };
         }
+        const ordersQuery = db.collection('orders')
+            .where('rider_trip_id', '==', tripId)
+            .where('vendor_id', '==', vendorId)
+            .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created', 'preparing', 'pending', 'notified']);
+        const ordersSnap = await t.get(ordersQuery);
         pickupStops[stopIndex].status = 'completed';
         const allDone = pickupStops.every((s) => s.status === 'completed');
         t.update(tripRef, {
@@ -297,14 +327,12 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
             status: allDone ? 'pickup_complete' : 'picking_up',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        const ordersQuery = db.collection('orders')
-            .where('rider_trip_id', '==', tripId)
-            .where('vendor_id', '==', vendorId)
-            .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created']);
-        const ordersSnap = await t.get(ordersQuery);
+        const batchIds = new Set();
         ordersSnap.forEach((doc) => {
             const order = doc.data();
             t.update(doc.ref, { status: 'picked_up', updated_at: admin.firestore.FieldValue.serverTimestamp() });
+            if (order.batch_id)
+                batchIds.add(order.batch_id);
             const logRef = db.collection('order_status_logs').doc();
             t.set(logRef, {
                 id: logRef.id,
@@ -313,6 +341,13 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
                 to_status: 'picked_up',
                 actor: tripData?.riderId || 'rider',
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        batchIds.forEach(batchId => {
+            const batchRef = db.collection('batches').doc(batchId);
+            t.update(batchRef, {
+                status: 'completed',
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
         });
         return { success: true, message: 'OTP verified successfully. Orders picked up.', tripId, vendorId };

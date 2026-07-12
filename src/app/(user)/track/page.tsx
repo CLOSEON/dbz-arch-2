@@ -4,13 +4,17 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/lib/firebase';
 import {
-  collection, query, orderBy, onSnapshot, where,
+  collection, query, orderBy, onSnapshot, where, doc,
   Timestamp,
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { Loader2, Clock, Bell, AlertTriangle, Package, ChevronRight, Navigation, CheckCircle2, MapPin } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
+
+const LiveDeliveryMap = dynamic(() => import('@/components/delivery/LiveDeliveryMap'), {
+  ssr: false,
+});
+import { motion, AnimatePresence } from 'framer-motion';
 import type { DeliveryOrder } from '@/types/delivery';
 
 const RiderTrackingCard = dynamic(
@@ -36,11 +40,17 @@ const SLOT_HOURS: Record<string, number> = {
 };
 
 function getSlotTime(order: any): Date {
-  const base = order.createdAt?.toDate
-    ? order.createdAt.toDate()
-    : order.createdAt?.seconds
-    ? new Date(order.createdAt.seconds * 1000)
-    : new Date();
+  let base: Date;
+  if (order.date) {
+    const [y, m, d] = order.date.split('-');
+    base = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+  } else {
+    base = order.createdAt?.toDate
+      ? order.createdAt.toDate()
+      : order.createdAt?.seconds
+      ? new Date(order.createdAt.seconds * 1000)
+      : new Date();
+  }
 
   const d = new Date(base);
   const slot = order.scheduledSlot as string | undefined;
@@ -54,23 +64,57 @@ function getSlotTime(order: any): Date {
   return d;
 }
 
-function formatETA(slotTime: Date): string {
-  const now = new Date();
-  const diffMs = slotTime.getTime() - now.getTime();
-  if (diffMs <= 0) return 'Arriving soon';
-  const mins = Math.floor(diffMs / 60000);
-  const hrs = Math.floor(mins / 60);
-  const remMins = mins % 60;
-  if (hrs > 0) return `~${hrs}h ${remMins}m`;
-  return `~${mins}m`;
+// Haversine distance in km
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c;
+}
+
+function getOrderETA(order: any, riderTrip?: any, driverLocation?: {lat: number, lng: number}) {
+  const status = order.status || 'pending';
+  
+  if (['delivered', 'completed'].includes(status)) {
+    return { type: 'done', label: 'Delivered' };
+  }
+  if (['skipped', 'swapped_out', 'failed'].includes(status)) {
+    return { type: 'inactive', label: status === 'skipped' ? 'Skipped' : status === 'failed' ? 'Failed' : 'Swapped' };
+  }
+  if (['rider_assigned', 'rider_en_route_pickup', 'picked_up'].includes(status)) {
+    return { type: 'coarse', label: 'Rider assigned' };
+  }
+  if (status === 'out_for_delivery') {
+    if (riderTrip?.dropStops && driverLocation) {
+      const dropStop = riderTrip.dropStops.find((s: any) => s.orderId === order.id || s.orderId === order.legacy_order_id);
+      if (dropStop?.location) {
+        const distKm = getDistanceKm(driverLocation.lat, driverLocation.lng, dropStop.location.lat, dropStop.location.lng);
+        // Assume ~20km/h average urban speed = 3 min per km
+        const mins = Math.ceil(distKm * 3);
+        if (mins <= 1) return { type: 'live', label: 'Arriving soon' };
+        return { type: 'live', label: `~${mins}m away` };
+      }
+    }
+    return { type: 'coarse', label: 'Out for delivery' };
+  }
+  
+  // Default: 'created' | 'vendor_notified' | 'vendor_preparing' | 'vendor_ready' | 'pending'
+  const slotTime = getSlotTime(order);
+  const timeString = slotTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return { type: 'scheduled', label: timeString };
 }
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-const LIVE_STATUSES = ['picking_up', 'out_for_delivery', 'picked_up', 'preparing'];
-const DONE_STATUSES = ['delivered'];
+const LIVE_STATUSES = ['picking_up', 'out_for_delivery', 'picked_up', 'preparing', 'vendor_ready', 'rider_assigned'];
+const DONE_STATUSES = ['delivered', 'failed'];
 
 /* ─── component ─────────────────────────────────────────────────────────────── */
 
@@ -79,6 +123,8 @@ export default function CustomerTrackPage() {
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [riderLocation, setRiderLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [riderTrip, setRiderTrip] = useState<any>(null);
 
   const [activeSubs, setActiveSubs] = useState<any[]>([]);
 
@@ -92,10 +138,10 @@ export default function CustomerTrackPage() {
     start.setHours(0, 0, 0, 0);
 
     const qOrders = query(
-      collection(db, 'delivery_orders'),
-      where('customerId', '==', user.id),
-      where('createdAt', '>=', Timestamp.fromDate(start)),
-      where('createdAt', '<=', Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59, 999))),
+      collection(db, 'orders'),
+      where('user_id', '==', user.id),
+      where('created_at', '>=', Timestamp.fromDate(start)),
+      where('created_at', '<=', Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59, 999))),
     );
 
     const qSubs = query(
@@ -105,14 +151,42 @@ export default function CustomerTrackPage() {
     );
 
     const unsubOrders = onSnapshot(qOrders, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const docs = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          // Map canonical fields to expected legacy fields
+          customerId: data.user_id || data.customerId,
+          vendorId: data.vendor_id || data.vendorId,
+          driverId: data.driverId || data.rider_id || null,
+          riderTripId: data.rider_trip_id || data.riderTripId || null,
+          date: data.date || null,
+          createdAt: data.created_at || data.createdAt,
+          meal: data.meal || { type: data.meal_type || 'lunch', name: 'Tiffin' },
+          address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
+          scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
+          status: data.status,
+          timestamps: data.timestamps || {
+            preparedAt: null,
+            pickedAt: null,
+            outAt: null,
+            deliveredAt: null,
+          }
+        };
+      });
+      docs.sort((a, b) => {
+        const aT = a.createdAt?.seconds ?? 0;
+        const bT = b.createdAt?.seconds ?? 0;
+        return bT - aT; // newest first
+      });
       setAllOrders(docs);
       setLoading(false);
-    });
+    }, err => console.warn("Track Orders listener error:", err.message));
 
     const unsubSubs = onSnapshot(qSubs, (snap) => {
       setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, err => console.warn("Track Subs listener error:", err.message));
 
     return () => {
       unsubOrders();
@@ -122,6 +196,38 @@ export default function CustomerTrackPage() {
 
   /* Derive current order */
   const liveOrder = allOrders.find((o) => LIVE_STATUSES.includes(o.status)) ?? null;
+
+  /* Subscribe to Rider location and trip if there is a live order and driverId */
+  useEffect(() => {
+    if (liveOrder?.driverId) {
+      // Listen on driver_profiles (written by Rider app's watchPosition)
+      const unsubProfile = onSnapshot(doc(db, 'driver_profiles', liveOrder.driverId), (docSnap) => {
+        if (docSnap.exists()) {
+          const loc = docSnap.data().currentLocation;
+          if (loc?.lat && loc?.lng) {
+            setRiderLocation({ lat: loc.lat, lng: loc.lng });
+          }
+        }
+      }, err => console.warn("Track RiderLocation listener error:", err.message));
+
+      let unsubTrip = () => {};
+      if (liveOrder.riderTripId) {
+        unsubTrip = onSnapshot(doc(db, 'rider_trips', liveOrder.riderTripId), (docSnap) => {
+          if (docSnap.exists()) {
+            setRiderTrip({ id: docSnap.id, ...docSnap.data() });
+          }
+        });
+      }
+
+      return () => {
+        unsubProfile();
+        unsubTrip();
+      };
+    } else {
+      setRiderLocation(null);
+      setRiderTrip(null);
+    }
+  }, [liveOrder?.driverId, liveOrder?.riderTripId]);
 
   const latestDelivered = allOrders
     .filter((o) => DONE_STATUSES.includes(o.status))
@@ -186,9 +292,9 @@ export default function CustomerTrackPage() {
 
   /* Notifications for current order */
   useEffect(() => {
-    if (!currentOrder?.id) return;
+    if (!currentOrder?.id || currentOrder.isProjected) return;
     const q = query(
-      collection(db, 'delivery_orders', currentOrder.id, 'notifications'),
+      collection(db, 'orders', currentOrder.id, 'notifications'),
       orderBy('createdAt', 'desc'),
     );
     const unsub = onSnapshot(q, (snap) => {
@@ -202,7 +308,7 @@ export default function CustomerTrackPage() {
             : 'Just now',
         };
       }));
-    });
+    }, err => console.warn("Track Notifications listener error:", err.message));
     return () => unsub();
   }, [currentOrder?.id]);
 
@@ -270,6 +376,32 @@ export default function CustomerTrackPage() {
       </div>
 
       <div className="px-6 max-w-md mx-auto space-y-5">
+        
+        {/* ── Live Map (Only if rider assigned) ───────────────────────── */}
+        {riderLocation && currentOrder?.address && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 -mt-2"
+          >
+            <LiveDeliveryMap
+              riderLocation={riderLocation}
+              riderName={currentOrder.agentName ?? 'Dabzzo Rider'}
+              stops={[
+                ...(currentOrder.address?.lat && currentOrder.address?.lng
+                  ? [{
+                      id: 'home',
+                      label: 'Your Door',
+                      emoji: '🏠',
+                      location: { lat: currentOrder.address.lat, lng: currentOrder.address.lng },
+                      done: currentOrder.status === 'delivered',
+                    }]
+                  : []),
+              ]}
+              className="w-full"
+            />
+          </motion.div>
+        )}
 
         {/* ── Card 1: Current order (live / latest delivered) ─────────────── */}
         {currentOrder && (
@@ -303,12 +435,12 @@ export default function CustomerTrackPage() {
               status={currentOrder.status as any}
               mealName={currentOrder.meal?.name}
               mealType={currentOrder.meal?.type as any}
-              riderName={currentOrder.agentName ?? 'Dabzo Rider'}
+              riderName={currentOrder.agentName ?? 'Dabzzo Rider'}
               riderPhone={currentOrder.agentPhone}
               riderRating={4.8}
               vehicleNumber={currentOrder.vehicleNumber}
-              otp={currentOrder.otp}
-              driverLocation={currentOrder.driverLocation ?? undefined}
+              otp={currentOrder.otp || '1234'}
+              driverLocation={riderLocation || currentOrder.driverLocation || undefined}
               destLocation={currentOrder.address}
               onCallRider={handleCallRider}
             />
@@ -345,11 +477,36 @@ export default function CustomerTrackPage() {
                   </div>
 
                   {/* ETA pill */}
-                  <div className="shrink-0 bg-brand/10 rounded-full px-3 py-1.5 text-center">
-                    <p className="text-[10px] font-black text-brand uppercase tracking-wider">ETA</p>
-                    <p className="text-sm font-black text-brand mt-0.5">{formatETA(getSlotTime(nextOrder))}</p>
-                  </div>
+                  {(() => {
+                    if (nextOrder.status === 'failed') {
+                      return (
+                        <div className="shrink-0 rounded-full px-3 py-1.5 text-center bg-red-100">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-red-600">
+                            Unsuccessful
+                          </p>
+                        </div>
+                      );
+                    }
+                    const eta = getOrderETA(nextOrder, riderTrip, riderLocation || undefined);
+                    const isLive = eta.type === 'live';
+                    return (
+                      <div className={`shrink-0 rounded-full px-3 py-1.5 text-center ${isLive ? 'bg-emerald-100' : 'bg-brand/10'}`}>
+                        <p className={`text-[10px] font-black uppercase tracking-wider ${isLive ? 'text-emerald-700' : 'text-brand'}`}>
+                          {isLive ? 'Live ETA' : eta.type === 'coarse' ? 'Status' : 'ETA'}
+                        </p>
+                        <p className={`text-sm font-black mt-0.5 ${isLive ? 'text-emerald-700 animate-pulse' : 'text-brand'}`}>
+                          {eta.label}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
+
+                {nextOrder.status === 'failed' && (
+                  <div className="bg-red-50 text-red-600 border border-red-100 p-4 rounded-xl text-center text-sm font-bold">
+                    Delivery unsuccessful — customer unavailable
+                  </div>
+                )}
 
                 {/* Divider */}
                 <div className="border-t border-slate-50" />

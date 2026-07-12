@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Download
 } from 'lucide-react';
+import { VendorOnboardingWalkthrough } from '@/components/vendor/VendorOnboardingWalkthrough';
 
 const highlights = [
   { label: 'Daily menus', value: 'Freshly planned', icon: Utensils },
@@ -70,6 +71,7 @@ const scaleUp: Variants = {
 
 export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const { scrollY } = useScroll();
   const y = useTransform(scrollY, [0, 500], [0, 150]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
@@ -96,11 +98,11 @@ export default function LandingPage() {
         }`}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3 group" aria-label="Dabzo home">
+          <Link href="/" className="flex items-center gap-3 group" aria-label="Dabzzo home">
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-brand/10 bg-white shadow-[0_8px_20px_rgba(255,59,48,0.08)] transition-transform group-hover:scale-105 group-hover:shadow-[0_8px_25px_rgba(255,59,48,0.15)]">
-              <Image src="/assets/dabzo-logo.png" alt="" width={26} height={26} priority className="rounded-full object-contain" />
+              <Image src="/assets/dabzzo-logo.png" alt="" width={26} height={26} priority className="rounded-full object-contain" />
             </span>
-            <span className="text-lg font-black tracking-tight text-slate-900">Dabzo</span>
+            <span className="text-lg font-black tracking-tight text-slate-900">Dabzzo</span>
           </Link>
           <div className="flex items-center gap-6">
             <Link href="#how-it-works" className="hidden text-sm font-bold text-slate-600 transition-colors hover:text-brand sm:block">
@@ -152,7 +154,7 @@ export default function LandingPage() {
               </motion.p>
               
               <motion.p variants={fadeInUp} className="mt-5 max-w-xl text-base font-semibold leading-relaxed text-slate-500">
-                Dabzo brings customers, vendors, admins, and delivery teams into one disciplined workflow: clean onboarding, managed subscriptions, live visibility, and instant support.
+                Dabzzo brings customers, vendors, admins, and delivery teams into one disciplined workflow: clean onboarding, managed subscriptions, live visibility, and instant support.
               </motion.p>
               
               <motion.div variants={fadeInUp} className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -163,10 +165,12 @@ export default function LandingPage() {
                     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                   </span>
                 </Link>
-                <a href="/app.apk" download className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-bold text-slate-900 shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition-all hover:bg-slate-50 hover:shadow-[0_8px_30px_rgba(15,23,42,0.08)] active:scale-95 sm:w-auto">
-                  <Download className="h-5 w-5 mr-2" />
-                  Download APK
-                </a>
+                <button
+                  onClick={() => setIsOnboardingOpen(true)}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-4 text-base font-bold text-slate-900 shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition-all hover:bg-slate-50 hover:shadow-[0_8px_30px_rgba(15,23,42,0.08)] active:scale-95 sm:w-auto"
+                >
+                  Join as Partner Kitchen
+                </button>
               </motion.div>
             </motion.div>
 
@@ -262,7 +266,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Why Choose Dabzo */}
+      {/* Why Choose Dabzzo */}
       <section className="bg-white py-20 sm:py-24 lg:py-32 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-brand/5 rounded-full blur-[100px] -z-10" />
         
@@ -275,7 +279,7 @@ export default function LandingPage() {
         >
           <div className="text-center max-w-3xl mx-auto mb-16">
             <motion.h2 variants={fadeInUp} className="text-3xl font-black text-slate-900 sm:text-5xl tracking-tight">
-              Why choose Dabzo?
+              Why choose Dabzzo?
             </motion.h2>
             <motion.p variants={fadeInUp} className="mt-6 text-lg font-medium text-slate-500 sm:text-xl">
               We combine tasty meals, reliable delivery, and transparent pricing to keep you nourished and focused on your day.
@@ -360,7 +364,7 @@ export default function LandingPage() {
             Ready to put lunch on autopilot?
           </h2>
           <p className="mt-6 mx-auto max-w-2xl text-xl font-medium leading-relaxed text-slate-300">
-            Sign in securely with your phone number, choose your role, and continue inside the Dabzo ecosystem.
+            Sign in securely with your phone number, choose your role, and continue inside the Dabzzo ecosystem.
           </p>
           
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
@@ -388,6 +392,11 @@ export default function LandingPage() {
           </div>
         </motion.div>
       </section>
+      {/* Vendor Onboarding Walkthrough Wizard */}
+      <VendorOnboardingWalkthrough 
+        isOpen={isOnboardingOpen} 
+        onClose={() => setIsOnboardingOpen(false)} 
+      />
     </main>
   );
 }

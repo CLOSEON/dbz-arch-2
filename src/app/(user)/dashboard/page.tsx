@@ -88,7 +88,7 @@ export default function UserDashboard() {
   return (
     <div className="animate-fade-in pb-20">
       {/* Header */}
-      <div className="flex items-start justify-between mb-7 px-1 pt-4 gap-3">
+      <div className="animate-slide-up-soft flex items-start justify-between mb-7 px-1 pt-4 gap-3">
         <div>
           <h1 className="text-[30px] sm:text-[36px] font-black text-slate-950 tracking-tight leading-none">
             Hey, {user?.name?.split(' ')[0] || 'Tiffin Lover'} 👋
@@ -99,34 +99,35 @@ export default function UserDashboard() {
         </div>
         <Link 
           href="/profile"
-          className="w-14 h-14 rounded-2xl bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)] flex items-center justify-center border border-slate-200/70 hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-300 shrink-0 overflow-hidden"
+          className="interactive-card soft-float w-14 h-14 rounded-2xl bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)] flex items-center justify-center border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_34px_rgba(255,59,48,0.14)] active:scale-[0.97] transition-all duration-300 shrink-0 overflow-hidden"
         >
-          <Image src="/assets/dabzo-logo.png" alt="Dabzo" width={48} height={48} priority className="object-contain" />
+          <Image src="/assets/dabzzo-logo.png" alt="Dabzzo" width={48} height={48} priority className="object-contain" />
         </Link>
       </div>
 
       {/* Search Bar */}
-      <div className="relative mb-5 group">
+      <div className="animate-slide-up-soft relative mb-5 group" style={{ animationDelay: '70ms' }}>
         <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors">
           <Search className="h-5 w-5" strokeWidth={2.4} />
         </div>
         <input
-          className="input pl-14 pr-12 py-5"
+          className="input pl-14 pr-12 py-5 transition-all duration-300 focus:-translate-y-0.5 focus:shadow-[0_16px_34px_rgba(255,59,48,0.12)]"
           placeholder="Search vendors or cuisines…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <div className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl bg-slate-50 text-slate-400">
+        <div className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-all duration-300 group-focus-within:rotate-12 group-focus-within:text-brand">
           <SlidersHorizontal className="h-4 w-4" strokeWidth={2.4} />
         </div>
       </div>
 
       {/* Category Filter */}
-      <div className="pill-container overflow-x-auto mb-6 scrollbar-none">
-        {CATEGORIES.map((cat) => (
+      <div className="pill-container animate-slide-up-soft overflow-x-auto mb-6 scrollbar-none" style={{ animationDelay: '120ms' }}>
+        {CATEGORIES.map((cat, index) => (
           <button
             key={cat.value}
-            className={`pill ${activeCategory === cat.value ? 'active' : ''}`}
+            className={`pill transition-all duration-300 hover:-translate-y-0.5 active:scale-95 ${activeCategory === cat.value ? 'active pulse-ring' : ''}`}
+            style={{ animationDelay: `${index * 35}ms` }}
             onClick={() => setActiveCategory(cat.value)}
           >
             {cat.label}
@@ -135,7 +136,7 @@ export default function UserDashboard() {
       </div>
 
       {/* Vendors List Header */}
-      <div className="flex items-end justify-between mb-5 px-1 mt-9">
+      <div className="animate-slide-up-soft flex items-end justify-between mb-5 px-1 mt-9" style={{ animationDelay: '160ms' }}>
         <div>
           <h2 className="text-[17px] font-black text-slate-950 tracking-tight">Featured Kitchens</h2>
           <div className="h-1 w-12 bg-brand rounded-full mt-1.5" />
@@ -161,8 +162,10 @@ export default function UserDashboard() {
         />
       ) : (
         <div className="space-y-3">
-          {filtered.map((v) => (
-            <VendorCard key={v.id} vendor={v} />
+          {filtered.map((v, index) => (
+            <div key={v.id} className="animate-slide-up-soft" style={{ animationDelay: `${Math.min(index, 6) * 55}ms` }}>
+              <VendorCard vendor={v} />
+            </div>
           ))}
         </div>
       )}

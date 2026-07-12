@@ -3,7 +3,7 @@ import { functions } from '@/lib/firebase';
 import { DeliveryStatus } from '@/types/delivery';
 import toast from 'react-hot-toast';
 
-const QUEUE_KEY = 'dabzo_delivery_action_queue';
+const QUEUE_KEY = 'dabzzo_delivery_action_queue';
 
 export interface QueuedAction {
   id: string;

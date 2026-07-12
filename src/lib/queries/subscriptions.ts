@@ -34,7 +34,8 @@ export function subDocId(userId: string, vendorId: string, mealType: MealType): 
 }
 
 // ─── In-memory TTL cache ──────────────────────────────────────────────────────
-const CACHE_TTL_MS = 30_000;
+// Optimized: increased TTL from 30s to 60s for better cache hit rate
+const CACHE_TTL_MS = 60_000;  // 60 seconds (was 30s)
 const _subsCache = new Map<string, { data: Subscription[]; ts: number }>();
 
 export function invalidateSubsCache(userId?: string) {
@@ -43,11 +44,13 @@ export function invalidateSubsCache(userId?: string) {
 }
 
 // ─── Get User Subscriptions ───────────────────────────────────────────────────
-// Simple, clean, zero client-side dedup needed — the DB structure guarantees it.
+// Optimized: uses cache for faster repeated access
 export async function getUserSubscriptions(userId: string): Promise<Subscription[]> {
   const now = Date.now();
   const cached = _subsCache.get(userId);
-  if (cached && now - cached.ts < CACHE_TTL_MS) return cached.data;
+  if (cached && now - cached.ts < CACHE_TTL_MS) {
+    return cached.data;
+  }
 
   const q = query(collection(db, 'subscriptions'), where('user_id', '==', userId));
   const snap = await getDocs(q);
@@ -55,6 +58,7 @@ export async function getUserSubscriptions(userId: string): Promise<Subscription
     .map((d) => ({ id: d.id, ...d.data() } as Subscription))
     .sort((a, b) => (b.created_at?.seconds ?? 0) - (a.created_at?.seconds ?? 0));
 
+  // Cache result
   _subsCache.set(userId, { data: subs, ts: now });
   return subs;
 }
@@ -105,6 +109,12 @@ export async function createSubscription(data: {
   frequency?: SubscriptionFrequency;
   discount_pct?: number;
   promo_code?: string;
+  /** Razorpay payment ID after successful payment (for audit trail) */
+  payment_id?: string;
+  /** Razorpay order ID */
+  razorpay_order_id?: string;
+  /** Amount actually charged (in ₹, not paise) */
+  paid_amount?: number;
 }): Promise<string> {
   const docId = subDocId(data.user_id, data.vendor_id, data.meal_type);
   const docRef = doc(db, 'subscriptions', docId);
@@ -124,6 +134,9 @@ export async function createSubscription(data: {
   if (data.frequency) payload.frequency = data.frequency;
   if (data.discount_pct != null) payload.discount_pct = data.discount_pct;
   if (data.promo_code != null) payload.promo_code = data.promo_code;
+  if (data.payment_id) payload.payment_id = data.payment_id;
+  if (data.razorpay_order_id) payload.razorpay_order_id = data.razorpay_order_id;
+  if (data.paid_amount != null) payload.paid_amount = data.paid_amount;
 
   // setDoc is fully idempotent: creates if new, overwrites if already exists.
   // The deterministic docId guarantees no duplicates ever.
@@ -134,13 +147,13 @@ export async function createSubscription(data: {
   if (data.meal_type === 'both') {
     const lunchDocId = subDocId(data.user_id, data.vendor_id, 'lunch');
     const dinnerDocId = subDocId(data.user_id, data.vendor_id, 'dinner');
-    await updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
-    await updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
+    await updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel lunch during upgrade:', err));
+    await updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel dinner during upgrade:', err));
   }
   // If user subscribes to 'lunch' or 'dinner', cancel any existing 'both' for this vendor
   else if (data.meal_type === 'lunch' || data.meal_type === 'dinner') {
     const bothDocId = subDocId(data.user_id, data.vendor_id, 'both');
-    await updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(() => {});
+    await updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel both during downgrade:', err));
   }
 
   invalidateSubsCache(data.user_id);

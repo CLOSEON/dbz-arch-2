@@ -61,29 +61,36 @@ exports.calculateRiderPayment = functions.firestore
         functions.logger.warn(`[calculateRiderPayment] Payment already exists for trip ${tripId}. Skipping.`);
         return null;
     }
+    const gpsDistanceKm = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    const totalDistanceKm = gpsDistanceKm;
     const pickupStops = after.pickupStops ?? [];
     const dropStops = after.dropStops ?? [];
     const pickupDistanceKm = pickupStops.reduce((sum, s) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0), 0);
     const dropDistanceKm = dropStops.reduce((sum, s) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0), 0);
-    const totalDistanceKm = pickupDistanceKm + dropDistanceKm;
-    const gpsDistanceKm = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    const routeDistanceKm = pickupDistanceKm + dropDistanceKm;
+    let riderConfirmedCount = 0;
+    pickupStops.forEach(stop => {
+        riderConfirmedCount += (typeof stop.confirmedCount === 'number' ? stop.confirmedCount : 0);
+    });
     const orderIds = after.assignedOrderIds ?? [];
-    let deliveredCount = 0;
+    let unavailableDropsCount = 0;
     if (orderIds.length > 0) {
         const chunks = [];
         for (let i = 0; i < orderIds.length; i += 30) {
             chunks.push(orderIds.slice(i, i + 30));
         }
         for (const chunk of chunks) {
-            const snap = await db.collection('delivery_orders')
+            const snap = await db.collection('orders')
                 .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-                .where('status', '==', 'delivered')
+                .where('status', '==', 'failed')
+                .where('failure_reason', '==', 'customer_unavailable')
                 .get();
-            deliveredCount += snap.size;
+            unavailableDropsCount += snap.size;
         }
     }
+    const paidTiffinCount = Math.max(0, riderConfirmedCount - unavailableDropsCount);
     const basePayment = parseFloat((totalDistanceKm * BASE_RATE_PER_KM).toFixed(2));
-    const extraTiffins = Math.max(0, deliveredCount - TIFFIN_BONUS_THRESHOLD);
+    const extraTiffins = Math.max(0, paidTiffinCount - TIFFIN_BONUS_THRESHOLD);
     const tiffinBonus = extraTiffins * TIFFIN_BONUS_PER_EXTRA;
     const totalPayment = parseFloat((basePayment + tiffinBonus).toFixed(2));
     const paymentRef = db.collection('rider_payments').doc();
@@ -91,17 +98,17 @@ exports.calculateRiderPayment = functions.firestore
         riderTripId: tripId,
         riderId,
         totalDistanceKm: parseFloat(totalDistanceKm.toFixed(4)),
-        gpsDistanceKm: parseFloat(gpsDistanceKm.toFixed(4)),
+        routeDistanceKm: parseFloat(routeDistanceKm.toFixed(4)),
         basePayment,
         tiffinBonus,
-        deliveredCount,
+        paidTiffinCount,
         totalPayment,
         calculatedAt: admin.firestore.FieldValue.serverTimestamp(),
         status: 'pending',
     });
     functions.logger.info(`[calculateRiderPayment] Trip ${tripId} → Payment ₹${totalPayment} ` +
         `(base ₹${basePayment} for ${totalDistanceKm.toFixed(2)}km + ` +
-        `bonus ₹${tiffinBonus} for ${extraTiffins} extra tiffins, ${deliveredCount} delivered)`);
+        `bonus ₹${tiffinBonus} for ${extraTiffins} extra tiffins, ${paidTiffinCount} paid)`);
     return null;
 });
 //# sourceMappingURL=riderPaymentTriggers.js.map

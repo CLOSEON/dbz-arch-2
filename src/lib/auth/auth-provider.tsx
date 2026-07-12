@@ -1,5 +1,5 @@
 /**
- * DABZO AUTH PROVIDER — Firebase Auth State Synchronization
+ * DABZZO AUTH PROVIDER — Firebase Auth State Synchronization
  * 
  * Wraps the app to keep Zustand auth store in sync with Firebase Auth.
  * Listens to onAuthStateChanged and hydrates user profile from Firestore.
@@ -13,7 +13,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuthStore } from '@/store/authStore';
-import { DabzoLoadingScreen } from '@/components/ui/loading';
+import { DabzzoLoadingScreen } from '@/components/ui/loading';
 import { useNetworkStore } from '@/store/networkStore';
 import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@/types';
@@ -155,7 +155,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [setUser, logout, setHydrated]);
 
   if (initializing) {
-    return <DabzoLoadingScreen />;
+    return <DabzzoLoadingScreen />;
   }
 
   return <>{children}</>;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { getUserSubscriptions, cancelSubscription } from '@/lib/queries/subscriptions';
@@ -13,6 +13,7 @@ import { formatDate, formatMeal, toMillis } from '@/lib/utils';
 import type { EnrichedSubscription } from '@/types';
 import Link from 'next/link';
 import { SwapVendorModal } from '@/components/shared/SwapVendorModal';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Box, History, CreditCard, Utensils, Calendar, ChevronRight, Navigation, ArrowLeftRight, SkipForward, Clock, XCircle } from 'lucide-react';
@@ -27,11 +28,19 @@ const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), {
   )
 });
 
-function CountdownTimer({ delivery, actionType }: { delivery: any, actionType: 'skip_swap' | 'undo_skip' }) {
+// ─── Memoized Countdown Timer Component ────────────────────────────────────
+const CountdownTimer = React.memo(function CountdownTimer({ 
+  delivery, 
+  actionType 
+}: { 
+  delivery: any
+  actionType: 'skip_swap' | 'undo_skip' 
+}) {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [isExpired, setIsExpired] = useState(false);
 
-  useEffect(() => {
+  // Memoize cutoff calculation to prevent recalculations on every render
+  const cutoffMoment = useMemo(() => {
     let d: Date;
     if (delivery.createdAt?.toDate) {
       d = delivery.createdAt.toDate();
@@ -50,10 +59,12 @@ function CountdownTimer({ delivery, actionType }: { delivery: any, actionType: '
     else deliveryMoment.setHours(20, 0, 0, 0);
 
     // Skip/Swap has a 4-hour cutoff. Undo Skip has no 4-hour cutoff (can be done until delivery time).
-    const cutoffMoment = actionType === 'skip_swap' 
+    return actionType === 'skip_swap' 
       ? new Date(deliveryMoment.getTime() - 4 * 60 * 60 * 1000) 
       : deliveryMoment;
+  }, [delivery, actionType]);
 
+  useEffect(() => {
     const updateTimer = () => {
       const now = new Date();
       const diff = cutoffMoment.getTime() - now.getTime();
@@ -72,7 +83,7 @@ function CountdownTimer({ delivery, actionType }: { delivery: any, actionType: '
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [delivery, actionType]);
+  }, [cutoffMoment]);
 
   if (isExpired) {
     return (
@@ -87,7 +98,7 @@ function CountdownTimer({ delivery, actionType }: { delivery: any, actionType: '
       <Clock className="w-3 h-3" /> {timeLeft}
     </div>
   );
-}
+});
 
 export default function OrdersPage() {
   const user = useAuthStore((s) => s.user);
@@ -102,84 +113,158 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [skipping, setSkipping] = useState<string | null>(null);
   const [swapping, setSwapping] = useState<string | null>(null);
-  const [skippedSlots, setSkippedSlots] = useState<Set<string>>(new Set());
-  const [swappedIds, setSwappedIds] = useState<Set<string>>(new Set());
+  const [skippedSlots, setSkippedSlots] = useState<string[]>([]);
+  const [swappedIds, setSwappedIds] = useState<string[]>([]);
 
   // Modal state
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [selectedDeliveryForSwap, setSelectedDeliveryForSwap] = useState<any>(null);
 
+  // New state for test orders from the `orders` collection
+  const [activeTestOrder, setActiveTestOrder] = useState<any>(null);
+
+  // Custom confirmation dialog state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   useEffect(() => {
-    let unsubscribeDeliveries: (() => void) | undefined;
-    let unsubscribePartner: (() => void) | undefined;
-    let unsubscribeUpcoming: (() => void) | undefined;
+    if (!user?.id) return;
 
-    if (user) {
-      loadOrders();
+    let mounted = true;
+    const unsubscribers: Array<() => void> = [];
 
-      const qUpcoming = query(
-        collection(db, 'delivery_orders'),
-        where('customerId', '==', user.id),
-        where('status', 'in', ['pending', 'preparing', 'ready', 'skipped', 'picked_up', 'out_for_delivery', 'delivered'])
-      );
-      unsubscribeUpcoming = onSnapshot(qUpcoming, (snap) => {
-        const deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        deliveries.sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
-        setRealOrders(deliveries);
-      });
+    const setupListeners = async () => {
+      try {
+        loadOrders();
 
-      // Also listen to active subscriptions for projection
-      const qSubs = query(
-        collection(db, 'subscriptions'),
-        where('user_id', '==', user.id),
-        where('status', '==', 'active')
-      );
-      const unsubSubs = onSnapshot(qSubs, (snap) => {
-        setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
-      });
-      const origUnsub = unsubscribeUpcoming;
-      unsubscribeUpcoming = () => { if (origUnsub) origUnsub(); unsubSubs(); };
+        // Real delivery_orders listener
+        // Query both field variants: old docs use 'customerId', new skipped projected docs use 'user_id'
+        const DELIVERY_STATUSES = ['pending', 'preparing', 'ready', 'skipped', 'picked_up', 'out_for_delivery', 'delivered'];
+        const qByCustomerId = query(
+          collection(db, 'delivery_orders'),
+          where('customerId', '==', user.id),
+          where('status', 'in', DELIVERY_STATUSES)
+        );
+        const qByUserId = query(
+          collection(db, 'delivery_orders'),
+          where('user_id', '==', user.id),
+          where('status', 'in', DELIVERY_STATUSES)
+        );
 
-      import('firebase/firestore').then(({ collection: col, query: q2, where: w, onSnapshot: ons, doc }) => {
-        import('@/lib/firebase').then(({ db: firedb }) => {
-          const qDel = q2(col(firedb, 'deliveries'), w('user_id', '==', user.id));
-          unsubscribeDeliveries = ons(qDel, (snap) => {
-            const deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-            const active = deliveries.find(d => d.status === 'picked_up');
-            
-            if (active && active.assigned_to) {
-              if (unsubscribePartner) unsubscribePartner();
-              
-              const partnerRef = doc(firedb, 'users', active.assigned_to);
-              unsubscribePartner = ons(partnerRef, (partnerSnap) => {
-                const partnerData = partnerSnap.data();
-                if (partnerData && partnerData.location) {
-                  setActiveDelivery({
-                    ...active,
-                    partnerLocation: partnerData.location,
-                    partnerName: partnerData.name || 'Delivery Partner',
-                    partnerPhone: partnerData.phone
-                  });
-                }
-              });
-            } else {
-              setActiveDelivery(null);
-              if (unsubscribePartner) {
-                unsubscribePartner();
-                unsubscribePartner = undefined;
-              }
-            }
-          });
+        let latestByCustomerId: any[] = [];
+        let latestByUserId: any[] = [];
+
+        const mergeAndSet = () => {
+          // Merge both result sets, deduplicating by doc id
+          const byId = new Map<string, any>();
+          [...latestByCustomerId, ...latestByUserId].forEach(d => byId.set(d.id, d));
+          const merged = Array.from(byId.values());
+          merged.sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
+          setRealOrders(merged);
+        };
+
+        const unsubUpcoming1 = onSnapshot(qByCustomerId, (snap) => {
+          if (!mounted) return;
+          latestByCustomerId = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          mergeAndSet();
         });
-      });
-    }
+        const unsubUpcoming2 = onSnapshot(qByUserId, (snap) => {
+          if (!mounted) return;
+          latestByUserId = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          mergeAndSet();
+        });
+        unsubscribers.push(unsubUpcoming1, unsubUpcoming2);
+
+        // Active subscriptions listener
+        const qSubs = query(
+          collection(db, 'subscriptions'),
+          where('user_id', '==', user.id),
+          where('status', '==', 'active')
+        );
+        const unsubSubs = onSnapshot(qSubs, (snap) => {
+          if (!mounted) return;
+          setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+        });
+        unsubscribers.push(unsubSubs);
+
+        // Test orders listener
+        const LIVE_STATUSES = ['picking_up', 'out_for_delivery', 'picked_up', 'preparing', 'vendor_ready', 'rider_assigned'];
+        const qTestOrders = query(
+          collection(db, 'orders'),
+          where('user_id', '==', user.id),
+          where('status', 'in', LIVE_STATUSES)
+        );
+        const unsubTestOrders = onSnapshot(qTestOrders, (snap) => {
+          if (!mounted) return;
+          if (!snap.empty) {
+            setActiveTestOrder({ id: snap.docs[0].id, ...snap.docs[0].data() });
+          } else {
+            setActiveTestOrder(null);
+          }
+        });
+        unsubscribers.push(unsubTestOrders);
+
+        // Legacy deliveries listener
+        const { collection: col, query: q2, where: w, onSnapshot: ons, doc } = await import('firebase/firestore');
+        const { db: firedb } = await import('@/lib/firebase');
+        
+        const qDel = q2(col(firedb, 'deliveries'), w('user_id', '==', user.id));
+        const unsubDel = ons(qDel, (snap) => {
+          if (!mounted) return;
+          
+          const deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const active = deliveries.find(d => d.status === 'picked_up');
+          
+          if (active?.assigned_to) {
+            const partnerRef = doc(firedb, 'users', active.assigned_to);
+            const unsubPartner = ons(partnerRef, (partnerSnap) => {
+              if (!mounted) return;
+              
+              const partnerData = partnerSnap.data();
+              if (partnerData?.location) {
+                setActiveDelivery({
+                  ...active,
+                  partnerLocation: partnerData.location,
+                  partnerName: partnerData.name || 'Delivery Partner',
+                  partnerPhone: partnerData.phone
+                });
+              }
+            });
+            unsubscribers.push(unsubPartner);
+          } else {
+            setActiveDelivery(null);
+          }
+        });
+        unsubscribers.push(unsubDel);
+      } catch (error) {
+        console.error('[OrdersPage] Listener setup error:', error);
+      }
+    };
+
+    setupListeners();
 
     return () => {
-      if (unsubscribeDeliveries) unsubscribeDeliveries();
-      if (unsubscribePartner) unsubscribePartner();
-      if (unsubscribeUpcoming) unsubscribeUpcoming();
+      mounted = false;
+      unsubscribers.forEach(unsub => {
+        try {
+          unsub();
+        } catch (error) {
+          console.warn('[OrdersPage] Cleanup error:', error);
+        }
+      });
     };
-  }, [user]);
+  }, [user?.id]);
 
   // Merge real delivery_orders with projected meals from subscriptions
   // Real orders take priority; projected ones fill in the gaps for future days
@@ -188,9 +273,16 @@ export default function OrdersPage() {
     // Deduplicate real orders: keep only the most recent per slot
     const slotMap = new Map<string, any>();
     for (const o of realOrders) {
-      const d = o.createdAt?.toDate ? o.createdAt.toDate() : new Date();
-      const dateKey = d.toLocaleDateString('en-CA');
-      const slotKey = `${dateKey}_${o.meal?.type || 'lunch'}`;
+      // Skipped projected docs have a `date` string ("2026-07-11"); real docs use createdAt timestamp.
+      let dateKey: string;
+      if (o.date && typeof o.date === 'string' && o.date.length === 10) {
+        dateKey = o.date; // already "en-CA" format (YYYY-MM-DD)
+      } else {
+        const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt ? new Date(o.createdAt) : new Date());
+        dateKey = d.toLocaleDateString('en-CA');
+      }
+      const mealType = o.meal?.type || o.meal_type || 'lunch';
+      const slotKey = `${dateKey}_${mealType}`;
       const existing = slotMap.get(slotKey);
       // Keep the newest one (highest updatedAt or createdAt seconds)
       const oMs = o.updatedAt?.seconds ?? o.createdAt?.seconds ?? 0;
@@ -318,13 +410,13 @@ export default function OrdersPage() {
         let title = 'Subscription';
 
         if (mealType === 'lunch') {
-          price = vendor.rate_lunch ?? 0;
+          price = vendor.rate_lunch_weekly ?? vendor.rate_lunch ?? 0;
           title = 'Lunch Plan';
         } else if (mealType === 'dinner') {
-          price = vendor.rate_dinner ?? 0;
+          price = vendor.rate_dinner_weekly ?? vendor.rate_dinner ?? 0;
           title = 'Dinner Plan';
         } else if (mealType === 'both') {
-          price = vendor.rate_both ?? 0;
+          price = vendor.rate_both_weekly ?? vendor.rate_both ?? 0;
           title = 'Lunch + Dinner';
         }
 
@@ -357,30 +449,63 @@ export default function OrdersPage() {
   }
 
   async function handleCancel(subId: string) {
-    if (!confirm('Cancel this subscription?')) return;
-    try {
-      await cancelSubscription(subId);
-      setOrders((prev) => prev.map((o) => o.id === subId ? { ...o, status: 'cancelled' } : o));
-      addToast('Subscription cancelled', 'success');
-    } catch {
-      addToast('Failed to cancel', 'error');
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Cancel Subscription?',
+      message: 'Are you sure you want to cancel this subscription? You will stop receiving your daily scheduled meals.',
+      confirmLabel: 'Cancel Plan',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await cancelSubscription(subId);
+          setOrders((prev) => prev.map((o) => o.id === subId ? { ...o, status: 'cancelled' } : o));
+          addToast('Subscription cancelled', 'success');
+        } catch {
+          addToast('Failed to cancel', 'error');
+        }
+      }
+    });
   }
 
   async function handleSkip(delivery: any) {
     if (!user) return;
-    if (!confirm("Skip this delivery? You'll earn 0.5 credits!")) return;
-    setSkipping(delivery.id);
-    try {
-      const result = await cancelScheduledTiffin(delivery, user.id);
-      // Optimistically track this slot as skipped so projection doesn't re-add it
-      const d = delivery.createdAt?.toDate ? delivery.createdAt.toDate() : new Date();
-      const slotKey = `${d.toLocaleDateString('en-CA')}_${delivery.meal?.type || 'lunch'}`;
-      setSkippedSlots(prev => new Set([...prev, slotKey]));
-      addToast(`Skipped! You earned ${result.creditsEarned} credits 🎉`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Cannot skip this delivery', 'error');
-    } finally { setSkipping(null); }
+
+    const now = new Date();
+    let baseDate = delivery.date ? new Date(delivery.date) : now;
+    if (delivery.createdAt?.toDate && !delivery.date) {
+      baseDate = delivery.createdAt.toDate();
+    }
+    const deliveryMoment = new Date(baseDate);
+    if (delivery.delivery_slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+    else if (delivery.delivery_slot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
+    else if (delivery.delivery_slot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
+    else deliveryMoment.setHours(13, 0, 0, 0);
+    
+    const hoursRemaining = (deliveryMoment.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const expectedCredits = hoursRemaining >= 12 ? 0.5 : 0.2;
+
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Skip Delivery?',
+      message: `Skip this meal? You'll earn ${expectedCredits} credits towards a free meal slot.`,
+      confirmLabel: 'Skip Delivery',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        setSkipping(delivery.id);
+        try {
+          const result = await cancelScheduledTiffin(delivery, user.id);
+          // Optimistically track this slot as skipped so projection doesn't re-add it
+          const d = delivery.createdAt?.toDate ? delivery.createdAt.toDate() : new Date();
+          const slotKey = `${d.toLocaleDateString('en-CA')}_${delivery.meal?.type || 'lunch'}`;
+          setSkippedSlots(prev => [...new Set([...prev, slotKey])]);
+          addToast(`Skipped! You earned ${result.creditsEarned} credits 🎉`, 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Cannot skip this delivery', 'error');
+        } finally { setSkipping(null); }
+      }
+    });
   }
 
   async function handleUndoSkip(delivery: any) {
@@ -390,15 +515,11 @@ export default function OrdersPage() {
       const result = await undoSkipScheduledTiffin(delivery, user.id);
       const d = delivery.createdAt?.toDate ? delivery.createdAt.toDate() : new Date();
       const slotKey = `${d.toLocaleDateString('en-CA')}_${delivery.meal?.type || 'lunch'}`;
-      setSkippedSlots(prev => {
-        const next = new Set(prev);
-        next.delete(slotKey);
-        return next;
-      });
+      setSkippedSlots(prev => prev.filter(k => k !== slotKey));
       if (result.mode === 'credit') {
-        addToast('Skip cancelled — 0.5 credit used ✓', 'success');
+        addToast('Skip cancelled — credit used ✓', 'success');
       } else {
-        addToast('Skip cancelled — 1 day deducted, 0.5 credit refunded ✓', 'success');
+        addToast('Skip cancelled — 1 day deducted, remainder refunded ✓', 'success');
       }
     } catch (err: any) {
       addToast(err?.message || 'Cannot undo skip', 'error');
@@ -413,7 +534,7 @@ export default function OrdersPage() {
   }
 
   function handleSwapSuccess(deliveryId: string) {
-    setSwappedIds(prev => new Set([...prev, deliveryId]));
+    setSwappedIds(prev => [...new Set([...prev, deliveryId])]);
     addToast('Swap confirmed! Enjoy your new meal 🎉', 'success');
   }
 
@@ -422,11 +543,7 @@ export default function OrdersPage() {
     setSwapping(delivery.id);
     try {
       await cancelSwapRequest(delivery.id, user.id);
-      setSwappedIds(prev => {
-        const next = new Set(prev);
-        next.delete(delivery.id);
-        return next;
-      });
+      setSwappedIds(prev => prev.filter(id => id !== delivery.id));
       addToast('Swap request cancelled.', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Cannot cancel swap request', 'error');
@@ -502,26 +619,26 @@ export default function OrdersPage() {
       </div>
 
       {/* Track Today's Order Banner — shows when today has an active/scheduled order */}
-      {(activeDelivery || hasTodayOrder) && (
-        <Link href="/track" className="block mb-6">
+      {(activeDelivery || activeTestOrder || hasTodayOrder) && (
+        <Link href="/track" className="block mb-6 animate-fade-in">
           <div className={`relative overflow-hidden rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm transition-all duration-200 active:scale-[0.98] ${
-            activeDelivery
+            (activeDelivery || activeTestOrder)
               ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
               : 'bg-gradient-to-r from-brand to-indigo-500'
           }`}>
             {/* Subtle shine overlay */}
             <div className="absolute inset-0 bg-white/5 rounded-3xl pointer-events-none" />
             <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
-              activeDelivery ? 'bg-white/20' : 'bg-white/20'
+              (activeDelivery || activeTestOrder) ? 'bg-white/20' : 'bg-white/20'
             }`}>
-              {activeDelivery
+              {(activeDelivery || activeTestOrder)
                 ? <Navigation className="w-5 h-5 text-white animate-pulse" />
                 : <Navigation className="w-5 h-5 text-white" />
               }
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-black text-white text-[14px] leading-tight">
-                {activeDelivery ? '🚴 Your food is on the way!' : '📦 Track Today\'s Order'}
+                {(activeDelivery || activeTestOrder) ? '🚴 Your food is on the way!' : '📦 Track Today\'s Order'}
               </p>
               <p className="text-white/80 text-[11px] font-semibold mt-0.5">
                 {activeDelivery ? `Partner: ${activeDelivery.partnerName}` : 'Tap to see live delivery status'}
@@ -572,11 +689,25 @@ export default function OrdersPage() {
           {upcomingDeliveries.map((delivery) => {
               const isLunch = delivery.meal?.type === 'lunch' || delivery.scheduledSlot !== '8pm';
               const isProjected = !!delivery.isProjected;
-              const isSwapRequested = swappedIds.has(delivery.id);
+              const isSwapRequested = swappedIds.includes(delivery.id);
               const swapOk = !isSwapRequested && canSwap(delivery);
               const skipOk = canSkip(delivery);
               const isSkipping = skipping === delivery.id;
               const isSwapping = swapping === delivery.id;
+
+              const now = new Date();
+              let baseDate = delivery.date ? new Date(delivery.date) : now;
+              if (delivery.createdAt?.toDate && !delivery.date) {
+                baseDate = delivery.createdAt.toDate();
+              }
+              const deliveryMoment = new Date(baseDate);
+              if (delivery.delivery_slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+              else if (delivery.delivery_slot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
+              else if (delivery.delivery_slot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
+              else deliveryMoment.setHours(13, 0, 0, 0);
+              
+              const hoursRemaining = (deliveryMoment.getTime() - now.getTime()) / (1000 * 60 * 60);
+              const expectedCredits = hoursRemaining >= 12 ? 0.5 : 0.2;
 
               return (
                 <div key={delivery.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100">
@@ -662,7 +793,7 @@ export default function OrdersPage() {
                             }`}
                           >
                             <SkipForward className="w-3.5 h-3.5" />
-                            {isSkipping ? 'Processing...' : 'Skip +0.5CR'}
+                            {isSkipping ? 'Processing...' : `Skip +${expectedCredits}CR`}
                           </button>
                         </>
                       )}
@@ -789,6 +920,17 @@ export default function OrdersPage() {
           onSwapSuccess={handleSwapSuccess}
         />
       )}
+
+      {/* Reusable Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        variant={confirmConfig.variant}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

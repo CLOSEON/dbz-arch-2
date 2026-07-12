@@ -6,6 +6,7 @@ import { useUiStore } from '@/store/uiStore';
 import { getVendorDiscounts, createDiscountCode, deleteDiscountCode } from '@/lib/queries/discounts';
 import { DiscountCode } from '@/types';
 import { Trash2, Tag, Loader2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 export default function VendorDiscounts() {
   const user = useAuthStore((s) => s.user);
@@ -18,6 +19,21 @@ export default function VendorDiscounts() {
   const [newCode, setNewCode] = useState('');
   const [discountPct, setDiscountPct] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // Custom confirmation dialog state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     if (user?.id) loadCodes();
@@ -63,14 +79,23 @@ export default function VendorDiscounts() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this code?')) return;
-    try {
-      await deleteDiscountCode(id);
-      addToast('Code deleted', 'info');
-      setCodes(codes.filter(c => c.id !== id));
-    } catch (err) {
-      addToast('Failed to delete code', 'error');
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Discount Code?',
+      message: 'Are you sure you want to delete this discount code? It will no longer be applicable to new subscription checkouts.',
+      confirmLabel: 'Delete Code',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await deleteDiscountCode(id);
+          addToast('Code deleted', 'info');
+          setCodes(codes.filter(c => c.id !== id));
+        } catch (err) {
+          addToast('Failed to delete code', 'error');
+        }
+      }
+    });
   }
 
   return (
@@ -156,6 +181,16 @@ export default function VendorDiscounts() {
           </div>
         )}
       </div>
+      {/* Custom Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        variant={confirmConfig.variant}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

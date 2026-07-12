@@ -11,6 +11,38 @@
   --color-ivory: #FEFCE8;
   --color-ivory-dark: #FEF08A;
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-blur: blur(16px);
+  --shadow-soft: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 24px rgba(255, 59, 48, 0.3);
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes floatSoft {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -6px, 0); }
+  }
+
+  @keyframes shineSweep {
+    0% { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+    18% { opacity: 0.65; }
+    45%, 100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+  }
+
+  @keyframes pulseRing {
+    0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.22); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+  }
+
+  @keyframes slideUpSoft {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
 }
 
 @layer base {
@@ -51,6 +83,11 @@
     color: #0f172a;
     font-family: var(--font-jakarta), sans-serif;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.015em;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.03em;
   }
 }
 
@@ -131,6 +168,36 @@
   .badge-green { @apply bg-emerald-50 text-emerald-600; }
   .badge-amber { @apply bg-amber-50 text-amber-600; }
   .badge-rose { @apply bg-rose-50 text-rose-600; }
+
+  .interactive-card {
+    @apply relative overflow-hidden transition-all duration-300 ease-out will-change-transform;
+  }
+
+  .interactive-card::after {
+    content: "";
+    position: absolute;
+    inset: -30% auto -30% -55%;
+    width: 42%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.52), transparent);
+    transform: translateX(-140%) skewX(-18deg);
+    pointer-events: none;
+  }
+
+  .interactive-card:hover::after {
+    animation: shineSweep 1.05s ease-out;
+  }
+
+  .soft-float {
+    animation: floatSoft 5.5s ease-in-out infinite;
+  }
+
+  .pulse-ring {
+    animation: pulseRing 2.4s ease-out infinite;
+  }
+
+  .animate-slide-up-soft {
+    animation: slideUpSoft 0.45s ease-out both;
+  }
 }
 
 @layer utilities {
@@ -140,9 +207,4 @@
 
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }

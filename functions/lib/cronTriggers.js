@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processBatchSkipUpdates = exports.formBatches = exports.processTimeBasedReminders = void 0;
+exports.dispatchRetryAndExpansion = exports.checkStuckOrders = exports.processBatchSkipUpdates = exports.formBatches = exports.processTimeBasedReminders = void 0;
 const admin = __importStar(require("firebase-admin"));
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const events_1 = require("./utils/events");
@@ -99,13 +99,7 @@ exports.formBatches = (0, scheduler_1.onSchedule)({
     const targetDate = new Date(now.getTime() + 4 * 60 * 60 * 1000);
     const targetDateStr = targetDate.toISOString().split('T')[0];
     const targetHour = targetDate.getHours();
-    let targetSlot = '';
-    if (targetHour === 8)
-        targetSlot = '8am';
-    else if (targetHour === 11)
-        targetSlot = '11am';
-    else if (targetHour === 20)
-        targetSlot = '8pm';
+    let targetSlot = '11am';
     if (!targetSlot) {
         console.log(`[formBatches] No slot aligned with target hour ${targetHour}. Skipping.`);
         return;
@@ -212,5 +206,93 @@ exports.processBatchSkipUpdates = (0, scheduler_1.onSchedule)({
         }
     }
     console.log(`[processBatchSkipUpdates] Notified ${notifiedCount} vendors of updated counts.`);
+});
+exports.checkStuckOrders = (0, scheduler_1.onSchedule)({
+    schedule: '*/30 * * * *',
+    timeZone: 'Asia/Kolkata'
+}, async (event) => {
+    const db = admin.firestore();
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const todayStr = now.toISOString().split('T')[0];
+    const statusesToCheck = ['vendor_preparing', 'picked_up', 'out_for_delivery'];
+    const ordersSnap = await db.collection('orders')
+        .where('date', '==', todayStr)
+        .where('status', 'in', statusesToCheck)
+        .get();
+    let stuckCount = 0;
+    for (const doc of ordersSnap.docs) {
+        const order = doc.data();
+        let isStuck = false;
+        if (order.updated_at && order.updated_at.toDate) {
+            if (order.updated_at.toDate() < oneHourAgo) {
+                isStuck = true;
+            }
+        }
+        else if (order.updated_at && typeof order.updated_at.seconds === 'number') {
+            if (order.updated_at.seconds * 1000 < oneHourAgo.getTime()) {
+                isStuck = true;
+            }
+        }
+        if (isStuck) {
+            await (0, events_1.publishEvent)('delivery_failed', order.user_id, 'customer', `stuck_order_alert_${doc.id}_${now.getTime()}`, {
+                order_id: doc.id,
+                status: order.status,
+                message: `Order has been stuck in ${order.status} for > 1 hour. Immediate admin review required.`
+            });
+            stuckCount++;
+        }
+    }
+    console.log(`[checkStuckOrders] Found and alerted on ${stuckCount} stuck orders.`);
+});
+exports.dispatchRetryAndExpansion = (0, scheduler_1.onSchedule)({
+    schedule: '*/5 * * * *',
+    timeZone: 'Asia/Kolkata'
+}, async (event) => {
+    const db = admin.firestore();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const batchesSnap = await db.collection('batches')
+        .where('date', '==', todayStr)
+        .get();
+    for (const doc of batchesSnap.docs) {
+        const batch = doc.data();
+        const unassignedOrdersSnap = await db.collection('orders')
+            .where('vendor_id', '==', batch.vendor_id)
+            .where('delivery_slot', '==', batch.slot)
+            .where('status', '==', 'vendor_ready')
+            .get();
+        const unassignedOrders = unassignedOrdersSnap.docs.filter(d => !d.data().rider_trip_id);
+        if (unassignedOrders.length === 0)
+            continue;
+        let dispatch_attempts = batch.dispatch_attempts || 0;
+        let current_radius = batch.current_radius || 2.0;
+        dispatch_attempts += 1;
+        if (dispatch_attempts === 2)
+            current_radius = 4.0;
+        if (dispatch_attempts === 3)
+            current_radius = 6.0;
+        await doc.ref.update({
+            dispatch_attempts,
+            current_radius,
+            dispatch_started_at: batch.dispatch_started_at || admin.firestore.FieldValue.serverTimestamp()
+        });
+        const { coreAssignRiderTrips } = await Promise.resolve().then(() => __importStar(require('./matchingTriggers')));
+        await coreAssignRiderTrips(batch.vendor_id, batch.slot, current_radius, doc.id);
+        if (dispatch_attempts >= 3) {
+            const checkSnap = await db.collection('orders')
+                .where('vendor_id', '==', batch.vendor_id)
+                .where('delivery_slot', '==', batch.slot)
+                .where('status', '==', 'vendor_ready')
+                .get();
+            const stillUnassigned = checkSnap.docs.filter(d => !d.data().rider_trip_id);
+            if (stillUnassigned.length > 0) {
+                await (0, events_1.publishEvent)('delivery_failed', batch.vendor_id, 'vendor', `zero_riders_escalation_${doc.id}_${Date.now()}`, {
+                    batch_id: doc.id,
+                    vendor_id: batch.vendor_id,
+                    message: `URGENT: No riders found for vendor ${batch.vendor_id} after 6km expansion.`
+                });
+            }
+        }
+    }
 });
 //# sourceMappingURL=cronTriggers.js.map

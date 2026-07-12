@@ -218,6 +218,10 @@ export interface Batch {
   status: BatchStatus;
   total_count: number;          // Active (non-skipped) meal count
   last_notified_count: number;  // Tracks skip updates for debounced vendor notifications
+  pickup_otp?: string;          // OTP for rider pickup
+  dispatch_attempts?: number;
+  current_radius?: number;
+  dispatch_started_at?: FirestoreTimestamp;
   created_at: FirestoreTimestamp;
   updated_at: FirestoreTimestamp;
 }

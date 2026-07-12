@@ -162,7 +162,7 @@ function DotLoader() {
 }
 
 // ─── Main exported component ──────────────────────────────────────────────────
-export function DabzoLoading({ onDone }: { onDone?: boolean }) {
+export function DabzzoLoading({ onDone }: { onDone?: boolean }) {
   const [spoonFired, setSpoonFired] = useState(false);
   const [wiped, setWiped] = useState(false);
 
@@ -272,7 +272,7 @@ export function DabzoLoading({ onDone }: { onDone?: boolean }) {
   );
 }
 
-export function DabzoLoadingScreen() {
+export function DabzzoLoadingScreen() {
   return (
     <div
       className="min-h-screen flex items-center justify-center"
@@ -281,7 +281,7 @@ export function DabzoLoadingScreen() {
           'radial-gradient(ellipse 80% 60% at 50% 40%, rgba(255,59,48,0.06) 0%, transparent 70%), #FEFCE8',
       }}
     >
-      <DabzoLoading />
+      <DabzzoLoading />
     </div>
   );
 }

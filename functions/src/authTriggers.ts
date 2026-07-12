@@ -49,6 +49,10 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'Invalid role provided.');
   }
 
+  if (role === 'admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Admin role can only be provisioned via the Firebase Console.');
+  }
+
   try {
     // 3. Set the custom claim on Firebase Auth
     await admin.auth().setCustomUserClaims(uid, { role });

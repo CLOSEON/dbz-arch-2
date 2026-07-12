@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, Tag, MessageSquare, UserCircle, ClipboardList, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, UserCircle, ClipboardList } from 'lucide-react';
 
 const NAV_ITEMS = [
   {
@@ -12,29 +12,9 @@ const NAV_ITEMS = [
     icon: (active: boolean) => <LayoutDashboard className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
-    href: '/vendor/orders',
-    label: 'Orders',
+    href: '/vendor/menu',
+    label: 'Menu',
     icon: (active: boolean) => <ClipboardList className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
-  },
-  {
-    href: '/vendor/schedule',
-    label: 'Schedule',
-    icon: (active: boolean) => <CalendarClock className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
-  },
-  {
-    href: '/vendor/subscribers',
-    label: 'Subscribers',
-    icon: (active: boolean) => <Users className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
-  },
-  {
-    href: '/vendor/discounts',
-    label: 'Discounts',
-    icon: (active: boolean) => <Tag className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
-  },
-  {
-    href: '/vendor/reviews',
-    label: 'Reviews',
-    icon: (active: boolean) => <MessageSquare className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/vendor/profile',
@@ -63,18 +43,18 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5',
                 active 
                   ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
                   : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
               )}
             >
               {active && (
-                <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full" />
+                <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full pulse-ring" />
               )}
               <div className={cn(
                 "transition-transform duration-300",
-                active ? "scale-110" : "group-hover:scale-105"
+                active ? "scale-110 -translate-y-0.5" : "group-hover:scale-110 group-hover:-translate-y-0.5"
               )}>
                 {item.icon(active)}
               </div>
@@ -86,9 +66,9 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
     );
   }
 
-  // Mobile Bottom Nav - Show 5 items
+  // Mobile Bottom Nav - Show 3 items
   const MOBILE_NAV_ITEMS = NAV_ITEMS.filter(item => 
-    ['Dashboard', 'Orders', 'Schedule', 'Subscribers', 'Profile'].includes(item.label)
+    ['Dashboard', 'Menu', 'Profile'].includes(item.label)
   );
 
   return (
@@ -104,8 +84,8 @@ export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
-                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
+                'group flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10',
+                active ? 'text-brand -translate-y-1' : 'text-slate-400 hover:-translate-y-0.5 hover:text-slate-600'
               )}
             >
               <div className={cn(

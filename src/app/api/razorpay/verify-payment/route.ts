@@ -1,0 +1,160 @@
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
+import Razorpay from 'razorpay';
+import { rateLimit } from '@/lib/server/rate-limit';
+
+export const dynamic = 'force-dynamic';
+
+type RazorpayApiError = {
+  statusCode?: number;
+  message?: string;
+  error?: {
+    code?: string;
+    description?: string;
+  };
+};
+
+type RazorpayPaymentDetails = {
+  amount?: string | number;
+  currency?: string;
+  status?: string;
+  method?: string;
+  notes?: Record<string, unknown>;
+  vpa?: string | null;
+  email?: string | null;
+  contact?: string | number | null;
+};
+
+function asRazorpayApiError(error: unknown): RazorpayApiError {
+  return error instanceof Error ? { message: error.message } : error as RazorpayApiError;
+}
+
+function getAmountInRupees(amount: string | number | undefined) {
+  const paise = typeof amount === 'string' ? Number(amount) : amount;
+  return Number.isFinite(paise) ? (paise ?? 0) / 100 : 0;
+}
+
+function getRazorpayClient() {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const publicKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+
+  if (!keyId || !keySecret) {
+    throw new Error('Razorpay credentials are not configured.');
+  }
+
+  if (publicKeyId && publicKeyId !== keyId) {
+    throw new Error('Razorpay public and server key IDs do not match.');
+  }
+
+  if (process.env.NODE_ENV !== 'production' && keyId.startsWith('rzp_live_')) {
+    throw new Error('Live Razorpay keys are configured in development. Switch .env.local to rzp_test_ keys to use Razorpay test cards.');
+  }
+
+  return new Razorpay({
+    key_id: keyId,
+    key_secret: keySecret,
+  });
+}
+
+export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, {
+    keyPrefix: 'razorpay:verify-payment',
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  try {
+    const body = await req.json();
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+
+    // Validate all required fields are present
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json(
+        { error: 'Missing required fields: razorpay_order_id, razorpay_payment_id, razorpay_signature' },
+        { status: 400 }
+      );
+    }
+
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keySecret) {
+      return NextResponse.json(
+        { error: 'Razorpay credentials are not configured.' },
+        { status: 500 }
+      );
+    }
+
+    // HMAC-SHA256(order_id + "|" + payment_id, KEY_SECRET)
+    const expectedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    // Constant-time comparison to prevent timing attacks
+    const signatureBuffer = Buffer.from(razorpay_signature, 'hex');
+    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+
+    const isValid =
+      signatureBuffer.length === expectedBuffer.length &&
+      crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+
+    if (!isValid) {
+      console.error('[Razorpay] Signature verification failed', {
+        orderId: razorpay_order_id,
+        paymentId: razorpay_payment_id,
+      });
+      return NextResponse.json(
+        { error: 'Payment signature verification failed. Do not mark this order as paid.' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch payment details from Razorpay to get full information
+    let paymentDetails: RazorpayPaymentDetails = {};
+    try {
+      paymentDetails = await getRazorpayClient().payments.fetch(razorpay_payment_id);
+    } catch (err) {
+      console.warn('[Razorpay] Could not fetch payment details from API:', err);
+      // Continue even if fetch fails, signature is already verified
+    }
+
+    console.log('[Razorpay] Payment verified successfully:', {
+      orderId: razorpay_order_id,
+      paymentId: razorpay_payment_id,
+      amount: getAmountInRupees(paymentDetails.amount),
+      method: paymentDetails.method || 'unknown',
+    });
+
+    // Signatures match — payment is genuine and stored
+    return NextResponse.json({
+      success: true,
+      payment_id: razorpay_payment_id,
+      order_id: razorpay_order_id,
+      amount: getAmountInRupees(paymentDetails.amount),
+      currency: paymentDetails.currency || 'INR',
+    });
+  } catch (error: unknown) {
+    const razorpayError = asRazorpayApiError(error);
+    const isAuthError =
+      razorpayError.statusCode === 401 ||
+      razorpayError.error?.code === 'BAD_REQUEST_ERROR' &&
+        razorpayError.error?.description === 'Authentication failed';
+
+    console.error('[Razorpay] verify-payment error:', {
+      statusCode: razorpayError.statusCode,
+      code: razorpayError.error?.code,
+      description: razorpayError.error?.description ?? razorpayError.message,
+    });
+
+    return NextResponse.json(
+      {
+        error: isAuthError
+          ? 'Razorpay credentials are invalid. Update the key pair in .env.local, then restart the dev server.'
+          : razorpayError.message ?? 'Signature verification failed.',
+      },
+      { status: isAuthError ? 401 : 500 }
+    );
+  }
+}

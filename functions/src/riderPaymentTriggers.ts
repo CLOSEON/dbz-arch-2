@@ -48,10 +48,15 @@ export const calculateRiderPayment = functions.firestore
       return null;
     }
 
-    // ── Step 1: Sum route distances ──────────────────────────────────────────
+    // ── Step 1: Get GPS-tracked distance ─────────────────────────────────────
+    // GPS-tracked distance (real device path, accumulated by locationTracker)
+    // As per RIDER_LOGIC.md, this is the authoritative source for payment.
+    const gpsDistanceKm: number = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    const totalDistanceKm = gpsDistanceKm; // Used for payment
+
+    // We can also calculate route distance for analytics/fraud checks, but it's not used for payment.
     const pickupStops: any[] = after.pickupStops ?? [];
     const dropStops: any[] = after.dropStops ?? [];
-
     const pickupDistanceKm: number = pickupStops.reduce(
       (sum: number, s: any) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0),
       0
@@ -60,14 +65,19 @@ export const calculateRiderPayment = functions.firestore
       (sum: number, s: any) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0),
       0
     );
-    const totalDistanceKm = pickupDistanceKm + dropDistanceKm;
+    const routeDistanceKm = pickupDistanceKm + dropDistanceKm;
 
-    // GPS-tracked distance (real device path, accumulated by locationTracker)
-    const gpsDistanceKm: number = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    // ── Step 2: Count actually-delivered tiffins (using confirmed pickups) ──
+    let riderConfirmedCount = 0;
+    
+    // 1. Sum up all tiffins the rider physically verified at pickup
+    pickupStops.forEach(stop => {
+      riderConfirmedCount += (typeof stop.confirmedCount === 'number' ? stop.confirmedCount : 0);
+    });
 
-    // ── Step 2: Count actually-delivered tiffins ─────────────────────────────
+    // 2. Count any drops that failed due to customer unavailability
     const orderIds: string[] = after.assignedOrderIds ?? [];
-    let deliveredCount = 0;
+    let unavailableDropsCount = 0;
 
     if (orderIds.length > 0) {
       // Batch into chunks of 30 (Firestore in() limit)
@@ -76,17 +86,22 @@ export const calculateRiderPayment = functions.firestore
         chunks.push(orderIds.slice(i, i + 30));
       }
       for (const chunk of chunks) {
-        const snap = await db.collection('delivery_orders')
+        // Query the 'orders' collection (which is canonical in DBZ ARCH 2)
+        const snap = await db.collection('orders')
           .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-          .where('status', '==', 'delivered')
+          .where('status', '==', 'failed')
+          .where('failure_reason', '==', 'customer_unavailable')
           .get();
-        deliveredCount += snap.size;
+        unavailableDropsCount += snap.size;
       }
     }
 
+    // 3. Final paid tiffins = Confirmed Pickups minus Unavailable Drops
+    const paidTiffinCount = Math.max(0, riderConfirmedCount - unavailableDropsCount);
+
     // ── Step 3: Compute payment ──────────────────────────────────────────────
     const basePayment = parseFloat((totalDistanceKm * BASE_RATE_PER_KM).toFixed(2));
-    const extraTiffins = Math.max(0, deliveredCount - TIFFIN_BONUS_THRESHOLD);
+    const extraTiffins = Math.max(0, paidTiffinCount - TIFFIN_BONUS_THRESHOLD);
     const tiffinBonus = extraTiffins * TIFFIN_BONUS_PER_EXTRA;
     const totalPayment = parseFloat((basePayment + tiffinBonus).toFixed(2));
 
@@ -96,10 +111,10 @@ export const calculateRiderPayment = functions.firestore
       riderTripId: tripId,
       riderId,
       totalDistanceKm: parseFloat(totalDistanceKm.toFixed(4)),
-      gpsDistanceKm: parseFloat(gpsDistanceKm.toFixed(4)),
+      routeDistanceKm: parseFloat(routeDistanceKm.toFixed(4)),
       basePayment,
       tiffinBonus,
-      deliveredCount,
+      paidTiffinCount,
       totalPayment,
       calculatedAt: admin.firestore.FieldValue.serverTimestamp(),
       status: 'pending',
@@ -108,7 +123,7 @@ export const calculateRiderPayment = functions.firestore
     functions.logger.info(
       `[calculateRiderPayment] Trip ${tripId} → Payment ₹${totalPayment} ` +
       `(base ₹${basePayment} for ${totalDistanceKm.toFixed(2)}km + ` +
-      `bonus ₹${tiffinBonus} for ${extraTiffins} extra tiffins, ${deliveredCount} delivered)`
+      `bonus ₹${tiffinBonus} for ${extraTiffins} extra tiffins, ${paidTiffinCount} paid)`
     );
 
     return null;
