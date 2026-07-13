@@ -403,13 +403,26 @@ service cloud.firestore {
  
     // Swap allowances — read by owner, write by owner (during swaps) or admin
     match /subscription_swap_allowances/{docId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && (
-        resource == null ||
-        resource.data.user_id == request.auth.uid ||
-        request.resource.data.user_id == request.auth.uid ||
-        isAdmin()
+      allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if request.auth != null && 
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.free_swaps_used == 0 &&
+        exists(/databases/$(database)/documents/subscriptions/$(docId)) &&
+        get(/databases/$(database)/documents/subscriptions/$(docId)).data.user_id == request.auth.uid &&
+        (
+          (get(/databases/$(database)/documents/subscriptions/$(docId)).data.meal_type == 'both' && request.resource.data.free_swaps_total == 2) ||
+          (get(/databases/$(database)/documents/subscriptions/$(docId)).data.meal_type != 'both' && request.resource.data.free_swaps_total == 1)
+        );
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (
+          resource.data.user_id == request.auth.uid &&
+          request.resource.data.user_id == request.auth.uid &&
+          request.resource.data.free_swaps_total == resource.data.free_swaps_total &&
+          request.resource.data.subscription_id == resource.data.subscription_id
+        )
       );
+      allow delete: if isAdmin();
     }
  
     // Swap requests

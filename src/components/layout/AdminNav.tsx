@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store } from 'lucide-react';
+import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
   {
@@ -69,6 +70,7 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={triggerHapticSelection}
               className={cn(
                 'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300',
                 active 
@@ -94,8 +96,8 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/70 bg-white/95 px-3 py-2 pb-safe shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+    <nav className="fixed bottom-4 left-4 right-4 z-40 border border-slate-200/40 bg-white/95 px-3 py-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2rem] animate-fade-in">
+      <div className="max-w-md mx-auto flex items-center justify-around">
         {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
           const active = isDash ? pathname === item.href || pathname === item.href + '/' : pathname.startsWith(item.href);
@@ -103,15 +105,27 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={triggerHapticSelection}
               className={cn(
-                'flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-1 transition-all focus-visible:ring-4 focus-visible:ring-brand/10',
+                'group flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10 relative',
                 active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
               )}
             >
-              {item.icon(active)}
-              <span className={cn('max-w-full truncate text-[10px] font-black leading-none tracking-normal', active ? 'text-brand' : 'text-slate-400')}>
+              <div className={cn(
+                "transition-transform duration-300",
+                active ? "scale-110 -translate-y-0.5" : "group-hover:scale-105"
+              )}>
+                {item.icon(active)}
+              </div>
+              <span className={cn(
+                'text-[9px] font-black uppercase tracking-[0.1em] transition-opacity duration-200',
+                active ? 'opacity-100' : 'opacity-65'
+              )}>
                 {item.label}
               </span>
+              {active && (
+                <div className="absolute bottom-0 w-1.5 h-1.5 bg-brand rounded-full shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+              )}
             </Link>
           );
         })}

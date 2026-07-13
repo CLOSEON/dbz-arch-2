@@ -73,6 +73,7 @@
 
   html {
     background: #FEFCE8;
+    overscroll-behavior: none;
   }
 
   body {
@@ -84,6 +85,7 @@
     font-family: var(--font-jakarta), sans-serif;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.015em;
+    overscroll-behavior: none;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -203,6 +205,14 @@
 @layer utilities {
   .shadow-card {
     @apply shadow-[0_18px_40px_rgba(15,23,42,0.06)];
+  }
+
+  .pb-safe {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
   }
 
   .scrollbar-none::-webkit-scrollbar { display: none; }

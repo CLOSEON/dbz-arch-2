@@ -12,7 +12,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Gift, Star, ChevronRight, Calendar, AlertCircle, RefreshCw, Plus, Minus, CreditCard } from 'lucide-react';
 import { PaymentModal } from '@/components/shared/PaymentModal';
-import { redeemCreditsForDays, addBoughtSwaps } from '@/lib/queries/swaps';
+import { redeemCreditsForDays } from '@/lib/queries/swaps';
 import type { SubscriptionSwapAllowance } from '@/types';
 
 // Razorpay SDK loader
@@ -245,9 +245,8 @@ export default function ProfilePage() {
         throw new Error(await readApiError(verifyRes, 'Payment verification failed.'));
       }
 
-      // 4. Update allowance in Firestore
+      // 4. Toast notification (UI will update automatically via real-time listener)
       if (user) {
-        await addBoughtSwaps(subId, qty, user.id);
         addToast(`Successfully bought ${qty} extra swaps! 🎉`, 'success');
         setPurchaseQty(prev => ({ ...prev, [subId]: 1 }));
       }

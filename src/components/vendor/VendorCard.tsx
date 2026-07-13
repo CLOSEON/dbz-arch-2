@@ -19,6 +19,12 @@ export function VendorCard({ vendor }: VendorCardProps) {
   const startingPrice = prices.length ? Math.min(...prices) : null;
   const ratingValue = vendor.rating_avg || vendor.rating || 4.5;
   const rating = Number(ratingValue).toFixed(1);
+  
+  const subCount = vendor.subscriberCount || 0;
+  const capacity = vendor.capacity;
+  const hasCapacityLimit = typeof capacity === 'number' && capacity > 0;
+  const remainingSlots = hasCapacityLimit && capacity !== null ? Math.max(0, capacity - subCount) : null;
+  const isAtCapacity = hasCapacityLimit && remainingSlots !== null && remainingSlots <= 0;
 
   return (
     <Link
@@ -67,12 +73,20 @@ export function VendorCard({ vendor }: VendorCardProps) {
                 {vendor.cuisine_type || 'Home Style'}
               </p>
               <div className="w-1 h-1 rounded-full bg-slate-200" />
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.12em]">
-                {vendor.capacityUnlimited ? (
-                  <span className="text-slate-500 text-xs font-bold">Unlimited capacity</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em]">
+                {hasCapacityLimit ? (
+                  isAtCapacity ? (
+                    <span className="text-rose-500 font-extrabold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-lg">
+                      Sold Out
+                    </span>
+                  ) : (
+                    <span className="text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg">
+                      {remainingSlots} of {capacity} left
+                    </span>
+                  )
                 ) : (
-                  <span className="text-slate-500 text-xs font-bold">
-                    {vendor.capacity ? `${vendor.capacity} tiffins` : 'Capacity not set'}
+                  <span className="text-slate-400 font-bold bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-lg">
+                    Unlimited slots
                   </span>
                 )}
               </p>

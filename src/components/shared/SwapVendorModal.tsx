@@ -9,6 +9,7 @@ import { requestVendorSwap, getSubscriptionSwapAllowance } from '@/lib/queries/s
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
 
 // Geolocation distance helper
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -130,6 +131,7 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
         // Free swap flow
         setPaymentStatus('swapping');
         await requestVendorSwap(userId, delivery.subscriptionId, delivery, vendor.id, vendor.kitchen_name || vendor.name);
+        triggerHapticNotification(NotificationType.Success);
         addToast('Swap successful using free allowance!', 'success');
         onSwapSuccess(delivery.id);
         onClose();
@@ -213,11 +215,13 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
           { paymentId: paymentResponse.razorpay_payment_id, orderId: paymentResponse.razorpay_order_id }
         );
 
+        triggerHapticNotification(NotificationType.Success);
         addToast('Swap successful! Enjoy your new meal 🎉', 'success');
         onSwapSuccess(delivery.id);
         onClose();
       }
     } catch (err: any) {
+      triggerHapticNotification(NotificationType.Error);
       setError(err.message || 'Swap operation failed');
       setSwappingId(null);
       setPaymentStatus('idle');
@@ -337,7 +341,10 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
                         </div>
                         
                         <button
-                          onClick={() => handleSwap(vendor)}
+                          onClick={() => {
+                            triggerHapticImpact(ImpactStyle.Light);
+                            handleSwap(vendor);
+                          }}
                           disabled={swappingId !== null}
                           className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-brand/10 text-brand hover:bg-brand hover:text-white active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                         >

@@ -312,11 +312,25 @@ async function handleSubscriptionActive(subscription: any) {
 
     if (!snap.empty) {
       const subRef = snap.docs[0];
+      const mainSubId = subRef.id;
+      const subDataReal = subRef.data();
       await updateDoc(subRef.ref, {
         razorpay_subscription_id: subscription_id,
         status: 'active',
         updated_at: Timestamp.now(),
       });
+
+      // Initialize or Reset Swap Allowance for the new billing cycle
+      const allowanceRef = doc(db, 'subscription_swap_allowances', mainSubId);
+      const freeSwapsTotal = subDataReal.meal_type === 'both' ? 2 : 1;
+      await setDoc(allowanceRef, {
+        subscription_id: mainSubId,
+        user_id: user_id,
+        free_swaps_total: freeSwapsTotal,
+        free_swaps_used: 0,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now()
+      }, { merge: true }).catch(err => console.warn('[Webhook] Failed to init/reset swap allowance:', err));
     }
 
     console.log(`[Webhook] Subscription active: ${subscription_id}`);

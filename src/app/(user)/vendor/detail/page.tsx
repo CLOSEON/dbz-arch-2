@@ -57,6 +57,7 @@ export default function VendorDetailPage() {
   const [editingReview, setEditingReview] = useState(false);
   const [todayMenu, setTodayMenu] = useState<any>(null);
   const [userSubs, setUserSubs] = useState<string[]>([]); // active plan IDs (lunch, dinner, both)
+  const [totalActiveSubs, setTotalActiveSubs] = useState(0);
   
   // Promo code state
   const [promoInput, setPromoInput] = useState('');
@@ -100,6 +101,20 @@ export default function VendorDetailPage() {
           .map(s => s.meal_type);
         setUserSubs(activeForThisVendor);
       }
+
+      // Load total active subscriptions for capacity check
+      let activeCount = 0;
+      try {
+        const activeSnap = await getDocs(query(
+          collection(db, 'subscriptions'),
+          where('vendor_id', '==', vendorId),
+          where('status', '==', 'active')
+        ));
+        activeCount = activeSnap.size;
+      } catch (err) {
+        console.warn('[VendorDetail] Failed to query total active subscriptions:', err);
+      }
+      setTotalActiveSubs(activeCount);
     } catch (err) {
       addToast('Failed to load vendor', 'error');
     } finally {
@@ -264,6 +279,18 @@ export default function VendorDetailPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 pt-5 space-y-5">
+        {/* Capacity Sold Out Banner */}
+        {vendor.capacity !== undefined && vendor.capacity !== null && totalActiveSubs >= vendor.capacity && (
+          <div className="bg-rose-50 border border-rose-100 text-rose-700 p-4 rounded-2xl text-xs font-bold flex items-start gap-2.5 shadow-sm">
+            <span className="text-base shrink-0 mt-0.5">⚠️</span>
+            <div>
+              <p className="uppercase tracking-wider text-[10px] font-black text-rose-800">Kitchen at Capacity</p>
+              <p className="font-medium text-rose-600 mt-1 leading-relaxed">
+                This kitchen has reached its maximum subscription capacity. No new subscription slots are currently available.
+              </p>
+            </div>
+          </div>
+        )}
         {/* Today's Special Card */}
         {todayMenu && (
           <div className="card !p-0 overflow-hidden bg-white shadow-xl shadow-slate-200/50 group">
@@ -382,6 +409,9 @@ export default function VendorDetailPage() {
           ) : (
             <div className="space-y-4">
               {plans.map((plan) => {
+                const isSoldOut = vendor.capacity !== undefined && vendor.capacity !== null && totalActiveSubs >= vendor.capacity;
+                const isSubscribed = userSubs.includes(plan.id);
+                const isBtnDisabled = subscribing === plan.id || isSubscribed || (isSoldOut && !isSubscribed);
                 const discountAmount = appliedDiscount ? (plan.price * appliedDiscount.discount_pct) / 100 : 0;
                 const finalPrice = plan.price - discountAmount;
 
@@ -418,15 +448,17 @@ export default function VendorDetailPage() {
 
                       <button
                         onClick={() => handleSubscribe(plan.id)}
-                        disabled={subscribing === plan.id || userSubs.includes(plan.id)}
+                        disabled={isBtnDisabled}
                         className={cn(
                           "px-4 sm:px-5 py-3 sm:py-3.5 rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
-                          userSubs.includes(plan.id) 
+                          isSubscribed 
                             ? "bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-none cursor-default" 
-                            : "bg-brand text-white shadow-lg shadow-brand/20 active:scale-95"
+                            : isSoldOut 
+                              ? "bg-rose-50 text-rose-500 border border-rose-100 shadow-none cursor-not-allowed"
+                              : "bg-brand text-white shadow-lg shadow-brand/20 active:scale-95"
                         )}
                       >
-                        {subscribing === plan.id ? '...' : userSubs.includes(plan.id) ? 'Subscribed' : 'Subscribe'}
+                        {subscribing === plan.id ? '...' : isSubscribed ? 'Subscribed' : isSoldOut ? 'Sold Out' : 'Subscribe'}
                       </button>
                     </div>
                   </div>

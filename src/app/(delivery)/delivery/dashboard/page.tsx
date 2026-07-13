@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useDeliveryStore } from '@/store/deliveryStore';
-import { Camera, Navigation, MapPin, Search, PackageOpen, CheckCircle2, Truck, Store, LogOut, Phone, X } from 'lucide-react';
+import { Camera, Navigation, MapPin, Search, PackageOpen, CheckCircle2, Truck, Store, LogOut, Phone, X, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
@@ -43,6 +43,52 @@ export default function RiderDashboard() {
 
   const [unavailabilityStartTimes, setUnavailabilityStartTimes] = useState<Record<string, number>>({});
   const [nowTick, setNowTick] = useState(Date.now());
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
+  const [photoProof, setPhotoProof] = useState<File | null>(null);
+  const [uploadingPhotoProof, setUploadingPhotoProof] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Offline-First Sync Loop
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    async function syncOfflineQueue() {
+      if (!navigator.onLine) return;
+      const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`[Offline Sync] Found ${queue.length} deliveries to sync.`);
+      const successfulSyncs: string[] = [];
+
+      for (const item of queue) {
+        try {
+          await updateDoc(doc(db, 'orders', item.orderId), {
+            status: 'delivered',
+            delivery_photo_url: item.photoUrl || null,
+            updated_at: new Date(),
+            'timestamps.deliveredAt': new Date(),
+            delivery_method: item.photoUrl ? 'photo_proof_offline' : 'otp_offline'
+          });
+          successfulSyncs.push(item.orderId);
+        } catch (err) {
+          console.error('[Offline Sync] Failed to sync order:', item.orderId, err);
+        }
+      }
+
+      const remaining = queue.filter((item: any) => !successfulSyncs.includes(item.orderId));
+      localStorage.setItem('offline_deliveries', JSON.stringify(remaining));
+      if (successfulSyncs.length > 0) {
+        toast.success(`Synced ${successfulSyncs.length} offline deliveries! 📶`);
+      }
+    }
+
+    const interval = setInterval(syncOfflineQueue, 15000); // Check every 15s
+    window.addEventListener('online', syncOfflineQueue);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', syncOfflineQueue);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsMounting(false), 800);
@@ -352,23 +398,32 @@ export default function RiderDashboard() {
         return;
       }
 
-      // 2. Mark order as delivered
-      await updateDoc(doc(db, 'orders', currentDropoffOrderId), {
-        status: 'delivered',
-        updated_at: new Date(),
-        'timestamps.deliveredAt': new Date()
-      });
-
-      // 3. Check if all drops done → complete the trip
-      const remainingDrops = agentOrders.filter(o => o.id !== currentDropoffOrderId && o.status !== 'delivered' && o.status !== 'failed');
-      if (remainingDrops.length === 0) {
-        await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
-          status: 'completed',
-          updatedAt: new Date()
+      // Try online update
+      try {
+        // 2. Mark order as delivered
+        await updateDoc(doc(db, 'orders', currentDropoffOrderId), {
+          status: 'delivered',
+          updated_at: new Date(),
+          'timestamps.deliveredAt': new Date()
         });
+
+        // 3. Check if all drops done → complete the trip
+        const remainingDrops = agentOrders.filter(o => o.id !== currentDropoffOrderId && o.status !== 'delivered' && o.status !== 'failed');
+        if (remainingDrops.length === 0) {
+          await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
+            status: 'completed',
+            updatedAt: new Date()
+          });
+        }
+        toast.success('Delivery completed! 🎉');
+      } catch (networkErr) {
+        // Queue for offline sync
+        const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
+        queue.push({ orderId: currentDropoffOrderId, timestamp: Date.now() });
+        localStorage.setItem('offline_deliveries', JSON.stringify(queue));
+        toast.success('Offline: Delivery queued for auto-sync! 📶');
       }
 
-      toast.success('Delivery completed! 🎉');
       setShowDropoffModal(false);
       setDropoffOTP('');
       setCurrentDropoffOrderId(null);
@@ -377,6 +432,64 @@ export default function RiderDashboard() {
       toast.error(err.message || 'Failed to complete delivery');
     } finally {
       setVerifyingDropoffOTP(false);
+    }
+  };
+
+  const handlePhotoProofSubmit = async () => {
+    if (!activeTrip || !currentDropoffOrderId || !photoProof) return;
+    setUploadingPhotoProof(true);
+    try {
+      let photoUrl = '';
+      
+      if (navigator.onLine) {
+        // Online: upload immediately
+        const uploadedUrl = await uploadImage(photoProof, `delivery_proofs/${currentDropoffOrderId}`);
+        if (!uploadedUrl) throw new Error('Photo upload failed');
+        photoUrl = uploadedUrl;
+        
+        await updateDoc(doc(db, 'orders', currentDropoffOrderId), {
+          status: 'delivered',
+          delivery_photo_url: photoUrl,
+          updated_at: new Date(),
+          'timestamps.deliveredAt': new Date(),
+          delivery_method: 'photo_proof'
+        });
+
+        const remainingDrops = agentOrders.filter(o => o.id !== currentDropoffOrderId && o.status !== 'delivered' && o.status !== 'failed');
+        if (remainingDrops.length === 0) {
+          await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
+            status: 'completed',
+            updatedAt: new Date()
+          });
+        }
+        toast.success('Delivery completed with Photo Proof! 🎉');
+      } else {
+        // Offline: save file locally as base64 and queue update
+        const reader = new FileReader();
+        reader.readAsDataURL(photoProof);
+        reader.onloadend = () => {
+          const base64data = reader.result;
+          const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
+          queue.push({ 
+            orderId: currentDropoffOrderId, 
+            photoUrl: base64data, // will upload or sync later 
+            timestamp: Date.now() 
+          });
+          localStorage.setItem('offline_deliveries', JSON.stringify(queue));
+        };
+        toast.success('Offline: Delivery photo proof queued for sync! 📶');
+      }
+
+      setShowDropoffModal(false);
+      setDropoffOTP('');
+      setCurrentDropoffOrderId(null);
+      setPhotoProof(null);
+      setShowPhotoUpload(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to complete delivery with photo');
+    } finally {
+      setUploadingPhotoProof(false);
     }
   };
 
@@ -490,6 +603,13 @@ export default function RiderDashboard() {
     );
   }
 
+  const completedCount = agentOrders.filter(o => o.status === 'delivered').length;
+  const totalCount = agentOrders.length;
+  const pct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const radius = 16;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (pct / 100) * circumference;
+
   return (
     <div className="space-y-6 pb-24 text-slate-900">
       <div className="flex items-center justify-between px-2 pt-2">
@@ -510,6 +630,34 @@ export default function RiderDashboard() {
             <h1 className="font-black text-slate-900 leading-none">{user?.name}</h1>
             <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">₹1450 Today</p>
           </div>
+          {totalCount > 0 && (
+            <div className="relative w-10 h-10 flex items-center justify-center bg-white border border-slate-100 rounded-full shadow-inner shrink-0" title={`${completedCount}/${totalCount} Completed`}>
+              <svg className="w-full h-full transform -rotate-90">
+                <circle
+                  cx="20"
+                  cy="20"
+                  r={radius}
+                  className="text-slate-100"
+                  strokeWidth="3"
+                  stroke="currentColor"
+                  fill="transparent"
+                />
+                <circle
+                  cx="20"
+                  cy="20"
+                  r={radius}
+                  className="text-brand transition-all duration-500 ease-out"
+                  strokeWidth="3"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="transparent"
+                />
+              </svg>
+              <span className="absolute text-[9px] font-black text-slate-800">{completedCount}/{totalCount}</span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
@@ -799,46 +947,124 @@ export default function RiderDashboard() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-50 backdrop-blur-sm p-4">
           <div className="bg-white border border-slate-100 rounded-[32px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
             <button 
-              onClick={() => { setShowDropoffModal(false); setDropoffOTP(''); setVerifyingDropoffOTP(false); }}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-500 hover:bg-slate-700 transition-colors"
+              onClick={() => { 
+                setShowDropoffModal(false); 
+                setDropoffOTP(''); 
+                setVerifyingDropoffOTP(false); 
+                setShowPhotoUpload(false);
+                setPhotoProof(null);
+              }}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
             >
               <X size={18} />
             </button>
-            <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
-              <PackageOpen size={32} />
-            </div>
-            {(() => {
-              const currentDropoffOrder = agentOrders.find(o => o.id === currentDropoffOrderId);
-              const dropoffCustId = currentDropoffOrder ? ((currentDropoffOrder as any).customerId || (currentDropoffOrder as any).user_id) : '';
-              const dropoffCust = customerProfiles[dropoffCustId];
-              return (
-                <>
-                  <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Drop-off for {dropoffCust?.name || 'Customer'}</h3>
-                  <p className="text-slate-500 text-sm font-medium text-center mb-8">
-                    Ask {dropoffCust?.name || 'the customer'} for their 4-digit Handover PIN to complete this delivery.
-                  </p>
-                </>
-              );
-            })()}
-            <input 
-              type="text" 
-              inputMode="numeric"
-              maxLength={4}
-              value={dropoffOTP}
-              onChange={(e) => setDropoffOTP(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="0000"
-              disabled={verifyingDropoffOTP}
-              className="w-full text-center text-4xl tracking-[0.5em] font-mono font-black text-slate-900 bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 focus:border-emerald-500 focus:ring-0 transition-colors mb-6 disabled:opacity-60"
-            />
-            <button 
-              onClick={handleDropoffVerify}
-              disabled={dropoffOTP.length !== 4 || verifyingDropoffOTP}
-              className="w-full py-4 bg-emerald-500 text-slate-900 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-all"
-            >
-              {verifyingDropoffOTP ? (
-                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying...</>
-              ) : 'Verify OTP & Complete Delivery'}
-            </button>
+
+            {showPhotoUpload ? (
+              <div className="space-y-6">
+                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                  <Camera size={32} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Photo Proof</h3>
+                <p className="text-slate-500 text-sm font-medium text-center mb-4">
+                  Take a clear photo of the tiffin dropped off at the customer's door.
+                </p>
+                
+                <input 
+                  type="file" 
+                  ref={photoInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setPhotoProof(file);
+                  }}
+                />
+
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  className="w-full h-40 border-2 border-dashed border-slate-200 hover:border-brand rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50 overflow-hidden relative"
+                >
+                  {photoProof ? (
+                    <Image 
+                      src={URL.createObjectURL(photoProof)} 
+                      alt="Tiffin Proof" 
+                      fill 
+                      className="object-cover"
+                    />
+                  ) : (
+                    <>
+                      <Camera className="w-8 h-8 text-slate-400 animate-pulse" />
+                      <span className="text-xs font-bold text-slate-500">Capture / Select Photo</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowPhotoUpload(false); setPhotoProof(null); }}
+                    className="flex-1 py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all active:scale-[0.98] border border-slate-100"
+                  >
+                    Back to OTP
+                  </button>
+                  <button
+                    onClick={handlePhotoProofSubmit}
+                    disabled={!photoProof || uploadingPhotoProof}
+                    className="flex-1 py-3.5 bg-emerald-500 text-slate-950 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-all text-xs"
+                  >
+                    {uploadingPhotoProof ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-950" /> Uploading...
+                      </>
+                    ) : 'Complete Drop'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                  <PackageOpen size={32} />
+                </div>
+                {(() => {
+                  const currentDropoffOrder = agentOrders.find(o => o.id === currentDropoffOrderId);
+                  const dropoffCustId = currentDropoffOrder ? ((currentDropoffOrder as any).customerId || (currentDropoffOrder as any).user_id) : '';
+                  const dropoffCust = customerProfiles[dropoffCustId];
+                  return (
+                    <>
+                      <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Drop-off for {dropoffCust?.name || 'Customer'}</h3>
+                      <p className="text-slate-500 text-sm font-medium text-center mb-8">
+                        Ask {dropoffCust?.name || 'the customer'} for their 4-digit Handover PIN to complete this delivery.
+                      </p>
+                    </>
+                  );
+                })()}
+                <input 
+                  type="text" 
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={dropoffOTP}
+                  onChange={(e) => setDropoffOTP(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="0000"
+                  disabled={verifyingDropoffOTP}
+                  className="w-full text-center text-4xl tracking-[0.5em] font-mono font-black text-slate-900 bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 focus:border-emerald-500 focus:ring-0 transition-colors mb-4 disabled:opacity-60"
+                />
+                <button 
+                  onClick={handleDropoffVerify}
+                  disabled={dropoffOTP.length !== 4 || verifyingDropoffOTP}
+                  className="w-full py-4 bg-emerald-500 text-slate-950 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-all mb-3 text-sm"
+                >
+                  {verifyingDropoffOTP ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying...</>
+                  ) : 'Verify OTP & Complete Delivery'}
+                </button>
+                <button
+                  onClick={() => setShowPhotoUpload(true)}
+                  className="w-full py-2.5 bg-slate-50 border border-slate-200/50 hover:bg-slate-100 rounded-2xl font-bold text-xs text-slate-600 transition-all uppercase tracking-wider"
+                >
+                  Cannot get OTP? Deliver with Photo
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

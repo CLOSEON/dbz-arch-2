@@ -9,6 +9,8 @@ import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 let _checkoutScriptPromise: Promise<void> | null = null;
 function loadCheckoutScript(): Promise<void> {
@@ -91,6 +93,54 @@ export function SubscriptionOnboardingModal({
     }
   }, [isOpen, initialPlanId, user]);
 
+  const [activeSub, setActiveSub] = useState<any>(null);
+
+  useEffect(() => {
+    if (isOpen && user) {
+      const fetchActiveSub = async () => {
+        try {
+          const subsSnap = await getDocs(query(
+            collection(db, 'subscriptions'),
+            where('user_id', '==', user.id),
+            where('vendor_id', '==', vendor.id),
+            where('status', '==', 'active')
+          ));
+          if (!subsSnap.empty) {
+            const active = subsSnap.docs
+              .map(d => ({ id: d.id, ...d.data() } as any))
+              .find(s => s.meal_type === 'lunch' || s.meal_type === 'dinner');
+            setActiveSub(active || null);
+          } else {
+            setActiveSub(null);
+          }
+        } catch (err) {
+          console.warn('[OnboardingModal] Failed to fetch active sub:', err);
+        }
+      };
+      fetchActiveSub();
+    }
+  }, [isOpen, user, vendor.id]);
+
+  // Calculate proration credit if upgrading to 'both' combo
+  const getProrationCredit = (): { credit: number; activeSubMeal?: string } => {
+    if (planId !== 'both' || !activeSub) return { credit: 0 };
+    
+    const nextBilling = activeSub.next_billing_date?.toDate ? activeSub.next_billing_date.toDate() : null;
+    if (!nextBilling) return { credit: 0 };
+
+    const now = new Date();
+    const daysLeft = Math.max(0, Math.ceil((nextBilling.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+    if (daysLeft <= 0) return { credit: 0 };
+
+    const totalDays = activeSub.frequency === 'monthly' ? 30 : activeSub.frequency === 'weekly' ? 7 : 1;
+    const paidPrice = activeSub.price || 0;
+    const credit = Math.round((paidPrice / totalDays) * daysLeft);
+
+    return { credit, activeSubMeal: activeSub.meal_type };
+  };
+
+  const { credit: prorationCredit, activeSubMeal } = getProrationCredit();
+
   if (!mounted || !user) return null;
 
   // ── Plan price helpers ────────────────────────────────────────────────────
@@ -110,7 +160,7 @@ export function SubscriptionOnboardingModal({
 
   const basePrice    = getPrice(planId);
   const discountAmt  = appliedDiscount ? Math.round((basePrice * appliedDiscount.discount_pct) / 100) : 0;
-  const finalPrice   = Math.max(0, basePrice - discountAmt);
+  const finalPrice   = Math.max(0, basePrice - discountAmt - prorationCredit);
   const amountPaise  = finalPrice * 100; // Razorpay works in paise
 
   // ── Step handlers ─────────────────────────────────────────────────────────
@@ -191,6 +241,17 @@ export function SubscriptionOnboardingModal({
     setIsSubmitting(true);
 
     try {
+      if (finalPrice === 0) {
+        setPaymentStatus('activating');
+        const mockResponse = {
+          razorpay_payment_id: 'upg_free_' + Math.random().toString(36).slice(2, 9),
+          razorpay_order_id: 'upg_free_' + Math.random().toString(36).slice(2, 9),
+          razorpay_signature: 'free'
+        };
+        await activateVerifiedSubscription(mockResponse);
+        return;
+      }
+
       // 1. Load Razorpay checkout.js
       setPaymentStatus('creating_order');
       await loadCheckoutScript();
@@ -220,8 +281,7 @@ export function SubscriptionOnboardingModal({
 
       // 3. Open Razorpay modal
       setPaymentStatus('awaiting_payment');
-
-      await new Promise<void>((resolve, reject) => {
+      const paymentResponse = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
         const rzp = new window.Razorpay({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
           amount: amountPaise,
@@ -241,14 +301,8 @@ export function SubscriptionOnboardingModal({
               reject(new Error('dismissed'));
             },
           },
-          handler: async (response: RazorpayPaymentResponse) => {
-            try {
-              await verifyPayment(response);
-              await activateVerifiedSubscription(response);
-              resolve();
-            } catch (err: unknown) {
-              reject(err);
-            }
+          handler: (response: RazorpayPaymentResponse) => {
+            resolve(response);
           },
         });
 
@@ -258,6 +312,12 @@ export function SubscriptionOnboardingModal({
 
         rzp.open();
       });
+
+      // 4. Verify payment signature
+      await verifyPayment(paymentResponse);
+
+      // 5. Activate subscription
+      await activateVerifiedSubscription(paymentResponse);
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Payment failed. Please try again.');
 
@@ -451,6 +511,12 @@ export function SubscriptionOnboardingModal({
                         <div className="flex justify-between text-sm text-emerald-600">
                           <span className="font-medium">Discount ({appliedDiscount.code}) — {appliedDiscount.discount_pct}%</span>
                           <span className="font-bold">−₹{discountAmt}</span>
+                        </div>
+                      )}
+                      {prorationCredit > 0 && (
+                        <div className="flex justify-between text-sm text-brand">
+                          <span className="font-medium">Upgrade Credit ({activeSubMeal} remaining)</span>
+                          <span className="font-bold">−₹{prorationCredit}</span>
                         </div>
                       )}
                       <div className="flex justify-between items-center pt-1">

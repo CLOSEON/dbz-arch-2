@@ -20,6 +20,7 @@ export function VendorProfileCard() {
     cuisine_type: user?.cuisine_type || '',
     phone: user?.phone || '',
     image: user?.image || '',
+    capacity: user?.capacity !== undefined && user?.capacity !== null ? String(user.capacity) : '',
   });
   
   const [syncingLoc, setSyncingLoc] = useState(false);
@@ -33,6 +34,7 @@ export function VendorProfileCard() {
         cuisine_type: user.cuisine_type || '',
         phone: user.phone || '',
         image: user.image || '',
+        capacity: user.capacity !== undefined && user.capacity !== null ? String(user.capacity) : '',
       });
     }
   }, [user]);
@@ -107,6 +109,12 @@ export function VendorProfileCard() {
       return;
     }
 
+    const capacityNum = profile.capacity.trim() ? parseInt(profile.capacity, 10) : undefined;
+    if (capacityNum !== undefined && (isNaN(capacityNum) || capacityNum < 0)) {
+      addToast('Capacity limit must be a positive number', 'warning');
+      return;
+    }
+
     setLoading(true);
     try {
       await updateUser(user.id, {
@@ -114,6 +122,7 @@ export function VendorProfileCard() {
         kitchen_name: profile.name.trim(), // Keep kitchen_name in sync
         cuisine_type: profile.cuisine_type.trim(),
         phone: profile.phone.trim(),
+        capacity: capacityNum,
       });
       setUser({
         ...user,
@@ -121,6 +130,7 @@ export function VendorProfileCard() {
         kitchen_name: profile.name.trim(),
         cuisine_type: profile.cuisine_type.trim(),
         phone: profile.phone.trim(),
+        capacity: capacityNum,
       });
       addToast('Kitchen details saved! 🔥', 'success');
     } catch (err) {
@@ -240,6 +250,23 @@ export function VendorProfileCard() {
               onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 focus:bg-white focus:shadow-sm transition-all"
             />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1.5 ml-1 flex items-center gap-1.5">
+              🎚️ Daily Tiffin Capacity Limit
+            </label>
+            <input
+              type="number"
+              min="1"
+              placeholder="No limit (unlimited)"
+              value={profile.capacity}
+              onChange={(e) => setProfile({ ...profile, capacity: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 focus:bg-white focus:shadow-sm transition-all"
+            />
+            <p className="text-[10px] text-slate-400 mt-1 font-semibold pl-1">
+              Set the maximum number of active subscriptions your kitchen can support. Leave blank for no limit.
+            </p>
           </div>
 
           <div className="pt-2 border-t border-slate-50">

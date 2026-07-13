@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, HelpCircle, X } from 'lucide-react';
+import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -25,6 +27,18 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   
+  useEffect(() => {
+    if (isOpen) {
+      if (variant === 'danger') {
+        triggerHapticNotification(NotificationType.Warning);
+      } else if (variant === 'warning') {
+        triggerHapticNotification(NotificationType.Warning);
+      } else {
+        triggerHapticImpact(ImpactStyle.Light);
+      }
+    }
+  }, [isOpen, variant]);
+
   const iconColor = {
     primary: 'text-brand bg-brand/5 border-brand/10',
     danger: 'text-rose-500 bg-rose-50 border-rose-100',
@@ -84,13 +98,19 @@ export function ConfirmDialog({
 
               <div className="w-full flex gap-3">
                 <button
-                  onClick={onCancel}
+                  onClick={() => {
+                    triggerHapticImpact(ImpactStyle.Light);
+                    onCancel();
+                  }}
                   className="flex-1 rounded-2xl py-3.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all active:scale-[0.98]"
                 >
                   {cancelLabel}
                 </button>
                 <button
-                  onClick={onConfirm}
+                  onClick={() => {
+                    triggerHapticNotification(NotificationType.Success);
+                    onConfirm();
+                  }}
                   className={`flex-1 rounded-2xl py-3.5 text-xs font-black uppercase tracking-widest transition-all active:scale-[0.98] shadow-lg ${buttonStyle}`}
                 >
                   {confirmLabel}

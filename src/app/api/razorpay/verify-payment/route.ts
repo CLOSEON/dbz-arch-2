@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { rateLimit } from '@/lib/server/rate-limit';
+import { adminDb } from '@/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,6 +120,40 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.warn('[Razorpay] Could not fetch payment details from API:', err);
       // Continue even if fetch fails, signature is already verified
+    }
+
+    // ── Update swap allowance if it's a swap purchase ───────────────────────
+    if (paymentDetails.notes && paymentDetails.notes.type === 'buy_swaps') {
+      const subscriptionId = paymentDetails.notes.subscription_id as string;
+      const userId = paymentDetails.notes.user_id as string;
+      const count = Number(paymentDetails.notes.qty || 1);
+
+      if (subscriptionId && userId) {
+        const allowanceRef = adminDb.collection('subscription_swap_allowances').doc(subscriptionId);
+        
+        await adminDb.runTransaction(async (transaction: any) => {
+          const docSnap = await transaction.get(allowanceRef);
+          const now = FieldValue.serverTimestamp();
+          if (docSnap.exists) {
+            const data = docSnap.data();
+            const currentTotal = data?.free_swaps_total || 0;
+            transaction.update(allowanceRef, {
+              free_swaps_total: currentTotal + count,
+              updated_at: now
+            });
+          } else {
+            transaction.set(allowanceRef, {
+              subscription_id: subscriptionId,
+              user_id: userId,
+              free_swaps_total: count,
+              free_swaps_used: 0,
+              created_at: now,
+              updated_at: now
+            });
+          }
+        });
+        console.log(`[Razorpay] Successfully credited ${count} swaps to subscription ${subscriptionId} via Admin SDK`);
+      }
     }
 
     console.log('[Razorpay] Payment verified successfully:', {

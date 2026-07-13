@@ -10,6 +10,7 @@ import type { BatchStatus } from '@/types';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 
 const LiveDeliveryMap = dynamic(() => import('@/components/delivery/LiveDeliveryMap'), { ssr: false });
 
@@ -163,7 +164,7 @@ export default function VendorDashboard() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 md:gap-6">
+      <div className="grid grid-cols-3 gap-3 md:gap-6">
         <div className="card">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Subscribers</p>
           <div className="flex items-end justify-between">
@@ -174,10 +175,22 @@ export default function VendorDashboard() {
           </div>
         </div>
         <div className="card">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Capacity</p>
+          <div className="flex items-end justify-between animate-fade-in">
+            <h3 className="text-2xl font-black text-slate-900 leading-none">
+              {subscriptions.length}
+              <span className="text-slate-400 text-sm font-medium"> / {user?.capacity ?? '∞'}</span>
+            </h3>
+            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
+              <ChefHat className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+        <div className="card">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Status</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-lg font-black text-emerald-500 leading-none flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse" />
+            <h3 className="text-sm sm:text-base font-black text-emerald-500 leading-none flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse" />
               Active
             </h3>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
@@ -348,13 +361,16 @@ export default function VendorDashboard() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: Schedule Forecast */}
-        <div className="space-y-4">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2">
-            <CalendarClock className="w-5 h-5 text-indigo-500" />
-            30-Day Forecast
-          </h3>
-          <div className="bg-white rounded-3xl border border-slate-100 p-6">
+        {/* RIGHT COLUMN: Menu & Forecast */}
+        <div className="space-y-8">
+          <TodayMenuCard />
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-indigo-500" />
+              30-Day Forecast
+            </h3>
+            <div className="bg-white rounded-3xl border border-slate-100 p-6">
             <div className="grid grid-cols-7 gap-2 mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
                 <div key={day} className="text-center text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -411,8 +427,9 @@ export default function VendorDashboard() {
             </div>
           </div>
         </div>
-
       </div>
+
+    </div>
 
       {/* Date Details Modal */}
       {selectedDateDetails && (

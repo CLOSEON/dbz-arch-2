@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Wallet } from 'lucide-react';
+import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
   { href: '/delivery/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,6 +31,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={triggerHapticSelection}
               className={cn(
                 'group relative flex items-center gap-3 rounded-[1.2rem] px-4 py-3.5 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5',
                 active
@@ -48,8 +50,8 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100/50 bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto max-w-md px-2 pb-[env(safe-area-inset-bottom)] pt-2">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100/50 bg-white/80 backdrop-blur-xl pb-safe">
+      <div className="mx-auto max-w-md px-2 pt-2">
         <div className="grid grid-cols-2 gap-1">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || pathname === item.href + '/' || pathname.startsWith(item.href + '/');
@@ -58,6 +60,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={triggerHapticSelection}
                 className={cn(
                   'group flex flex-col items-center justify-center rounded-[1.2rem] px-2 py-2.5 transition-all duration-300',
                   active ? '-translate-y-1 text-brand' : 'text-slate-400 hover:-translate-y-0.5 hover:text-slate-600'

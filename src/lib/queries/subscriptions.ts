@@ -142,6 +142,18 @@ export async function createSubscription(data: {
   // The deterministic docId guarantees no duplicates ever.
   await setDoc(docRef, payload);
 
+  // Initialize or Reset Swap Allowance for this subscription
+  const allowanceRef = doc(db, 'subscription_swap_allowances', docId);
+  const freeSwapsTotal = data.meal_type === 'both' ? 2 : 1;
+  await setDoc(allowanceRef, {
+    subscription_id: docId,
+    user_id: data.user_id,
+    free_swaps_total: freeSwapsTotal,
+    free_swaps_used: 0,
+    created_at: Timestamp.now(),
+    updated_at: Timestamp.now()
+  }, { merge: true }).catch(err => console.warn('[Subscriptions] Failed to init/reset swap allowance:', err));
+
   // --- Merge/Upgrade Logic ---
   // If user subscribes to 'both', cancel any existing standalone 'lunch' or 'dinner' for this vendor
   if (data.meal_type === 'both') {
