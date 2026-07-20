@@ -108,8 +108,11 @@ export default function LoginPage() {
 
     try {
       // Force token refresh to ensure Firestore SDK has the latest auth state
-      // This prevents "Missing or insufficient permissions" race conditions.
       await firebaseUser.getIdToken(true);
+      
+      // Wait for auth state to be fully synchronized with all Firebase services
+      const { auth } = await import('@/lib/firebase');
+      await auth.authStateReady();
 
       const { user: profile, isNewUser } = await resolveUserProfile(
         firebaseUser.uid,

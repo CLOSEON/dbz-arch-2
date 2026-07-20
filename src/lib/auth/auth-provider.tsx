@@ -93,9 +93,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
             });
           }
 
-          // 2. Fetch full profile from Firestore
-          const userDoc = await getDoc(doc(db, 'users', activeUser.uid));
-          if (userDoc.exists() && mounted.current) {
+          // 2. Fetch full profile from Firestore with retry for auth propagation
+          let userDoc;
+          let retries = 3;
+          while (retries > 0) {
+            try {
+              userDoc = await getDoc(doc(db, 'users', activeUser.uid));
+              break;
+            } catch (error: any) {
+              if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+                if (retries > 1) {
+                  console.warn(`[AuthProvider] Permission denied, retrying in 1s... (${retries - 1} left)`);
+                  await new Promise(r => setTimeout(r, 1000));
+                  retries--;
+                } else {
+                  throw error;
+                }
+              } else {
+                throw error;
+              }
+            }
+          }
+          
+          if (userDoc && userDoc.exists() && mounted.current) {
             const data = userDoc.data();
             setUser({ id: activeUser.uid, ...data } as AppUser);
             

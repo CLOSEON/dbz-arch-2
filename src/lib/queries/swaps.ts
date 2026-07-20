@@ -605,13 +605,18 @@ export async function redeemCreditsForDays(userId: string, subscriptionId: strin
 // ─── Swap Allowances ────────────────────────────────────────────────────────
 
 export async function getSubscriptionSwapAllowance(subscriptionId: string): Promise<SubscriptionSwapAllowance | null> {
-  const q = query(
-    collection(db, 'subscription_swap_allowances'),
-    where('subscription_id', '==', subscriptionId)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0].data() as SubscriptionSwapAllowance;
+  try {
+    const docRef = doc(db, 'subscription_swap_allowances', subscriptionId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as SubscriptionSwapAllowance;
+  } catch (error: any) {
+    // Firestore rules evaluate resource.data, which throws permission denied if the doc doesn't exist.
+    if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function processExpiredSwaps(): Promise<void> {

@@ -308,14 +308,6 @@ export default function ProfilePage() {
         <p className="text-sm text-slate-500 mt-0.5">Identity, account access, and quick links</p>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none mb-5 px-1">
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-brand/10 text-brand">
-          Role: {roleLabel[user?.role ?? 'user'] ?? user?.role}
-        </span>
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full bg-slate-100 text-slate-700">
-          Phone Verified
-        </span>
-      </div>
 
       {/* Profile Header */}
       <div className="flex items-center gap-4 bg-white rounded-3xl p-5 shadow-card mb-5">

@@ -28,7 +28,7 @@ const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebas
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const auth: Auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch(err => console.warn('[Firebase] Persistence error:', err));
+// Persistence is browserLocalPersistence by default.
 auth.useDeviceLanguage();
 
 // Dev-only: bypass reCAPTCHA on localhost so Phone Auth works without Firebase Authorized Domains
