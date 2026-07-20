@@ -146,8 +146,10 @@ export async function requestSwap(
   });
 
   // 3. Broadcast to nearby users with a DIFFERENT meal type today
+  const todayStr = new Date().toLocaleDateString('en-CA');
   const delQ = query(
     collection(db, 'orders'),
+    where('date', '==', todayStr),
     where('status', 'in', ['created', 'vendor_ready', 'vendor_notified'])
   );
   const deliverySnap = await getDocs(delQ);

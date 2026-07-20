@@ -46,7 +46,8 @@ export function isTestAccount(e164: string): boolean {
     '+919000000002',
     '+919000000003',
     '+919000000004',
-    '+919930577000' // Added user test phone number
+    '+919930577000', // Added user test phone number
+    '+919900990011'  // Added new user test phone number
   ];
   return TEST_NUMBERS.includes(e164);
 }
@@ -57,7 +58,23 @@ export async function resolveUserProfile(
   phone: string
 ): Promise<{ user: AppUser; isNewUser: boolean }> {
   const userRef = doc(db, 'users', uid);
-  const userDoc = await getDoc(userRef);
+  
+  let userDoc: any;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      userDoc = await getDoc(userRef);
+      break; // Success
+    } catch (error: any) {
+      if ((error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) && retries > 1) {
+        console.warn(`[resolveUserProfile] Permission denied, retrying in 1s... (${retries - 1} left)`);
+        retries--;
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        throw error;
+      }
+    }
+  }
 
   if (userDoc.exists()) {
     const data = userDoc.data() as Partial<AppUser>;
@@ -165,3 +182,44 @@ export async function getApprovedVendors(): Promise<Vendor[]> {
   _vendorsCache = { data: results, ts: now };
   return results;
 }
+
+// ─── Individual Profile Cache for Real-time Listeners ───────────────────────
+// Caches profiles for 5 minutes. Prevents repetitive reads on frequent updates.
+const _profileCache = new Map<string, { data: any; ts: number }>();
+const PROFILE_CACHE_TTL = 300_000;
+
+export async function fetchEnrichedProfiles(ids: string[]): Promise<Map<string, any>> {
+  const result = new Map<string, any>();
+  const missingIds: string[] = [];
+  const now = Date.now();
+
+  ids.forEach(id => {
+    const cached = _profileCache.get(id);
+    if (cached && now - cached.ts < PROFILE_CACHE_TTL) {
+      result.set(id, cached.data);
+    } else {
+      missingIds.push(id);
+    }
+  });
+
+  if (missingIds.length > 0) {
+    const { documentId: docId } = await import('firebase/firestore');
+    // Firestore "in" queries are limited to chunks of 30 items
+    for (let i = 0; i < missingIds.length; i += 30) {
+      const chunk = missingIds.slice(i, i + 30);
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where(docId(), 'in', chunk)));
+        snap.forEach(d => {
+          const userData = d.data();
+          _profileCache.set(d.id, { data: userData, ts: now });
+          result.set(d.id, userData);
+        });
+      } catch (err) {
+        console.warn('[fetchEnrichedProfiles] failed to fetch chunk:', err);
+      }
+    }
+  }
+
+  return result;
+}
+

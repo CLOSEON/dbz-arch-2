@@ -125,7 +125,16 @@ export function SubscriptionOnboardingModal({
   const getProrationCredit = (): { credit: number; activeSubMeal?: string } => {
     if (planId !== 'both' || !activeSub) return { credit: 0 };
     
-    const nextBilling = activeSub.next_billing_date?.toDate ? activeSub.next_billing_date.toDate() : null;
+    let nextBilling = activeSub.next_billing_date?.toDate ? activeSub.next_billing_date.toDate() : null;
+    
+    // Fallback if missing (for subscriptions created before the fix)
+    if (!nextBilling && activeSub.created_at?.toDate) {
+      const created = activeSub.created_at.toDate();
+      const addDays = activeSub.frequency === 'monthly' ? 30 : activeSub.frequency === 'weekly' ? 7 : 1;
+      nextBilling = new Date(created.getTime());
+      nextBilling.setDate(nextBilling.getDate() + addDays);
+    }
+
     if (!nextBilling) return { credit: 0 };
 
     const now = new Date();
@@ -133,7 +142,7 @@ export function SubscriptionOnboardingModal({
     if (daysLeft <= 0) return { credit: 0 };
 
     const totalDays = activeSub.frequency === 'monthly' ? 30 : activeSub.frequency === 'weekly' ? 7 : 1;
-    const paidPrice = activeSub.price || 0;
+    const paidPrice = activeSub.price ?? activeSub.paid_amount ?? 0;
     const credit = Math.round((paidPrice / totalDays) * daysLeft);
 
     return { credit, activeSubMeal: activeSub.meal_type };

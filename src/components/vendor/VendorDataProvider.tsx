@@ -2,10 +2,11 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { collection, onSnapshot, query, where, documentId, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { EnrichedSubscription, DailyMenu } from '@/types';
 import { getTodayStr } from '@/lib/queries/menu';
+import { fetchEnrichedProfiles } from '@/lib/queries/users';
 
 interface VendorDataContextType {
   batches: any[];
@@ -66,13 +67,9 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       );
       unsubPickups = onSnapshot(qPickups, async (snap) => {
         const rawTrips = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        const riderIds = Array.from(new Set(rawTrips.map(t => t.riderId)));
+        const riderIds = Array.from(new Set(rawTrips.map(t => t.riderId))).filter(Boolean);
         
-        const riderMap = new Map<string, any>();
-        if (riderIds.length > 0) {
-          const rSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', riderIds)));
-          rSnap.forEach(d => riderMap.set(d.id, d.data()));
-        }
+        const riderMap = await fetchEnrichedProfiles(riderIds);
 
         const enriched = rawTrips.map(trip => {
           const r = riderMap.get(trip.riderId);
@@ -99,16 +96,9 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       );
       unsubSubscriptions = onSnapshot(qSubs, async (snap) => {
         const rawSubs = snap.docs.map(d => ({ id: d.id, ...d.data() } as EnrichedSubscription));
-        const userIds = Array.from(new Set(rawSubs.map(s => s.user_id)));
+        const userIds = Array.from(new Set(rawSubs.map(s => s.user_id))).filter(Boolean);
         
-        const userMap = new Map<string, any>();
-        if (userIds.length > 0) {
-          for (let i = 0; i < userIds.length; i += 30) {
-            const chunk = userIds.slice(i, i + 30);
-            const uSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk)));
-            uSnap.forEach(d => userMap.set(d.id, d.data()));
-          }
-        }
+        const userMap = await fetchEnrichedProfiles(userIds);
         
         const enriched = rawSubs.map(sub => {
           const u = userMap.get(sub.user_id);

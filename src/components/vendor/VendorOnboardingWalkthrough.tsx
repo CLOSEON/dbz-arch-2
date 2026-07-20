@@ -21,6 +21,7 @@ type OnboardingStep =
   | 'contact-info'
   | 'location-address'
   | 'pricing-rates'
+  | 'payout-details'
   | 'kitchen-photo'
   | 'finish';
 
@@ -46,6 +47,9 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
     rate_both_weekly: '1400',
     rate_both_monthly: '5200',
     image: '',
+    bank_account_number: '',
+    bank_ifsc: '',
+    bank_beneficiary_name: '',
   });
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -70,7 +74,14 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
       }
       setStep('location-address');
     }
-    else if (step === 'location-address') setStep('pricing-rates');
+    else if (step === 'location-address') setStep('payout-details');
+    else if (step === 'payout-details') {
+      if (!form.bank_account_number.trim() || !form.bank_ifsc.trim() || !form.bank_beneficiary_name.trim()) {
+        toast.error('Please enter all bank details so we can pay you');
+        return;
+      }
+      setStep('pricing-rates');
+    }
     else if (step === 'pricing-rates') setStep('kitchen-photo');
     else if (step === 'kitchen-photo') setStep('finish');
   };
@@ -79,7 +90,8 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
     if (step === 'kitchen-identity') setStep('intro');
     else if (step === 'contact-info') setStep('kitchen-identity');
     else if (step === 'location-address') setStep('contact-info');
-    else if (step === 'pricing-rates') setStep('location-address');
+    else if (step === 'payout-details') setStep('location-address');
+    else if (step === 'pricing-rates') setStep('payout-details');
     else if (step === 'kitchen-photo') setStep('pricing-rates');
     else if (step === 'finish') setStep('kitchen-photo');
   };
@@ -148,6 +160,11 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
       rate_dinner_monthly: Number(form.rate_dinner_monthly || 0),
       rate_both_weekly: Number(form.rate_both_weekly || 0),
       rate_both_monthly: Number(form.rate_both_monthly || 0),
+      bank_details: {
+        account_number: form.bank_account_number,
+        ifsc: form.bank_ifsc,
+        beneficiary_name: form.bank_beneficiary_name,
+      }
     }));
 
     toast.success('Walkthrough completed! Claiming kitchen profile...');
@@ -349,7 +366,7 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
                     </div>
                     <button 
                       type="button" 
-                      onClick={() => handleSkip('pricing-rates')}
+                      onClick={() => handleSkip('payout-details')}
                       className="text-xs font-black text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-xl transition-colors"
                     >
                       Skip Step
@@ -410,6 +427,57 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
                 </motion.div>
               )}
 
+              {step === 'payout-details' && (
+                <motion.div 
+                  key="payout-details"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-4"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-brand bg-brand/10 px-2.5 py-1 rounded-full">Step 4 of 6</span>
+                      <h3 className="text-xl font-black text-slate-900 mt-2">Bank Details</h3>
+                      <p className="text-xs text-slate-400 font-medium">For automated daily settlements via Razorpay Route.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Beneficiary Name (As on Bank) *</label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. Rahul Sharma"
+                        value={form.bank_beneficiary_name}
+                        onChange={e => setForm(prev => ({ ...prev, bank_beneficiary_name: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-950 focus:outline-none focus:border-brand/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Bank Account Number *</label>
+                      <input 
+                        type="password"
+                        placeholder="e.g. 50100XXXXXXX"
+                        value={form.bank_account_number}
+                        onChange={e => setForm(prev => ({ ...prev, bank_account_number: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-950 focus:outline-none focus:border-brand/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Bank IFSC Code *</label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. HDFC0001234"
+                        value={form.bank_ifsc}
+                        onChange={e => setForm(prev => ({ ...prev, bank_ifsc: e.target.value.toUpperCase() }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-950 focus:outline-none focus:border-brand/40"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {step === 'pricing-rates' && (
                 <motion.div 
                   key="pricing-rates"
@@ -420,7 +488,7 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-brand bg-brand/10 px-2.5 py-1 rounded-full">Step 4 of 5 (Optional)</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-brand bg-brand/10 px-2.5 py-1 rounded-full">Step 5 of 6 (Optional)</span>
                       <h3 className="text-xl font-black text-slate-900 mt-2">Subscription Rates</h3>
                       <p className="text-xs text-slate-400 font-medium">Design your rate cards (default values are already prefilled).</p>
                     </div>
@@ -499,7 +567,7 @@ export function VendorOnboardingWalkthrough({ isOpen, onClose }: OnboardingProps
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-brand bg-brand/10 px-2.5 py-1 rounded-full">Step 5 of 5 (Optional)</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-brand bg-brand/10 px-2.5 py-1 rounded-full">Step 6 of 6 (Optional)</span>
                       <h3 className="text-xl font-black text-slate-900 mt-2">Kitchen Banner Photo</h3>
                       <p className="text-xs text-slate-400 font-medium">Add an attractive kitchen banner picture to showcase to subscribers.</p>
                     </div>

@@ -21,7 +21,7 @@
   },
   "hosting": {
     "target": "dabzo-site",
-    "public": "out",
+    "source": ".",
     "ignore": [
       "firebase.json",
       "**/.*",

@@ -107,6 +107,10 @@ export default function LoginPage() {
     const e164 = formatPhoneE164(phone);
 
     try {
+      // Force token refresh to ensure Firestore SDK has the latest auth state
+      // This prevents "Missing or insufficient permissions" race conditions.
+      await firebaseUser.getIdToken(true);
+
       const { user: profile, isNewUser } = await resolveUserProfile(
         firebaseUser.uid,
         firebaseUser.phoneNumber || e164
@@ -215,7 +219,9 @@ export default function LoginPage() {
       const result = await verifyOtp(verificationId, otp);
 
       if (!result.success || !result.user) {
-        throw new Error(result.error || 'Verification failed');
+        addToast(result.error || 'Verification failed', 'error');
+        setOtp('');
+        return;
       }
 
       await handleAuthSuccess(result.user);

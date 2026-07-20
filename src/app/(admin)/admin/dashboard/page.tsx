@@ -94,7 +94,6 @@ export default function AdminDashboard() {
   const [selectedOrderToMove, setSelectedOrderToMove] = useState<any>(null);
   const [targetVendorId, setTargetVendorId] = useState('');
   const [movingOrder, setMovingOrder] = useState(false);
-
   // Financial Health States
   const [financials, setFinancials] = useState({
     swapRevenue: 0,
@@ -104,6 +103,7 @@ export default function AdminDashboard() {
     grossProfit: 0,
     activeSubsRevenue: 0
   });
+  const [financialsLastFetched, setFinancialsLastFetched] = useState<number>(0);
 
   useEffect(() => {
     loadStats();
@@ -121,6 +121,9 @@ export default function AdminDashboard() {
       setStats(statsData);
       setActivities(activityData);
       setPartners(partnersData);
+      
+      // Reset financials cache to force reload if user clicks the refresh button
+      setFinancialsLastFetched(0);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load stats');
@@ -128,7 +131,6 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   }
-
   // 1. Global Settings
   async function loadGlobalConfig() {
     try {
@@ -359,13 +361,16 @@ export default function AdminDashboard() {
   }
 
   // 4. Financial Health Analytics
-  async function loadFinancialHealth() {
+  async function loadFinancialHealth(force = false) {
+    if (!force && Date.now() - financialsLastFetched < 120000) {
+      return;
+    }
     setLoading(true);
     try {
       const [swapsSnap, creditsSnap, vouchersSnap, subsSnap] = await Promise.all([
         getDocs(query(collection(db, 'swap_requests'), where('status', '==', 'matched'))),
-        getDocs(collection(db, 'user_credits')),
-        getDocs(collection(db, 'free_meal_vouchers')),
+        getDocs(query(collection(db, 'user_credits'), where('redeemed', '==', false))),
+        getDocs(query(collection(db, 'free_meal_vouchers'), where('status', '==', 'used'))),
         getDocs(query(collection(db, 'subscriptions'), where('status', '==', 'active')))
       ]);
 
@@ -404,6 +409,7 @@ export default function AdminDashboard() {
         grossProfit,
         activeSubsRevenue
       });
+      setFinancialsLastFetched(Date.now());
 
     } catch (err) {
       console.error(err);
@@ -412,6 +418,7 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="space-y-10 animate-fade-in pb-10">

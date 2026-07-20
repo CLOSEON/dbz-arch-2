@@ -12,6 +12,7 @@ import { getImageUrl, uploadImage } from '@/lib/storage';
 import { SkeletonDetail } from '@/components/shared/Skeleton';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { toast } from 'react-hot-toast';
 
 interface PageProps {
   params: Promise<{ vendorId: string }>;
@@ -199,6 +200,31 @@ export default function VendorDetail(props: PageProps) {
     } catch (err) {
       console.error(err);
       addToast('Failed to update vendor details', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleCreateRazorpayAccount() {
+    if (!vendor) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/razorpay/create-vendor-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor_id: vendor.id })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to link account');
+      }
+
+      setVendor(prev => prev ? { ...prev, rzp_account_id: data.account_id, rzp_bank_status: 'active' } : null);
+      addToast('Razorpay vendor account linked successfully!', 'success');
+    } catch (err: any) {
+      console.error(err);
+      addToast(err.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -641,6 +667,57 @@ export default function VendorDetail(props: PageProps) {
                     <span className="font-bold text-slate-900 text-right">{vendor.location.lat.toFixed(5)}, {vendor.location.lng.toFixed(5)}</span>
                   </div>
                 )}
+              </div>
+
+              {/* Razorpay Settlements Block */}
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Settlements & Payouts</h4>
+                
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  {vendor.rzp_account_id ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-bold text-emerald-700">Razorpay Route Active</span>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-500 font-mono bg-white px-2 py-1 rounded border border-slate-200 inline-block">ID: {vendor.rzp_account_id}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">Platform Fee Commission: <span className="font-bold text-slate-700">{vendor.platform_fee_pct || 10}%</span></p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-xs font-bold text-amber-700">Not Linked to Razorpay</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                        Vendor settlements are manual. Link a Razorpay Route account to automate split payments instantly on every checkout.
+                      </p>
+                      {vendor.bank_details ? (
+                        <button
+                          onClick={handleCreateRazorpayAccount}
+                          disabled={actionLoading}
+                          className="w-full mt-2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3.5 h-3.5" />}
+                          Create Connected Account
+                        </button>
+                      ) : (
+                        <div className="text-[10px] font-bold text-rose-500 bg-rose-50 px-3 py-2 rounded-xl">
+                          Bank Details Missing. Ask vendor to update profile.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {vendor.bank_details && (
+                    <div className="mt-4 pt-3 border-t border-slate-200 space-y-1 text-[10px]">
+                      <p className="text-slate-400 font-bold uppercase tracking-wider mb-1">Bank Information</p>
+                      <p className="flex justify-between"><span className="text-slate-500">Beneficiary:</span> <span className="font-bold text-slate-900">{vendor.bank_details.beneficiary_name}</span></p>
+                      <p className="flex justify-between"><span className="text-slate-500">Account No:</span> <span className="font-bold text-slate-900 font-mono">{vendor.bank_details.account_number}</span></p>
+                      <p className="flex justify-between"><span className="text-slate-500">IFSC:</span> <span className="font-bold text-slate-900 font-mono">{vendor.bank_details.ifsc}</span></p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

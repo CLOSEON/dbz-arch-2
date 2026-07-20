@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { ChefHat, Star } from 'lucide-react';
 import type { Vendor } from '@/types';
 import { getImageUrl } from '@/lib/storage';
 
@@ -41,15 +42,15 @@ export function VendorCard({ vendor }: VendorCardProps) {
             sizes="(max-width: 500px) 100vw, 500px"
           />
         ) : (
-          <div className="flex items-center justify-center h-full bg-slate-100">
-            <span className="text-4xl opacity-40">🍱</span>
+          <div className="flex items-center justify-center h-full bg-slate-100 text-slate-400">
+            <ChefHat className="w-10 h-10 stroke-[1.5] opacity-50" />
           </div>
         )}
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/35 to-transparent" />
         
         {/* Premium Rating Badge */}
         <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.12)] border border-white/70 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_12px_26px_rgba(255,204,0,0.22)]">
-          <span className="text-brand text-xs transition-transform duration-300 group-hover:rotate-12 group-hover:scale-125">★</span>
+          <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
           <span className="text-slate-900 text-xs font-bold leading-none">{rating}</span>
         </div>
 

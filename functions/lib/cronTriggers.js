@@ -99,7 +99,13 @@ exports.formBatches = (0, scheduler_1.onSchedule)({
     const targetDate = new Date(now.getTime() + 4 * 60 * 60 * 1000);
     const targetDateStr = targetDate.toISOString().split('T')[0];
     const targetHour = targetDate.getHours();
-    let targetSlot = '11am';
+    let targetSlot = '';
+    if (targetHour === 8)
+        targetSlot = '8am';
+    else if (targetHour === 11)
+        targetSlot = '11am';
+    else if (targetHour === 20)
+        targetSlot = '8pm';
     if (!targetSlot) {
         console.log(`[formBatches] No slot aligned with target hour ${targetHour}. Skipping.`);
         return;

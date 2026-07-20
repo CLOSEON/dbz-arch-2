@@ -50,14 +50,11 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           const tripData = docs[0];
           
           // Enrich with Vendor phones for pickup stops
-          const vendorIds = Array.from(new Set(tripData.pickupStops.map(s => s.vendorId)));
-          const uMap = new Map<string, any>();
+          const vendorIds = Array.from(new Set(tripData.pickupStops.map(s => s.vendorId))).filter(Boolean);
           
           if (vendorIds.length > 0) {
-            import('firebase/firestore').then(async ({ getDocs, query: q, collection: c, where: w, documentId: did }) => {
-              const vSnap = await getDocs(q(c(db, 'users'), w(did(), 'in', vendorIds)));
-              vSnap.forEach(d => uMap.set(d.id, d.data()));
-              
+            import('@/lib/queries/users').then(async ({ fetchEnrichedProfiles }) => {
+              const uMap = await fetchEnrichedProfiles(vendorIds);
               const enrichedPickups = tripData.pickupStops.map(s => ({
                 ...s,
                 vendorPhone: uMap.get(s.vendorId)?.phone_number || uMap.get(s.vendorId)?.phone || ''

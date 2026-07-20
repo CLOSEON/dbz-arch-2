@@ -11,6 +11,8 @@
   --color-ivory: #FEFCE8;
   --color-ivory-dark: #FEF08A;
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
+  --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.4);
   --glass-blur: blur(16px);
@@ -42,6 +44,41 @@
   @keyframes slideUpSoft {
     from { opacity: 0; transform: translateY(14px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes swipeIn {
+    from { opacity: 0; transform: translateX(60px) scale(0.97); }
+    to { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  @keyframes swipeOut {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to { opacity: 0; transform: translateX(-60px) scale(0.97); }
+  }
+
+  @keyframes waveFloat {
+    0%, 100% { transform: translateY(0px) scaleX(1); }
+    50% { transform: translateY(-4px) scaleX(1.01); }
+  }
+
+  @keyframes heroGlow {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.08); }
+  }
+
+  @keyframes dotPulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.4); opacity: 1; }
+  }
+
+  @keyframes slideUpSheet {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  @keyframes backdropIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 }
 
@@ -82,7 +119,7 @@
       radial-gradient(820px 240px at 100% -100px, rgba(255, 204, 0, 0.09), transparent 58%),
       linear-gradient(180deg, #FEFCE8 0%, #FFFBEB 52%, #FFF7ED 100%);
     color: #0f172a;
-    font-family: var(--font-jakarta), sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.015em;
     overscroll-behavior: none;
@@ -163,7 +200,7 @@
   }
 
   .badge {
-    @apply rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em];
+    @apply rounded-[6px] px-2 py-0.5 text-[10px] font-bold tracking-wide;
   }
 
   .badge-blue { @apply bg-blue-50 text-blue-600; }
@@ -199,6 +236,18 @@
 
   .animate-slide-up-soft {
     animation: slideUpSoft 0.45s ease-out both;
+  }
+
+  .animate-swipe-in {
+    animation: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .wave-float {
+    animation: waveFloat 4s ease-in-out infinite;
+  }
+
+  .hero-glow {
+    animation: heroGlow 3s ease-in-out infinite;
   }
 }
 

@@ -137,11 +137,17 @@ export default function CustomerTrackPage() {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
 
+    const todayStr = now.toLocaleDateString('en-CA');
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
+    const dayAfter = new Date(now);
+    dayAfter.setDate(now.getDate() + 2);
+    const dayAfterStr = dayAfter.toLocaleDateString('en-CA');
+
     const qOrders = query(
       collection(db, 'orders'),
-      where('user_id', '==', user.id),
-      where('created_at', '>=', Timestamp.fromDate(start)),
-      where('created_at', '<=', Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59, 999))),
+      where('user_id', '==', user.id)
     );
 
     const qSubs = query(

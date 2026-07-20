@@ -1,13 +1,13 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useDeliveryStore } from '@/store/deliveryStore';
-import { Camera, Navigation, MapPin, Search, PackageOpen, CheckCircle2, Truck, Store, LogOut, Phone, X, Loader2 } from 'lucide-react';
+import { Camera, Navigation, MapPin, Search, PackageOpen, Truck, Store, LogOut, Phone, X, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
 import toast from 'react-hot-toast';
-import { collection, getDocs, query, where, doc, getDoc, writeBatch, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, writeBatch, updateDoc, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import dynamic from 'next/dynamic';
 import { SwipeToConfirm } from '@/components/ui/SwipeToConfirm';
@@ -25,6 +25,8 @@ export default function RiderDashboard() {
   const [loadingImage, setLoadingImage] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [todayEarnings, setTodayEarnings] = useState(0);
+  const failedOrdersRef = useRef<Set<string>>(new Set()); // Fix 10: prevent double-fire
 
   // Vendor Pickup OTP modal & Count
   const [showOTPModal, setShowOTPModal] = useState(false);
@@ -99,6 +101,78 @@ export default function RiderDashboard() {
     const timer = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fix 10: auto-fail expired customer unavailability timers from a useEffect (not render)
+  useEffect(() => {
+    const expired = Object.entries(unavailabilityStartTimes).filter(
+      ([, start]) => Date.now() - start >= 600_000
+    );
+    expired.forEach(([orderId]) => {
+      void handleCustomerUnavailable(orderId);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowTick]);
+
+  // Fix 1: Real-time today earnings from rider_payments
+  useEffect(() => {
+    if (!user?.id) return;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const q = query(
+      collection(db, 'rider_payments'),
+      where('riderId', '==', user.id),
+      orderBy('calculatedAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      let total = 0;
+      snap.docs.forEach(d => {
+        const p = d.data();
+        const t = p.calculatedAt?.toDate?.()?.getTime?.() || 0;
+        if (t >= startOfToday.getTime()) total += p.totalPayment || 0;
+      });
+      setTodayEarnings(total);
+    }, () => { /* silently fail — rider may have no payments yet */ });
+    return () => unsub();
+  }, [user?.id]);
+
+  // Fix 2: Sync isOnline state from Firestore on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    const profileRef = doc(db, 'driver_profiles', user.id);
+    const unsub = onSnapshot(profileRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.isActive === 'boolean') {
+          setIsOnline(data.isActive);
+        }
+      }
+    }, () => { /* silently fail */ });
+    return () => unsub();
+  }, [user?.id]);
+
+  // Fix 2: Toggle online state and persist to Firestore
+  const handleToggleOnline = useCallback(async (newValue: boolean) => {
+    setIsOnline(newValue);
+    if (!user?.id) return;
+    try {
+      await updateDoc(doc(db, 'driver_profiles', user.id), {
+        isActive: newValue,
+        lastActive: new Date()
+      });
+    } catch {
+      // If driver_profiles doc doesn't exist yet, create it
+      try {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'driver_profiles', user.id), {
+          id: user.id,
+          isActive: newValue,
+          lastActive: new Date()
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Could not update online status:', e);
+      }
+    }
+  }, [user?.id]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -464,20 +538,42 @@ export default function RiderDashboard() {
         }
         toast.success('Delivery completed with Photo Proof! 🎉');
       } else {
-        // Offline: save file locally as base64 and queue update
-        const reader = new FileReader();
-        reader.readAsDataURL(photoProof);
-        reader.onloadend = () => {
-          const base64data = reader.result;
+        // Fix 7: Offline — compress image before storing to avoid localStorage quota
+        const compressImage = (file: File): Promise<string> =>
+          new Promise((resolve, reject) => {
+            const img = new window.Image();
+            const objectUrl = URL.createObjectURL(file);
+            img.onload = () => {
+              const MAX = 800;
+              const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.round(img.width * scale);
+              canvas.height = Math.round(img.height * scale);
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+              URL.revokeObjectURL(objectUrl);
+              resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.onerror = reject;
+            img.src = objectUrl;
+          });
+
+        try {
+          const compressed = await compressImage(photoProof);
           const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-          queue.push({ 
-            orderId: currentDropoffOrderId, 
-            photoUrl: base64data, // will upload or sync later 
-            timestamp: Date.now() 
+          queue.push({
+            orderId: currentDropoffOrderId,
+            photoUrl: compressed,
+            timestamp: Date.now(),
           });
           localStorage.setItem('offline_deliveries', JSON.stringify(queue));
-        };
-        toast.success('Offline: Delivery photo proof queued for sync! 📶');
+        } catch {
+          // If even compressed doesn't fit, queue without photo
+          const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
+          queue.push({ orderId: currentDropoffOrderId, timestamp: Date.now() });
+          localStorage.setItem('offline_deliveries', JSON.stringify(queue));
+        }
+        toast.success('Offline: Delivery queued for sync! 📶');
       }
 
       setShowDropoffModal(false);
@@ -493,8 +589,11 @@ export default function RiderDashboard() {
     }
   };
 
-  const handleCustomerUnavailable = async (orderId: string) => {
+  const handleCustomerUnavailable = useCallback(async (orderId: string) => {
     if (!activeTrip) return;
+    // Fix 10: prevent double-fire
+    if (failedOrdersRef.current.has(orderId)) return;
+    failedOrdersRef.current.add(orderId);
     try {
       const orderSnap = await getDoc(doc(db, 'orders', orderId));
       if (!orderSnap.exists()) throw new Error('Order not found');
@@ -537,9 +636,10 @@ export default function RiderDashboard() {
 
     } catch (err: any) {
       console.error(err);
+      failedOrdersRef.current.delete(orderId); // allow retry on error
       toast.error(err.message || 'Failed to mark as unavailable');
     }
-  };
+  }, [activeTrip, agentOrders]);
 
   // ── Derive UI state ───────────────────────────────────────────────────────
   let currentState = 'IDLE';
@@ -622,13 +722,13 @@ export default function RiderDashboard() {
             {user?.image ? (
               <Image src={getImageUrl(user.image)} alt={user.name || ''} fill className="object-cover" />
             ) : (
-              <UserPlaceholder />
+              <UserPlaceholder name={user?.name} />
             )}
             {loadingImage && <div className="absolute inset-0 bg-slate-100 flex items-center justify-center" />}
           </button>
           <div>
             <h1 className="font-black text-slate-900 leading-none">{user?.name}</h1>
-            <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">₹1450 Today</p>
+            <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">₹{todayEarnings.toFixed(2)} Today</p>
           </div>
           {totalCount > 0 && (
             <div className="relative w-10 h-10 flex items-center justify-center bg-white border border-slate-100 rounded-full shadow-inner shrink-0" title={`${completedCount}/${totalCount} Completed`}>
@@ -662,8 +762,8 @@ export default function RiderDashboard() {
         <div className="flex items-center gap-2">
           <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
           <button 
-            onClick={() => setIsOnline(!isOnline)}
-            className={`text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-full transition-all ${isOnline ? 'bg-emerald-50 text-emerald-600 border ' : 'bg-white text-slate-500 border border-slate-100'}`}
+            onClick={() => handleToggleOnline(!isOnline)}
+            className={`text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-full transition-all ${isOnline ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-white text-slate-500 border border-slate-100'}`}
           >
             {isOnline ? 'Online' : 'Offline'}
           </button>
@@ -685,16 +785,16 @@ export default function RiderDashboard() {
             <button onClick={() => setIsOnline(true)} className="btn-primary w-full max-w-[200px]">Go Online</button>
           </div>
         ) : currentState === 'IDLE' ? (
-          <div className="relative overflow-hidden bg-white border border-slate-100 rounded-3xl p-8 flex flex-col items-center justify-center text-center min-h-[300px] shadow-2xl backdrop-blur-xl">
-            <div className="absolute inset-0 opacity-20">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-brand animate-ping" style={{ animationDuration: '3s' }} />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border border-brand animate-ping" style={{ animationDuration: '3s', animationDelay: '1s' }} />
+          <div className="relative overflow-hidden bg-white border border-slate-100 rounded-3xl p-8 flex flex-col items-center justify-center text-center min-h-[300px] shadow-2xl">
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-emerald-400 animate-ping" style={{ animationDuration: '3s' }} />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border border-emerald-400 animate-ping" style={{ animationDuration: '3s', animationDelay: '1s' }} />
             </div>
-            <div className="w-16 h-16 bg-brand/10 border border-brand/20 rounded-2xl flex items-center justify-center mb-4 text-brand z-10 shadow-inner animate-pulse">
-              <Search size={32} />
+            <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-center mb-4 text-emerald-600 z-10 shadow-inner">
+              <Truck size={32} />
             </div>
-            <h2 className="font-black text-xl text-slate-900 mb-2 z-10">Finding Trips...</h2>
-            <p className="text-sm font-medium text-slate-500 z-10">Stay nearby active kitchens to get matched faster.</p>
+            <h2 className="font-black text-xl text-slate-900 mb-2 z-10">Ready for Pickup</h2>
+            <p className="text-sm font-medium text-slate-500 z-10">You&apos;re online and available. Trips are assigned automatically.</p>
           </div>
         ) : currentState === 'ASSIGNED' && nextPickup ? (
           <div className="bg-white border border-slate-100 rounded-3xl p-1 shadow-2xl backdrop-blur-xl">
@@ -829,12 +929,10 @@ export default function RiderDashboard() {
                           const start = unavailabilityStartTimes[order.id];
                           if (!start) return <>Customer Unavailable</>;
                           const remaining = Math.max(0, 600 - Math.floor((nowTick - start) / 1000));
-                          if (remaining === 0) {
-                            handleCustomerUnavailable(order.id); // auto fail
-                            return <>Failing...</>;
-                          }
+                          // Fix 10: auto-fail handled by useEffect, NOT render function
                           const m = Math.floor(remaining / 60);
                           const s = remaining % 60;
+                          if (remaining === 0) return <>Timing out...</>;
                           return <>Confirm Skip ({m}:{s.toString().padStart(2, '0')})</>;
                         })()}
                       </button>
@@ -896,7 +994,9 @@ export default function RiderDashboard() {
                 </p>
                 <input 
                   type="text" 
+                  inputMode="numeric"
                   maxLength={4}
+                  autoFocus
                   value={vendorOTP}
                   onChange={(e) => setVendorOTP(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="0000"
@@ -1042,6 +1142,7 @@ export default function RiderDashboard() {
                   type="text" 
                   inputMode="numeric"
                   maxLength={4}
+                  autoFocus
                   value={dropoffOTP}
                   onChange={(e) => setDropoffOTP(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="0000"
@@ -1072,10 +1173,11 @@ export default function RiderDashboard() {
   );
 }
 
-function UserPlaceholder() {
+function UserPlaceholder({ name }: { name?: string | null }) {
+  const initial = name?.charAt(0)?.toUpperCase() ?? '?';
   return (
-    <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-700">
-      <Camera size={20} />
+    <div className="w-full h-full flex items-center justify-center bg-brand/10 text-brand font-black text-lg">
+      {initial}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
+import { adminDb } from '@/lib/firebaseAdmin';
 import { rateLimit } from '@/lib/server/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
     currency?: unknown;
     receipt?: unknown;
     notes?: unknown;
+    vendor_id?: unknown;
   } | null = null;
 
   try {
@@ -74,9 +76,9 @@ export async function POST(req: NextRequest) {
     const notes = getRazorpayNotes(body?.notes);
 
     // Validate amount — Razorpay requires minimum 100 paise (₹1)
-    if (!amount || typeof amount !== 'number' || amount < 100 || amount > 500_000) {
+    if (!amount || typeof amount !== 'number' || amount < 100 || amount > 50_000_000) {
       return NextResponse.json(
-        { error: 'Invalid amount. Allowed range is ₹1 to ₹5,000.' },
+        { error: 'Invalid amount. Allowed range is ₹1 to ₹500,000.' },
         { status: 400 }
       );
     }
@@ -88,12 +90,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const order = await getRazorpayClient().orders.create({
+    const orderPayload: any = {
       amount,       // in paise
       currency,
       receipt: receipt ?? `rcpt_${Date.now()}`,
       notes: notes ?? {},
-    });
+    };
+
+    // If vendor_id is provided, check for a linked Razorpay account and configure split payments (Route)
+    const vendorId = body?.vendor_id || notes?.vendor_id;
+    if (typeof vendorId === 'string') {
+      const vendorSnap = await adminDb.collection('users').doc(vendorId).get();
+      const vendorData = vendorSnap.data();
+      
+      if (vendorData?.rzp_account_id) {
+        // Calculate the platform fee (commission)
+        const platformFeePct = vendorData.platform_fee_pct ?? 10; // default 10%
+        // The transfer amount to the vendor is the remainder
+        // Both amount and transfer amount are in paise
+        // E.g. if amount is 10000 (100 INR) and fee is 10%, platform keeps 10 INR, vendor gets 90 INR.
+        const vendorTransferAmount = Math.floor(amount * (1 - (platformFeePct / 100)));
+
+        orderPayload.transfers = [
+          {
+            account: vendorData.rzp_account_id,
+            amount: vendorTransferAmount,
+            currency: 'INR',
+            notes: {
+              name: vendorData.kitchen_name || vendorData.name || 'Vendor',
+              type: 'vendor_settlement'
+            },
+            on_hold: 0 // Settled automatically according to vendor's settlement schedule
+          }
+        ];
+      }
+    }
+
+    const order = await getRazorpayClient().orders.create(orderPayload);
 
     return NextResponse.json({
       order_id: order.id,

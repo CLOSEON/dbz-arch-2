@@ -107,7 +107,10 @@ export const riderPaymentConverter = {
   toFirestore(p: RiderPayment) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, ...data } = p;
-    return data;
+    return {
+      ...data,
+      paidTiffinCount: p.deliveredCount,
+    };
   },
   fromFirestore(snapshot: { id: string; data: () => Record<string, unknown> }): RiderPayment {
     const data = snapshot.data();
@@ -119,7 +122,7 @@ export const riderPaymentConverter = {
       gpsDistanceKm: data.gpsDistanceKm as number,
       basePayment: data.basePayment as number,
       tiffinBonus: data.tiffinBonus as number,
-      deliveredCount: data.deliveredCount as number,
+      deliveredCount: (data.deliveredCount ?? data.paidTiffinCount ?? 0) as number,
       totalPayment: data.totalPayment as number,
       calculatedAt: data.calculatedAt as Timestamp,
       status: data.status as PayoutStatus,

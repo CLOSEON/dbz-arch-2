@@ -204,7 +204,7 @@ export default function LandingPage() {
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
                     <div className="flex items-center justify-between gap-4 relative z-10">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">Today's plan</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-white/80">Today's plan</p>
                         <p className="mt-1.5 text-2xl font-black text-white">North Indian Lunch</p>
                       </div>
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md">

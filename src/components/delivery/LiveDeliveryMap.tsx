@@ -29,54 +29,77 @@ interface LiveDeliveryMapProps {
 // ── Smoothly interpolates the route polyline ──────────────────────────────────
 function RouteRenderer({ waypoints }: { waypoints: Location[] }) {
   const map = useMap();
-  const [polyline, setPolyline] = useState<google.maps.Polyline>();
+  const routesLibrary = useMapsLibrary('routes');
+  const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService>();
+  const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer>();
 
+  // Initialize service and renderer
+  useEffect(() => {
+    if (!routesLibrary || !map) return;
+    setDirectionsService(new routesLibrary.DirectionsService());
+    setDirectionsRenderer(new routesLibrary.DirectionsRenderer({
+      map,
+      suppressMarkers: true, // We render our own beautiful markers
+      polylineOptions: {
+        strokeColor: '#ff6b00',
+        strokeWeight: 5,
+        strokeOpacity: 0.85,
+      }
+    }));
+  }, [routesLibrary, map]);
+
+  // Fetch directions
+  useEffect(() => {
+    if (!directionsService || !directionsRenderer || waypoints.length < 2) return;
+    
+    const origin = waypoints[0];
+    const destination = waypoints[waypoints.length - 1];
+    const waypts = waypoints.slice(1, -1).map(loc => ({ location: loc, stopover: true }));
+
+    directionsService.route({
+      origin,
+      destination,
+      waypoints: waypts,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result) {
+        directionsRenderer.setDirections(result);
+      } else {
+        // Fallback to straight polyline if directions fail (e.g. invalid key)
+        const fallbackLine = new google.maps.Polyline({
+          map,
+          path: waypoints,
+          strokeColor: '#ff6b00',
+          strokeWeight: 5,
+          strokeOpacity: 0.85,
+          geodesic: true
+        });
+        
+        // Cleanup fallback line if directions suddenly work later
+        setTimeout(() => fallbackLine.setMap(null), 10000);
+      }
+    });
+  }, [directionsService, directionsRenderer, waypoints, map]);
+
+  // Adjust bounds every 10 seconds to fit the entire trajectory
   useEffect(() => {
     if (!map || waypoints.length < 2) return;
 
-    // Draw straight lines through the waypoints to avoid
-    // Directions API "REQUEST_DENIED" errors for local test keys.
-    const line = new google.maps.Polyline({
-      map,
-      path: waypoints,
-      strokeColor: '#ff6b00',
-      strokeWeight: 5,
-      strokeOpacity: 0.85,
-      geodesic: true
-    });
-    
-    setPolyline(line);
-
-    return () => {
-      line.setMap(null);
+    const adjustBounds = () => {
+      const bounds = new google.maps.LatLngBounds();
+      waypoints.forEach(wp => bounds.extend(wp));
+      
+      // Add padding so markers don't clip the edges
+      map.fitBounds(bounds, { top: 80, bottom: 80, left: 50, right: 50 });
     };
+
+    // Initial adjustment
+    adjustBounds();
+
+    // Re-adjust every 10 seconds
+    const interval = setInterval(adjustBounds, 10000);
+    return () => clearInterval(interval);
   }, [map, waypoints]);
-
-  return null;
-}
-
-// ── Auto-pan the map as rider moves ──────────────────────────────────────────
-function MapPanner({ center, navMode }: { center: Location; navMode: boolean }) {
-  const map = useMap();
-  const prevCenter = useRef<Location | null>(null);
-
-  useEffect(() => {
-    if (!map) return;
-    const prev = prevCenter.current;
-    // Only pan if rider actually moved > 5m
-    if (
-      prev &&
-      Math.abs(prev.lat - center.lat) < 0.00005 &&
-      Math.abs(prev.lng - center.lng) < 0.00005
-    )
-      return;
-    prevCenter.current = center;
-    if (navMode) {
-      map.panTo(center);
-    } else {
-      map.panTo(center);
-    }
-  }, [center, navMode, map]);
 
   return null;
 }
@@ -202,10 +225,7 @@ export default function LiveDeliveryMap({
               <RouteRenderer waypoints={routeWaypoints} />
             )}
 
-            {/* Auto-pan */}
-            {riderLocation && mapReady && (
-              <MapPanner center={riderLocation} navMode={navMode} />
-            )}
+            {/* Bounds are now handled entirely by RouteRenderer */}
 
             {/* Rider marker */}
             {riderLocation && (

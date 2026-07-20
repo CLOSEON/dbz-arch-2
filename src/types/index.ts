@@ -39,6 +39,14 @@ export interface AppUser {
   subscriberCount?: number;
   capacity?: number; // max tiffin capacity, null for unlimited
   capacityUnlimited?: boolean; // true if vendor chooses no limit
+  // Razorpay Route (Settlements)
+  rzp_account_id?: string;
+  bank_details?: {
+    account_number: string;
+    ifsc: string;
+    beneficiary_name: string;
+  };
+  platform_fee_pct?: number; // Configurable commission % (default 10)
   created_at?: FirestoreTimestamp;
   updated_at?: FirestoreTimestamp;
 }

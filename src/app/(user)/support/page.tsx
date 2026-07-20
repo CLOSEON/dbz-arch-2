@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDate, ticketStatusColor, ticketStatusLabel } from '@/lib/utils';
 import type { SupportTicket } from '@/types';
+import { MessageSquare } from 'lucide-react';
 
 export default function SupportPage() {
   const user = useAuthStore((s) => s.user);
@@ -46,7 +47,7 @@ export default function SupportPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in px-4 sm:px-5">
       <div className="flex items-center justify-between mb-5 gap-3">
         <div>
           <h1 className="text-[30px] sm:text-[36px] font-black text-slate-900 tracking-tight leading-tight">Help & Support</h1>
@@ -98,7 +99,7 @@ export default function SupportPage() {
       {loading ? (
         <SkeletonList count={2} />
       ) : tickets.length === 0 ? (
-        <EmptyState icon="💬" title="No tickets yet" description="Submit a request above and we'll help you out." />
+        <EmptyState icon={<MessageSquare className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="No tickets yet" description="Submit a request above and we'll help you out." />
       ) : (
         <div className="space-y-3">
           {tickets.map((t, i) => (

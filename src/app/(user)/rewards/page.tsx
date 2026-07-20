@@ -2,24 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { Gift, AlertCircle, ChevronRight, CheckCircle2, Ticket } from 'lucide-react';
+import { Gift, AlertCircle, ChevronRight, CheckCircle2, Ticket, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { redeemVoucher } from '@/lib/queries/rewards';
+import toast from 'react-hot-toast';
 
 export default function RewardsPage() {
   const user = useAuthStore(s => s.user);
   const [totalCredits, setTotalCredits] = useState<number>(0);
   const [availableVouchers, setAvailableVouchers] = useState<any[]>([]);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
 
     const creditsQ = query(collection(db, 'user_credits'), where('user_id', '==', user.id));
-    const vouchersQ = query(collection(db, 'vouchers'), where('user_id', '==', user.id), where('status', '==', 'available'));
+    const vouchersQ = query(collection(db, 'free_meal_vouchers'), where('user_id', '==', user.id), where('status', '==', 'available'));
     const subsQ = query(collection(db, 'subscriptions'), where('user_id', '==', user.id), where('status', '==', 'active'));
 
     const unsubCredits = onSnapshot(creditsQ, (snap) => {
@@ -34,6 +38,11 @@ export default function RewardsPage() {
 
     const unsubSubs = onSnapshot(subsQ, (snap) => {
       setHasActiveSubscription(!snap.empty);
+      if (!snap.empty) {
+        setActiveSubscriptionId(snap.docs[0].id);
+      } else {
+        setActiveSubscriptionId(null);
+      }
       setLoading(false);
     }, console.error);
 
@@ -43,6 +52,20 @@ export default function RewardsPage() {
       unsubSubs();
     };
   }, [user]);
+
+  const handleRedeemVoucher = async (voucherId: string) => {
+    if (!user || !activeSubscriptionId) return;
+    setRedeemingId(voucherId);
+    try {
+      await redeemVoucher(user.id, voucherId, activeSubscriptionId);
+      toast.success('Voucher redeemed! Added 1 day to your subscription. 🎉');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to redeem voucher.');
+    } finally {
+      setRedeemingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -119,8 +142,16 @@ export default function RewardsPage() {
                 <h4 className="text-xl font-black text-emerald-900 mb-4 relative z-10">Free Meal Voucher</h4>
                 
                 {hasActiveSubscription ? (
-                  <button className="bg-emerald-600 text-white rounded-xl py-3 font-bold text-sm w-full shadow-md hover:shadow-lg transition-all active:scale-[0.98] relative z-10">
-                    Redeem Voucher
+                  <button 
+                    onClick={() => handleRedeemVoucher(v.id)}
+                    disabled={redeemingId === v.id}
+                    className="bg-emerald-600 text-white rounded-xl py-3 font-bold text-sm w-full shadow-md hover:shadow-lg transition-all active:scale-[0.98] relative z-10 flex items-center justify-center gap-2"
+                  >
+                    {redeemingId === v.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Redeeming...
+                      </>
+                    ) : 'Redeem Voucher'}
                   </button>
                 ) : (
                   <button disabled className="bg-slate-200 text-slate-400 rounded-xl py-3 font-bold text-sm w-full relative z-10 cursor-not-allowed">
@@ -156,3 +187,4 @@ export default function RewardsPage() {
     </div>
   );
 }
+

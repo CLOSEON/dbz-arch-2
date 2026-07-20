@@ -15,7 +15,7 @@ const BLOCKED_USER_AGENTS = [
   'zgrab'
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const userAgent = request.headers.get('user-agent') || '';
   const path = request.nextUrl.pathname;
 

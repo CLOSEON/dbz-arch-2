@@ -31,6 +31,12 @@ export const auth: Auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch(err => console.warn('[Firebase] Persistence error:', err));
 auth.useDeviceLanguage();
 
+// Dev-only: bypass reCAPTCHA on localhost so Phone Auth works without Firebase Authorized Domains
+// This flag is automatically ignored in production builds
+if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+  (auth as any).settings.appVerificationDisabledForTesting = true;
+}
+
 // ─── Firestore with offline cache ────────────────────────────────────────────
 let db: Firestore;
 try {

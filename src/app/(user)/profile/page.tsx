@@ -61,6 +61,17 @@ export default function ProfilePage() {
   const [purchaseQty, setPurchaseQty] = useState<Record<string, number>>({});
   const [buyingSwapId, setBuyingSwapId] = useState<string | null>(null);
 
+  // Name editing states
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(user?.name || '');
+  const [savingName, setSavingName] = useState(false);
+
+  useEffect(() => {
+    if (user?.name) {
+      setNameInput(user.name);
+    }
+  }, [user?.name]);
+
   useEffect(() => {
     if (!user) return;
     
@@ -263,6 +274,21 @@ export default function ProfilePage() {
     return `${digits.slice(0, 5)} ${digits.slice(5)}`;
   }
 
+  async function handleSaveName() {
+    if (!user || !nameInput.trim()) return;
+    setSavingName(true);
+    try {
+      await updateUser(user.id, { name: nameInput.trim() });
+      setUser({ ...user, name: nameInput.trim() });
+      addToast('Name updated successfully! 👤', 'success');
+      setEditingName(false);
+    } catch {
+      addToast('Failed to update name.', 'error');
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   const roleLabel: Record<string, string> = {
     user: 'Customer',
     vendor: 'Tiffin Vendor',
@@ -295,7 +321,7 @@ export default function ProfilePage() {
       <div className="flex items-center gap-4 bg-white rounded-3xl p-5 shadow-card mb-5">
         <div 
           onClick={() => fileInputRef.current?.click()}
-          className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-600 flex items-center justify-center text-white text-2xl font-bold shadow-md overflow-hidden cursor-pointer group shrink-0"
+          className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200/50 flex items-center justify-center text-slate-700 text-2xl font-bold shadow-sm overflow-hidden cursor-pointer group shrink-0"
         >
           {user?.image ? (
             <Image 
@@ -326,13 +352,51 @@ export default function ProfilePage() {
           accept="image/*" 
           onChange={handleImageChange} 
         />
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-bold text-slate-900">{user?.name}</h2>
-          <p className="text-sm text-slate-500 font-medium">+91 {formatPhone(user?.phone)}</p>
-          <span className="badge bg-brand-50 text-brand text-xs mt-1">
-            {roleLabel[user?.role ?? 'user'] ?? user?.role}
-          </span>
-        </div>
+        {editingName ? (
+          <div className="flex-1 min-w-0">
+            <input
+              className="input py-2 px-3 text-sm font-semibold max-w-[200px]"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="Your Name"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-1.5">
+              <button 
+                onClick={handleSaveName}
+                disabled={savingName}
+                className="text-[10px] font-black text-brand uppercase tracking-wider hover:underline"
+              >
+                {savingName ? 'Saving...' : 'Save'}
+              </button>
+              <button 
+                onClick={() => { setEditingName(false); setNameInput(user?.name || ''); }}
+                className="text-[10px] font-black text-slate-400 uppercase tracking-wider hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 leading-none truncate max-w-[185px]">
+                {user?.name || 'Set your name'}
+              </h2>
+              <button 
+                onClick={() => setEditingName(true)}
+                className="text-slate-400 hover:text-slate-650 transition-colors text-xs"
+                aria-label="Edit name"
+              >
+                ✏️
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 font-medium mt-1.5">+91 {formatPhone(user?.phone)}</p>
+            <span className="badge bg-brand-50 text-brand text-xs mt-1">
+              {roleLabel[user?.role ?? 'user'] ?? user?.role}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Active Subscriptions / Days Remaining */}
@@ -478,8 +542,14 @@ export default function ProfilePage() {
                   <p className="text-[12px] font-semibold text-slate-700 capitalize">{c.source?.replace(/_/g, ' ') || 'Credit'}</p>
                   <p className="text-[10px] text-slate-400">{c.created_at?.toDate ? c.created_at.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</p>
                 </div>
-                <span className={`text-[12px] font-black ${c.redeemed ? 'text-slate-400 line-through' : 'text-amber-600'}`}>
-                  +{c.credit_amount}cr
+                <span className={`text-[12px] font-black ${
+                  c.redeemed
+                    ? 'text-slate-400 line-through'
+                    : c.credit_amount < 0
+                      ? 'text-rose-500'
+                      : 'text-amber-600'
+                }`}>
+                  {c.credit_amount > 0 ? `+${c.credit_amount}` : c.credit_amount}cr
                 </span>
               </div>
             ))}

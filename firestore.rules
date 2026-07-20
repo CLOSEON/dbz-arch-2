@@ -134,8 +134,10 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == driverId;
       // Admin: full access
       allow read, write: if isAdmin();
-      // Other drivers can read (for assignment UI), but NOT all users
+      // Other drivers can list (for assignment UI)
       allow read: if isDriver();
+      // Allow any logged-in user to get a specific driver's profile (needed for live tracking)
+      allow get: if request.auth != null;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -359,12 +361,8 @@ service cloud.firestore {
     // ═══════════════════════════════════════════════════════════════════════
 
     match /rider_trips/{tripId} {
-      allow get: if request.auth != null && (
-        resource == null ||
-        resource.data.riderId == request.auth.uid ||
-        (request.auth.uid in resource.data.vendorIds) ||
-        isAdmin()
-      );
+      // Allow any logged in user to get a specific trip (needed for customers to track their delivery)
+      allow get: if request.auth != null;
       // List: riders see their own, vendors see theirs, admin sees all
       allow list: if request.auth != null && (
         isAdmin() || isDriver() || isVendor()

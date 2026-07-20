@@ -131,12 +131,21 @@ export async function createSubscription(data: {
     cancelled_by: null,
   };
 
+  // Calculate and store next billing date
+  const daysToAdd = data.frequency === 'monthly' ? 30 : data.frequency === 'weekly' ? 7 : 1;
+  const nextBilling = new Date();
+  nextBilling.setDate(nextBilling.getDate() + daysToAdd);
+  payload.next_billing_date = Timestamp.fromDate(nextBilling);
+
   if (data.frequency) payload.frequency = data.frequency;
   if (data.discount_pct != null) payload.discount_pct = data.discount_pct;
   if (data.promo_code != null) payload.promo_code = data.promo_code;
   if (data.payment_id) payload.payment_id = data.payment_id;
   if (data.razorpay_order_id) payload.razorpay_order_id = data.razorpay_order_id;
-  if (data.paid_amount != null) payload.paid_amount = data.paid_amount;
+  if (data.paid_amount != null) {
+    payload.paid_amount = data.paid_amount;
+    payload.price = data.paid_amount; // Store as price so the proration logic works
+  }
 
   // setDoc is fully idempotent: creates if new, overwrites if already exists.
   // The deterministic docId guarantees no duplicates ever.

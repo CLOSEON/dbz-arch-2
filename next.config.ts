@@ -48,7 +48,15 @@ const nextConfig: NextConfig = {
         ]
       }
     ];
-  }
+  },
+  webpack: (config) => {
+    config.ignoreWarnings = [
+      { module: /node_modules\/@protobufjs\/inquire/ },
+      { module: /node_modules\/protobufjs/ }
+    ];
+    return config;
+  },
+  turbopack: {}
 };
 
 export default nextConfig;

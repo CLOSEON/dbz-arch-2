@@ -214,6 +214,12 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
     if (!context?.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
+    if (context.auth.token.role !== 'admin') {
+        const userDoc = await db.collection('users').doc(context.auth.uid).get();
+        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+            throw new functions.https.HttpsError('permission-denied', 'Only admins can assign rider trips.');
+        }
+    }
     const { vendorId, slot } = data || {};
     return await (0, exports.coreAssignRiderTrips)(vendorId, slot);
 });
@@ -303,6 +309,9 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
             throw new functions.https.HttpsError('not-found', 'Trip not found');
         }
         const tripData = tripSnap.data();
+        if (tripData?.riderId !== context.auth.uid && context.auth.token.role !== 'admin') {
+            throw new functions.https.HttpsError('permission-denied', 'Only the assigned rider or admin can verify the pickup OTP.');
+        }
         const pickupStops = tripData?.pickupStops || [];
         const stopIndex = pickupStops.findIndex((s) => s.vendorId === vendorId);
         if (stopIndex === -1) {
@@ -358,9 +367,15 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
     return { success: result.success, message: result.message };
 });
 exports.regeneratePickupOTP = functions.https.onCall(async (data, context) => {
+    if (!context?.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
+    }
     const { tripId, vendorId } = data || {};
     if (!tripId || !vendorId) {
         throw new functions.https.HttpsError('invalid-argument', 'Missing tripId or vendorId');
+    }
+    if (vendorId !== context.auth.uid && context.auth.token.role !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only the vendor associated with this stop or an admin can regenerate the OTP.');
     }
     const tripRef = db.collection('rider_trips').doc(tripId);
     return await db.runTransaction(async (t) => {

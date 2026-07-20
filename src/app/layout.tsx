@@ -6,13 +6,14 @@ import { AuthProvider } from '@/lib/auth';
 import { PermissionGuard } from '@/components/shared/PermissionGuard';
 import { PageTransition } from '@/components/ui/PageTransition';
 
-const jakarta = Plus_Jakarta_Sans({ 
+const sansFont = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-jakarta',
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-sans',
 });
 
 export const viewport: Viewport = {
-  themeColor: '#FEFCE8',
+  themeColor: '#FF3B30',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -41,8 +42,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${jakarta.variable} font-sans`}>
-      <body className="bg-ivory text-slate-900 antialiased">
+    <html lang="en" className={sansFont.variable}>
+      <body className="bg-ivory text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />
         <AuthProvider>

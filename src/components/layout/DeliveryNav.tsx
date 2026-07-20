@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Wallet } from 'lucide-react';
+import { LayoutDashboard, Wallet, LifeBuoy } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
   { href: '/delivery/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/delivery/earnings', label: 'Earnings', icon: Wallet },
+  { href: '/delivery/support', label: 'Support', icon: LifeBuoy },
 ];
 
 interface DeliveryNavProps {
@@ -23,6 +24,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
       <nav className="w-64 bg-white/50 border-r border-slate-100 p-6 flex flex-col gap-2 h-full">
         <div className="mb-8 px-4">
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Driver Portal</h2>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">Dashboard · Earnings · Support</p>
         </div>
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href || pathname === item.href + '/' || pathname.startsWith(item.href + '/');
@@ -52,7 +54,7 @@ export function DeliveryNav({ variant = 'bottom' }: DeliveryNavProps) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100/50 bg-white/80 backdrop-blur-xl pb-safe">
       <div className="mx-auto max-w-md px-2 pt-2">
-        <div className="grid grid-cols-2 gap-1">
+        <div className="grid grid-cols-3 gap-1">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || pathname === item.href + '/' || pathname.startsWith(item.href + '/');
 

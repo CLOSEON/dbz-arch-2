@@ -19,7 +19,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import type { AppUser, Review, DiscountCode, SubscriptionFrequency } from '@/types';
-import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, ShieldCheck, AlertCircle, Clipboard } from 'lucide-react';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -227,7 +227,7 @@ export default function VendorDetailPage() {
   if (!vendor) {
     return (
       <div className="page-shell flex items-center justify-center">
-        <EmptyState icon="⚠️" title="Vendor not found" action={<button className="btn-outline" onClick={() => router.back()}>Go Back</button>} />
+        <EmptyState icon={<AlertCircle className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="Vendor not found" action={<button className="btn-outline" onClick={() => router.back()}>Go Back</button>} />
       </div>
     );
   }
@@ -297,9 +297,9 @@ export default function VendorDetailPage() {
             <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Utensils className="w-4 h-4 text-brand" />
-                <h3 className="text-white font-black text-[11px] uppercase tracking-[0.2em]">Special of the Day</h3>
+                <h3 className="text-white font-bold text-[11px] uppercase tracking-wide">Special of the Day</h3>
               </div>
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 {todayMenu.date}
               </span>
             </div>
@@ -405,7 +405,7 @@ export default function VendorDetailPage() {
           </div>
 
           {plans.length === 0 ? (
-            <EmptyState icon="📋" title="No plans available" description="This vendor hasn't set their rates yet" />
+            <EmptyState icon={<Clipboard className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="No plans available" description="This vendor hasn't set their rates yet" />
           ) : (
             <div className="space-y-4">
               {plans.map((plan) => {

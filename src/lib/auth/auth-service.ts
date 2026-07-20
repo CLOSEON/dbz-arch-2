@@ -21,7 +21,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { FCM_TOKEN_STORAGE_KEY } from '../notifications/constants';
-
+import { isTestAccount } from '../queries/users';
 // Removed forced appVerificationDisabledForTesting to allow real numbers to work on localhost
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -175,6 +175,14 @@ export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
   console.log(`[Auth] Sending OTP to ${phoneNumber} (platform: ${isNative ? 'native' : 'web'})`);
 
   try {
+    if (typeof window !== 'undefined') {
+      if (isTestAccount(phoneNumber)) {
+        console.log('[Auth] Test account detected. Bypassing reCAPTCHA.');
+        (auth as any).settings.appVerificationDisabledForTesting = true;
+      } else {
+        (auth as any).settings.appVerificationDisabledForTesting = false;
+      }
+    }
     if (isNative) {
       return await sendOtpNative(phoneNumber);
     }
