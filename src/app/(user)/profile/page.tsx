@@ -12,6 +12,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Gift, Star, ChevronRight, Calendar, AlertCircle, RefreshCw, Plus, Minus, CreditCard } from 'lucide-react';
 import { PaymentModal } from '@/components/shared/PaymentModal';
+import { RewardsModal } from '@/components/shared/RewardsModal';
 import { redeemCreditsForDays } from '@/lib/queries/swaps';
 import type { SubscriptionSwapAllowance } from '@/types';
 
@@ -55,6 +56,7 @@ export default function ProfilePage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedSubForPayment, setSelectedSubForPayment] = useState<any>(null);
   const [redeemingCredits, setRedeemingCredits] = useState(false);
+  const [isRewardsModalOpen, setIsRewardsModalOpen] = useState(false);
 
   // Buy Swaps state
   const [swapAllowances, setSwapAllowances] = useState<Record<string, SubscriptionSwapAllowance>>({});
@@ -454,42 +456,73 @@ export default function ProfilePage() {
                   )}
 
                   {/* Buy Swaps Section */}
-                  <div className="mt-3 pt-3 border-t border-slate-200/60 flex flex-col gap-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-400 font-semibold flex items-center gap-1">
-                        <RefreshCw className="w-3 h-3 text-slate-400" /> Swaps Remaining:
-                      </span>
-                      <span className="font-bold text-slate-700">{remainingSwaps} left <span className="text-slate-400 font-normal">(of {totalSwaps})</span></span>
+                  <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
+                      <RefreshCw className="w-16 h-16 text-emerald-500" />
+                    </div>
+                    
+                    <div className="relative z-10 flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="text-[13px] font-bold text-emerald-900 flex items-center gap-1">
+                          Need More Swaps?
+                        </h4>
+                        <p className="text-[10px] text-emerald-700/80 mt-0.5 leading-tight max-w-[180px]">
+                          Flexibility to swap meals anytime & keep earning rewards!
+                        </p>
+                      </div>
+                      <div className="bg-white px-2 py-1 rounded-lg border border-emerald-200/60 shadow-sm flex flex-col items-center justify-center min-w-[50px]">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase leading-none">Left</span>
+                        <span className="text-sm font-black text-emerald-600 leading-none mt-0.5">{remainingSwaps}</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex items-center bg-slate-200/50 rounded-xl px-2 py-1.5 border border-slate-200/40">
-                        <button 
-                          onClick={() => handleSwapQtyChange(sub.id, -1)}
-                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-brand font-bold focus:outline-none"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="w-8 text-center text-xs font-black text-slate-800">{qtyToBuy}</span>
-                        <button 
-                          onClick={() => handleSwapQtyChange(sub.id, 1)}
-                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-brand font-bold focus:outline-none"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
+                    <div className="relative z-10 space-y-3">
+                      {/* Presets */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {[1, 3, 5].map((packQty) => (
+                          <button
+                            key={packQty}
+                            onClick={() => setPurchaseQty(prev => ({ ...prev, [sub.id]: packQty }))}
+                            className={`py-1.5 rounded-xl border text-[10px] font-bold transition-all ${
+                              qtyToBuy === packQty 
+                                ? 'bg-emerald-500 border-emerald-600 text-white shadow-md shadow-emerald-500/20' 
+                                : 'bg-white border-emerald-200/60 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {packQty} {packQty === 1 ? 'Swap' : 'Swaps'}
+                          </button>
+                        ))}
                       </div>
 
-                      <button
-                        onClick={() => handleBuySwaps(sub.id)}
-                        disabled={buyingSwapId !== null}
-                        className="flex-1 py-2 bg-brand/10 text-brand hover:bg-brand text-[10px] font-black uppercase tracking-wider rounded-xl hover:text-white transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
-                      >
-                        {buyingSwapId === sub.id ? (
-                          <div className="w-3.5 h-3.5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          `Buy Swaps • ₹${qtyToBuy * 29}`
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center bg-white rounded-xl px-1.5 py-1 border border-emerald-200/60 shadow-sm">
+                          <button 
+                            onClick={() => handleSwapQtyChange(sub.id, -1)}
+                            className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-emerald-600 font-bold active:scale-95 transition-transform focus:outline-none"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="w-6 text-center text-xs font-black text-slate-800">{qtyToBuy}</span>
+                          <button 
+                            onClick={() => handleSwapQtyChange(sub.id, 1)}
+                            className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-emerald-600 font-bold active:scale-95 transition-transform focus:outline-none"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleBuySwaps(sub.id)}
+                          disabled={buyingSwapId !== null}
+                          className="flex-1 py-2.5 bg-emerald-500 text-white text-[11px] font-black uppercase tracking-wider rounded-xl hover:bg-emerald-600 shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-70 focus:outline-none"
+                        >
+                          {buyingSwapId === sub.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            `Buy ${qtyToBuy} Swaps • ₹${qtyToBuy * 29}`
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -499,54 +532,25 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Rewards / Credits */}
-      <div className="bg-white rounded-3xl p-5 shadow-card mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
-              <Gift className="w-4 h-4 text-amber-500" />
-            </div>
-            <h3 className="text-[15px] font-bold text-slate-900">My Rewards</h3>
-          </div>
-          <div className="flex items-center gap-1.5 bg-amber-50 rounded-2xl px-3 py-1.5">
-            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-            <span className="text-[13px] font-black text-amber-700">{totalCredits} cr</span>
-          </div>
+      {/* Rewards / Credits Single Button */}
+      <div 
+        onClick={() => setIsRewardsModalOpen(true)}
+        className="bg-white rounded-3xl p-4 shadow-card mb-5 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors active:scale-[0.98]"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+          <Gift className="w-6 h-6 text-amber-500" />
         </div>
-        
-        {totalCredits >= 1 && activeSubscriptions.length > 0 && (
-          <button
-            onClick={handleRedeem}
-            disabled={redeemingCredits}
-            className="w-full mb-4 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 bg-amber-500 text-white hover:bg-amber-600 active:scale-95 disabled:opacity-50"
-          >
-            {redeemingCredits ? 'Redeeming...' : `Redeem ${Math.floor(totalCredits)} Credits for ${Math.floor(totalCredits)} Days`}
-          </button>
-        )}
-        <p className="text-[11px] text-slate-400 mb-3">Earn 0.5 credits every time you skip a delivery. 2 credits = 1 free meal.</p>
-        {creditHistory.length === 0 ? (
-          <p className="text-xs text-slate-400 text-center py-2">No credits yet — skip a delivery to start earning!</p>
-        ) : (
-          <div className="space-y-2">
-            {creditHistory.map((c) => (
-              <div key={c.id} className="flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-semibold text-slate-700 capitalize">{c.source?.replace(/_/g, ' ') || 'Credit'}</p>
-                  <p className="text-[10px] text-slate-400">{c.created_at?.toDate ? c.created_at.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</p>
-                </div>
-                <span className={`text-[12px] font-black ${
-                  c.redeemed
-                    ? 'text-slate-400 line-through'
-                    : c.credit_amount < 0
-                      ? 'text-rose-500'
-                      : 'text-amber-600'
-                }`}>
-                  {c.credit_amount > 0 ? `+${c.credit_amount}` : c.credit_amount}cr
-                </span>
-              </div>
-            ))}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[15px] font-bold text-slate-900 leading-tight">My Rewards & Credits</h3>
+            <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+              <span className="text-[11px] font-black text-amber-700">{totalCredits} cr</span>
+            </div>
           </div>
-        )}
+          <p className="text-xs text-slate-500 mt-1 truncate">Earn free meals & manage credits</p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />
       </div>
 
       {/* Delivery Preferences */}
@@ -616,6 +620,17 @@ export default function ProfilePage() {
           }}
         />
       )}
+
+      {/* Rewards Popup Modal */}
+      <RewardsModal
+        isOpen={isRewardsModalOpen}
+        onClose={() => setIsRewardsModalOpen(false)}
+        totalCredits={totalCredits}
+        creditHistory={creditHistory}
+        activeSubscriptions={activeSubscriptions}
+        onRedeem={handleRedeem}
+        redeemingCredits={redeemingCredits}
+      />
     </div>
   );
 }
