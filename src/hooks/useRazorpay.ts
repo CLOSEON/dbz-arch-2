@@ -10,6 +10,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 
 declare global {
   interface Window {
@@ -48,11 +49,6 @@ export interface RazorpayPaymentResponse {
   razorpay_signature: string;
 }
 
-type CreateOrderResponse = {
-  order_id: string;
-  amount: number;
-};
-
 export interface OpenCheckoutParams {
   /** Amount in paise (e.g. 50000 = ₹500). Must be ≥ 100. */
   amountInPaise: number;
@@ -61,41 +57,11 @@ export interface OpenCheckoutParams {
   description?: string;
   receipt?: string;
   prefill?: RazorpayOptions['prefill'];
+  vendor_id?: string;
   /** Called after verified success (signatures matched on backend). */
   onSuccess?: (paymentId: string, orderId: string) => void;
   /** Called if user dismisses the modal or payment fails. */
   onFailure?: (reason: string) => void;
-}
-
-/** Dynamically injects checkout.js once and caches the promise. */
-let checkoutScriptPromise: Promise<void> | null = null;
-function loadCheckoutScript(): Promise<void> {
-  if (checkoutScriptPromise) return checkoutScriptPromise;
-  checkoutScriptPromise = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && window.Razorpay) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      checkoutScriptPromise = null; // allow retry on next call
-      reject(new Error('Failed to load Razorpay checkout script.'));
-    };
-    document.head.appendChild(script);
-  });
-  return checkoutScriptPromise;
-}
-
-async function readApiError(response: Response, fallback: string) {
-  try {
-    const data = await response.json();
-    return typeof data?.error === 'string' ? data.error : fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -114,6 +80,7 @@ export function useRazorpay() {
       description,
       receipt,
       prefill,
+      vendor_id,
       onSuccess,
       onFailure,
     } = params;
@@ -123,24 +90,25 @@ export function useRazorpay() {
 
     try {
       // 1. Load checkout.js
-      await loadCheckoutScript();
+      await loadRazorpayCheckoutScript();
 
-      // 2. Create order on backend
-      const orderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountInPaise, currency, receipt }),
-      });
-
-      if (!orderRes.ok) {
-        throw new Error(await readApiError(orderRes, 'Failed to create payment order.'));
-      }
-
-      const order = await orderRes.json() as CreateOrderResponse;
+      // 2. Create order (Callable Cloud Function + REST fallback)
+      const order = await createRazorpayOrder(
+        amountInPaise,
+        receipt || `rcpt_${Date.now()}`,
+        {},
+        vendor_id
+      );
 
       // 3. Open Razorpay modal
       await new Promise<void>((resolve, reject) => {
-        const rzp = new window.Razorpay({
+        const RazorpayConstructor = (window as any).Razorpay;
+        if (!RazorpayConstructor) {
+          reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
+          return;
+        }
+
+        const rzp = new RazorpayConstructor({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: order.amount,
           currency,
@@ -148,7 +116,7 @@ export function useRazorpay() {
           description,
           order_id: order.order_id,
           prefill,
-          theme: { color: '#f97316' }, // Dabzzo brand orange
+          theme: { color: '#f97316' },
           modal: {
             ondismiss: () => {
               onFailure?.('Payment cancelled by user.');
@@ -158,15 +126,11 @@ export function useRazorpay() {
           handler: async (response: RazorpayPaymentResponse) => {
             try {
               // 4. Verify signature on backend
-              const verifyRes = await fetch('/api/razorpay/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(response),
-              });
-
-              if (!verifyRes.ok) {
-                throw new Error(await readApiError(verifyRes, 'Signature verification failed.'));
-              }
+              await verifyPaymentSignature(
+                response.razorpay_payment_id,
+                response.razorpay_order_id,
+                response.razorpay_signature
+              );
 
               onSuccess?.(response.razorpay_payment_id, response.razorpay_order_id);
               resolve();

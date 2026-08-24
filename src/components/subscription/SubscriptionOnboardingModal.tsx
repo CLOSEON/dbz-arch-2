@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 
 let _checkoutScriptPromise: Promise<void> | null = null;
 function loadCheckoutScript(): Promise<void> {
@@ -233,15 +234,11 @@ export function SubscriptionOnboardingModal({
 
   const verifyPayment = async (response: RazorpayPaymentResponse) => {
     setPaymentStatus('verifying');
-    const verifyRes = await fetch('/api/razorpay/verify-payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(response),
-    });
-
-    if (!verifyRes.ok) {
-      throw new Error(await readApiError(verifyRes, 'Payment verification failed.'));
-    }
+    await verifyPaymentSignature(
+      response.razorpay_payment_id,
+      response.razorpay_order_id,
+      response.razorpay_signature
+    );
   };
 
   // ── Step 4: Razorpay payment flow ─────────────────────────────────────────
@@ -263,49 +260,46 @@ export function SubscriptionOnboardingModal({
 
       // 1. Load Razorpay checkout.js
       setPaymentStatus('creating_order');
-      await loadCheckoutScript();
+      await loadRazorpayCheckoutScript();
 
-      // 2. Create Razorpay order on the server
-      const orderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amountPaise,
-          currency: 'INR',
-          receipt: `sub_${user.id}_${vendor.id}_${planId}`.slice(0, 40),
-          notes: {
-            user_id: user.id,
-            vendor_id: vendor.id,
-            plan_id: planId,
-            frequency: selectedFrequency,
-          },
-        }),
-      });
+      // 2. Create Razorpay order (Callable Cloud Function + REST fallback)
+      const order = await createRazorpayOrder(
+        amountPaise,
+        `sub_${user.id}_${vendor.id}_${planId}`.slice(0, 40),
+        {
+          user_id: user.id,
+          vendor_id: vendor.id,
+          plan_id: planId,
+          frequency: selectedFrequency,
+        },
+        vendor.id
+      );
 
-      if (!orderRes.ok) {
-        throw new Error(await readApiError(orderRes, 'Could not create payment order.'));
-      }
-
-      const { order_id } = await orderRes.json();
+      const order_id = order.order_id;
 
       // 3. Open Razorpay modal
       setPaymentStatus('awaiting_payment');
       const paymentResponse = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
         const RazorpayConstructor = (window as any).Razorpay;
+        if (!RazorpayConstructor) {
+          reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
+          return;
+        }
+
         const rzp = new RazorpayConstructor({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: amountPaise,
           currency: 'INR',
           name: vendor.kitchen_name || vendor.name || 'Dabzzo',
           description: `${planId.charAt(0).toUpperCase() + planId.slice(1)} Plan — ${selectedFrequency}`,
-          image: vendor.image ? undefined : undefined, // vendor logo if available
+          image: vendor.image || undefined,
           order_id,
           prefill: {
             name: user.name || '',
             contact: user.phone || '',
             email: user.email || '',
           },
-          theme: { color: '#f97316' }, // brand orange
+          theme: { color: '#f97316' },
           modal: {
             ondismiss: () => {
               reject(new Error('dismissed'));

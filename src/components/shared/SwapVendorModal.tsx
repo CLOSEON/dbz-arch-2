@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
+import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 
 // Geolocation distance helper
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -22,22 +23,6 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): nu
     Math.sin(dLon/2) * Math.sin(dLon/2); 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
   return R * c;
-}
-
-// Razorpay SDK loader
-let _checkoutScriptPromise: Promise<void> | null = null;
-function loadCheckoutScript(): Promise<void> {
-  if (_checkoutScriptPromise) return _checkoutScriptPromise;
-  _checkoutScriptPromise = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && (window as any).Razorpay) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => { _checkoutScriptPromise = null; reject(new Error('Failed to load Razorpay SDK.')); };
-    document.head.appendChild(s);
-  });
-  return _checkoutScriptPromise;
 }
 
 async function readApiError(response: Response, fallback: string) {
@@ -138,35 +123,33 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
       } else {
         // Paid swap flow (₹50 fee)
         setPaymentStatus('creating_order');
-        await loadCheckoutScript();
+        await loadRazorpayCheckoutScript();
 
-        // 1. Create payment order on server
-        const orderRes = await fetch('/api/razorpay/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: 5000, // ₹50.00 in paise
-            currency: 'INR',
-            receipt: `swap_${delivery.id}_${Date.now()}`.slice(0, 40),
-            notes: {
-              user_id: userId,
-              subscription_id: delivery.subscriptionId,
-              delivery_id: delivery.id,
-              target_vendor_id: vendor.id,
-            }
-          })
-        });
+        // 1. Create payment order (Callable Cloud Function + REST fallback)
+        const order = await createRazorpayOrder(
+          5000, // ₹50.00 in paise
+          `swap_${delivery.id}_${Date.now()}`.slice(0, 40),
+          {
+            user_id: userId,
+            subscription_id: delivery.subscriptionId,
+            delivery_id: delivery.id,
+            target_vendor_id: vendor.id,
+          },
+          vendor.id
+        );
 
-        if (!orderRes.ok) {
-          throw new Error(await readApiError(orderRes, 'Failed to initiate payment.'));
-        }
-
-        const { order_id } = await orderRes.json();
+        const order_id = order.order_id;
 
         // 2. Open Razorpay Checkout modal
         setPaymentStatus('awaiting_payment');
         const paymentResponse = await new Promise<any>((resolve, reject) => {
-          const rzp = new (window as any).Razorpay({
+          const RazorpayConstructor = (window as any).Razorpay;
+          if (!RazorpayConstructor) {
+            reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
+            return;
+          }
+
+          const rzp = new RazorpayConstructor({
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
             amount: 5000,
             currency: 'INR',
@@ -194,15 +177,11 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
 
         // 3. Verify Razorpay payment signature
         setPaymentStatus('verifying');
-        const verifyRes = await fetch('/api/razorpay/verify-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(paymentResponse)
-        });
-
-        if (!verifyRes.ok) {
-          throw new Error(await readApiError(verifyRes, 'Verification failed.'));
-        }
+        await verifyPaymentSignature(
+          paymentResponse.razorpay_payment_id,
+          paymentResponse.razorpay_order_id,
+          paymentResponse.razorpay_signature
+        );
 
         // 4. Finalize swap in Firestore
         setPaymentStatus('swapping');

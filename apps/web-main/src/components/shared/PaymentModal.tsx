@@ -6,31 +6,7 @@ import { X, CreditCard, ShieldCheck, Loader2 } from 'lucide-react';
 import { renewSubscription } from '@/lib/queries/subscriptions';
 import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
-
-// Razorpay SDK loader
-let _checkoutScriptPromise: Promise<void> | null = null;
-function loadCheckoutScript(): Promise<void> {
-  if (_checkoutScriptPromise) return _checkoutScriptPromise;
-  _checkoutScriptPromise = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && (window as any).Razorpay) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => { _checkoutScriptPromise = null; reject(new Error('Failed to load Razorpay SDK.')); };
-    document.head.appendChild(s);
-  });
-  return _checkoutScriptPromise;
-}
-
-async function readApiError(response: Response, fallback: string) {
-  try {
-    const data = await response.json();
-    return typeof data?.error === 'string' ? data.error : fallback;
-  } catch {
-    return fallback;
-  }
-}
+import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -53,35 +29,33 @@ export function PaymentModal({ isOpen, onClose, subscription, amount, onSuccess 
 
     try {
       // 1. Load Razorpay script
-      await loadCheckoutScript();
+      await loadRazorpayCheckoutScript();
 
-      // 2. Create Razorpay order on server
-      const orderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amount * 100, // paise
-          currency: 'INR',
-          receipt: `renew_${subscription.id}_${Date.now()}`.slice(0, 40),
-          notes: {
-            user_id: user?.id,
-            subscription_id: subscription.id,
-            type: 'renew_subscription'
-          }
-        })
-      });
+      // 2. Create Razorpay order (Callable Cloud Function + REST fallback)
+      const order = await createRazorpayOrder(
+        amount * 100, // paise
+        `renew_${subscription.id}_${Date.now()}`.slice(0, 40),
+        {
+          user_id: user?.id,
+          subscription_id: subscription.id,
+          type: 'renew_subscription',
+        },
+        subscription.vendor_id
+      );
 
-      if (!orderRes.ok) {
-        throw new Error(await readApiError(orderRes, 'Failed to create payment order.'));
-      }
-
-      const { order_id } = await orderRes.json();
+      const order_id = order.order_id;
 
       // 3. Open Razorpay Checkout modal
       setPaymentStatus('awaiting_payment');
       const paymentResponse = await new Promise<any>((resolve, reject) => {
-        const rzp = new (window as any).Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+        const RazorpayConstructor = (window as any).Razorpay;
+        if (!RazorpayConstructor) {
+          reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
+          return;
+        }
+
+        const rzp = new RazorpayConstructor({
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: amount * 100,
           currency: 'INR',
           name: 'Dabzzo',
@@ -108,15 +82,11 @@ export function PaymentModal({ isOpen, onClose, subscription, amount, onSuccess 
 
       // 4. Verify signature on backend
       setPaymentStatus('verifying');
-      const verifyRes = await fetch('/api/razorpay/verify-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(paymentResponse)
-      });
-
-      if (!verifyRes.ok) {
-        throw new Error(await readApiError(verifyRes, 'Verification failed.'));
-      }
+      await verifyPaymentSignature(
+        paymentResponse.razorpay_payment_id,
+        paymentResponse.razorpay_order_id,
+        paymentResponse.razorpay_signature
+      );
 
       // 5. Finalize subscription renewal in Firestore
       setPaymentStatus('renewing');

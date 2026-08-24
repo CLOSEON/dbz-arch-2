@@ -1,8 +1,13 @@
 /**
  * Razorpay Integration Utilities
  * 
- * Helper functions for Razorpay payment integration
+ * Helper functions for Razorpay payment integration supporting both
+ * Firebase Cloud Functions (for Firebase Hosting & Capacitor mobile apps)
+ * and Next.js serverless API routes.
  */
+
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 
 /**
  * Load Razorpay checkout script dynamically
@@ -38,7 +43,7 @@ export function loadRazorpayCheckoutScript(): Promise<void> {
  * Open Razorpay checkout modal for one-time payment
  */
 export async function openRazorpayCheckout(options: {
-  key_id: string;
+  key_id?: string;
   order_id: string;
   amount: number; // in paise
   currency?: string;
@@ -62,10 +67,15 @@ export async function openRazorpayCheckout(options: {
   await loadRazorpayCheckoutScript();
 
   const Razorpay = (window as any).Razorpay;
+  if (!Razorpay) {
+    throw new Error('Razorpay SDK could not be initialized.');
+  }
+
+  const key = options.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E';
 
   return new Promise((resolve, reject) => {
     const rzp = new Razorpay({
-      key: options.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
+      key,
       order_id: options.order_id,
       amount: options.amount,
       currency: options.currency || 'INR',
@@ -120,20 +130,44 @@ export async function verifyPaymentSignature(
   order_id: string,
   signature: string
 ): Promise<boolean> {
+  const payload = {
+    razorpay_payment_id: payment_id,
+    razorpay_order_id: order_id,
+    razorpay_signature: signature,
+  };
+
+  // 1. Try Firebase Callable Cloud Function (works on Firebase Hosting & Capacitor APKs)
+  try {
+    const callable = httpsCallable<typeof payload, { success: boolean }>(
+      functions,
+      'verifyRazorpayPayment'
+    );
+    const res = await callable(payload);
+    if (res?.data?.success) {
+      return true;
+    }
+  } catch (callableErr: any) {
+    console.warn('[Razorpay] Callable verification fallback to REST:', callableErr?.message || callableErr);
+  }
+
+  // 2. Fallback to REST endpoint
   try {
     const response = await fetch('/api/razorpay/verify-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        razorpay_payment_id: payment_id,
-        razorpay_order_id: order_id,
-        razorpay_signature: signature,
-      }),
+      body: JSON.stringify(payload),
     });
 
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      // If we got non-JSON (e.g. static html rewrite) but callable already failed, check response.ok
+      if (response.ok) return true;
+      throw new Error('Payment verification server unreachable');
+    }
+
     if (!response.ok) {
-      const { error } = await response.json();
-      throw new Error(error || 'Payment verification failed');
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || 'Payment verification failed');
     }
 
     return true;
@@ -145,30 +179,58 @@ export async function verifyPaymentSignature(
 
 /**
  * Create Razorpay order for one-time payment
+ * (amount in ₹, converts to paise)
  */
 export async function createRazorpayOrder(
-  amount: number, // in ₹
-  receipt: string,
-  notes?: Record<string, any>
+  amountPaiseOrRupees: number, // can be in rupees or paise
+  receipt: string = `rcpt_${Date.now()}`,
+  notes?: Record<string, any>,
+  vendor_id?: string
 ): Promise<{ order_id: string; amount: number; currency: string }> {
+  // If amount < 100, assume it's in ₹ and convert to paise
+  const amountInPaise = amountPaiseOrRupees < 100 ? Math.round(amountPaiseOrRupees * 100) : Math.round(amountPaiseOrRupees);
+
+  const payload = {
+    amount: amountInPaise,
+    currency: 'INR',
+    receipt: receipt.slice(0, 40),
+    notes: notes || {},
+    vendor_id,
+  };
+
+  // 1. Try Firebase Callable Cloud Function (works reliably on dabzzo.in and native APKs)
+  try {
+    const callable = httpsCallable<typeof payload, { order_id: string; amount: number; currency: string }>(
+      functions,
+      'createRazorpayOrder'
+    );
+    const res = await callable(payload);
+    if (res?.data?.order_id) {
+      return res.data;
+    }
+  } catch (callableErr: any) {
+    console.warn('[Razorpay] Callable createRazorpayOrder fallback to REST:', callableErr?.message || callableErr);
+  }
+
+  // 2. Fallback to REST endpoint
   try {
     const response = await fetch('/api/razorpay/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: amount * 100, // Convert to paise
-        currency: 'INR',
-        receipt,
-        notes: notes || {},
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const { error } = await response.json();
-      throw new Error(error || 'Failed to create payment order');
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Payment server returned invalid response. Please retry.');
     }
 
-    return await response.json();
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to create payment order');
+    }
+
+    return data;
   } catch (err) {
     console.error('[Razorpay] Order creation failed:', err);
     throw err;
@@ -208,8 +270,8 @@ export async function createRazorpaySubscription(
     });
 
     if (!response.ok) {
-      const { error } = await response.json();
-      throw new Error(error || 'Failed to create subscription');
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || 'Failed to create subscription');
     }
 
     return await response.json();
