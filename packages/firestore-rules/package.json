@@ -1,0 +1,7 @@
+{
+  "name": "@dabzzo/firestore-rules",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Canonical Firestore and Storage security rules for Dabzzo monorepo",
+  "main": "firestore.rules"
+}

@@ -1,0 +1,3 @@
+module.exports=[53708,a=>{"use strict";let b=(0,a.i(38996).registerPlugin)("FirebaseCrashlytics",{web:()=>a.A(7400).then(a=>new a.FirebaseCrashlyticsWeb)});a.s(["FirebaseCrashlytics",0,b],89088),a.i(89088),a.s([],57106),a.i(57106),a.s(["FirebaseCrashlytics",0,b],53708)},7400,a=>{a.v(b=>Promise.all(["server/chunks/ssr/0rk6_@capacitor-firebase_crashlytics_dist_esm_web_0_11rz8.js"].map(b=>a.l(b))).then(()=>b(25469)))}];
+
+//# sourceMappingURL=0rk6_%40capacitor-firebase_crashlytics_dist_esm_0hv~z4g._.js.map

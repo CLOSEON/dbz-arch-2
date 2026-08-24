@@ -1,0 +1,3 @@
+module.exports=[12313,a=>{"use strict";var b=a.i(31185),c=a.i(35517),d=a.i(38078);a.s(["default",0,function(){let a=(0,d.useRouter)();return(0,c.useEffect)(()=>{a.replace("/admin/dashboard")},[a]),(0,b.jsx)("div",{className:"flex items-center justify-center min-h-screen bg-slate-900",children:(0,b.jsxs)("div",{className:"flex flex-col items-center gap-3",children:[(0,b.jsx)("div",{className:"w-10 h-10 rounded-full border-2 border-red-500 border-t-transparent animate-spin"}),(0,b.jsx)("p",{className:"text-xs text-slate-400 font-bold tracking-widest uppercase",children:"Opening Admin Dashboard…"})]})})}])}];
+
+//# sourceMappingURL=0c4p_Webapp_DBZARCH2_apps_admin-panel_src_app_dashboard_page_tsx_11ksey5._.js.map

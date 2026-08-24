@@ -1,0 +1,16 @@
+{
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(auth)/register/page": "app/(auth)/register/page.js",
+  "/(user)/dashboard/page": "app/(user)/dashboard/page.js",
+  "/(user)/orders/page": "app/(user)/orders/page.js",
+  "/(user)/profile/page": "app/(user)/profile/page.js",
+  "/(user)/rewards/page": "app/(user)/rewards/page.js",
+  "/(user)/support/page": "app/(user)/support/page.js",
+  "/(user)/track/page": "app/(user)/track/page.js",
+  "/(user)/vendor/detail/page": "app/(user)/vendor/detail/page.js",
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/icon.png/route": "app/icon.png/route.js",
+  "/main/page": "app/main/page.js",
+  "/page": "app/page.js"
+}

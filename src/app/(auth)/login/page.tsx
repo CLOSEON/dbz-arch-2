@@ -45,7 +45,6 @@ export default function LoginPage() {
   const [newUserPhone, setNewUserPhone] = useState('');
   const [name, setName] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('user');
-  // True when an existing user is re-prompted to set a name (role already exists)
   const [isExistingUserMissingName, setIsExistingUserMissingName] = useState(false);
 
   // Refs
@@ -62,12 +61,11 @@ export default function LoginPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const r = params.get('role');
-      if (r === 'vendor' || r === 'delivery' || r === 'user') {
+      if (r === 'vendor' || r === 'delivery' || r === 'user' || r === 'admin') {
         setSelectedRole(r as UserRole);
       }
       const p = params.get('phone');
       if (p) {
-        // Strip non-digits and take last 10 characters to ensure clean local format
         const cleanPhone = p.replace(/\D/g, '').slice(-10);
         if (cleanPhone.length === 10) {
           setPhone(cleanPhone);
@@ -94,10 +92,15 @@ export default function LoginPage() {
 
   // ─── Route user after successful auth ──────────────────────────────────────
   const routeToRole = useCallback((role: string) => {
+    if (role === 'admin') {
+      router.replace('/admin/dashboard');
+      return;
+    }
     const paths: Record<string, string> = {
-      admin: '/admin/dashboard',
-      vendor: '/vendor/dashboard',
-      delivery: '/delivery/dashboard',
+      vendor: '/dashboard',
+      delivery: '/dashboard',
+      customer: '/dashboard',
+      user: '/dashboard',
     };
     router.replace(paths[role] || '/dashboard');
   }, [router]);
@@ -107,8 +110,8 @@ export default function LoginPage() {
     const e164 = formatPhoneE164(phone);
 
     try {
-      // Force token refresh to ensure Firestore SDK has the latest auth state
-      await firebaseUser.getIdToken(true);
+      // Force token refresh to ensure Firestore SDK & custom claims are synced
+      const tokenResult = await firebaseUser.getIdTokenResult(true);
       
       // Wait for auth state to be fully synchronized with all Firebase services
       const { auth } = await import('@/lib/firebase');
@@ -119,16 +122,19 @@ export default function LoginPage() {
         firebaseUser.phoneNumber || e164
       );
 
+      // Check if user has admin custom claim or admin role
+      const isAdmin = Boolean(tokenResult?.claims?.admin || profile?.role === 'admin');
+      const finalRole: UserRole = isAdmin ? 'admin' : (profile.role || 'user');
+      const finalProfile = { ...profile, role: finalRole };
+
       if (isNewUser) {
         setNewUserId(firebaseUser.uid);
         setNewUserPhone(firebaseUser.phoneNumber || e164);
         if (profile.role) {
-          // Existing user missing name — keep their role, just collect name
-          setSelectedRole(profile.role);
+          setSelectedRole(finalRole);
           setIsExistingUserMissingName(true);
           addToast('Welcome back! Please tell us your name 👋', 'info');
         } else {
-          // Brand new user — full onboarding
           setIsExistingUserMissingName(false);
           addToast('Welcome to Dabzzo! Set up your profile 🎉', 'success');
         }
@@ -136,14 +142,18 @@ export default function LoginPage() {
         return;
       }
 
-      // Existing user — login
-      setUser(profile);
-      addToast(`Welcome back, ${profile.name || 'Chef'}!`, 'success');
-      // Fire-and-forget: migrates legacy docs to deterministic IDs, cleans duplicates
-      if (profile.role === 'user') {
-        migrateSubscriptions(profile.id).catch(() => {});
+      // Existing user — login via OTP
+      setUser(finalProfile);
+      if (isAdmin) {
+        addToast(`Welcome back, Admin ${finalProfile.name || ''} 👑`, 'success');
+      } else {
+        addToast(`Welcome back, ${finalProfile.name || 'Chef'}!`, 'success');
       }
-      routeToRole(profile.role);
+
+      if (finalRole === 'user') {
+        migrateSubscriptions(finalProfile.id).catch(() => {});
+      }
+      routeToRole(finalRole);
 
     } catch (err: any) {
       console.error('[Login] Profile resolution error:', err);
@@ -169,7 +179,8 @@ export default function LoginPage() {
       const result: SendOtpResult = await sendOtp(e164);
 
       if (!result.success) {
-        throw new Error(result.error);
+        addToast(result.error || 'Failed to send OTP. Try again.', 'error');
+        return;
       }
 
       // Auto-verified (Android SMS Retriever)
@@ -191,12 +202,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error('[Login] Send OTP error:', err);
-      
-      let errMsg = err.message || 'Failed to send OTP. Try again.';
-      if (err.message?.includes('invalid-app-credential') || err.code === 'auth/invalid-app-credential') {
-        errMsg = 'App verification failed. On localhost, make sure "localhost" is added to Authorized Domains in your Firebase Console and disable any AdBlockers blocking reCAPTCHA.';
-      }
-      addToast(errMsg, 'error');
+      addToast(err.message || 'Failed to send OTP. Try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -292,7 +298,10 @@ export default function LoginPage() {
     try {
       const e164 = formatPhoneE164(phone);
       const result = await sendOtp(e164);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        addToast(result.error || 'Resend failed', 'error');
+        return;
+      }
       if ('verificationId' in result) {
         setVerificationId(result.verificationId);
         setResendTimer(RESEND_COOLDOWN);
@@ -321,7 +330,6 @@ export default function LoginPage() {
           {/* Logo & Header */}
           <div className="flex flex-col items-center mb-10 animate-fade-in text-center">
             <div className="w-24 h-24 bg-white rounded-[2rem] flex items-center justify-center shadow-lg shadow-slate-200/50 mb-6 p-4">
-              {/* Removed brightness-0 invert so the logo is actually visible! */}
               <Image src="/assets/dabzzo-logo.png" alt="Dabzzo" width={72} height={72} priority className="object-contain" />
             </div>
 
@@ -508,7 +516,6 @@ export default function LoginPage() {
           <p className="text-xs text-slate-400 font-medium text-center">
             By continuing, you agree to our <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Terms</span> & <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Privacy</span>
           </p>
-          {/* Dynamic reCAPTCHA container is now fully managed by auth-service.ts to prevent React mounting crashes */}
         </div>
 
       </div>

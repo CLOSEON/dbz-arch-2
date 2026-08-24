@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #D97706;
+  --color-brand-50: #FEFCE8;
+  --color-brand-100: #FEF3C7;
+  --color-brand-500: #D97706;
+  --color-brand-600: #B45309;
+  --color-brand-700: #92400E;
+  --color-brand-secondary: #F59E0B;
+  --color-ivory: #FEFCE8;
+  --color-ivory-dark: #FEF08A;
+  --animate-fade-in: fadeIn 0.4s ease-out forwards;
+  --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-blur: blur(16px);
+  --shadow-soft: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 24px rgba(217, 119, 6, 0.3);
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes floatSoft {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -6px, 0); }
+  }
+
+  @keyframes shineSweep {
+    0% { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+    18% { opacity: 0.65; }
+    45%, 100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+  }
+
+  @keyframes pulseRing {
+    0% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.22); }
+    70% { box-shadow: 0 0 0 12px rgba(217, 119, 6, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+  }
+
+  @keyframes slideUpSoft {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes swipeIn {
+    from { opacity: 0; transform: translateX(60px) scale(0.97); }
+    to { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  @keyframes swipeOut {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to { opacity: 0; transform: translateX(-60px) scale(0.97); }
+  }
+
+  @keyframes waveFloat {
+    0%, 100% { transform: translateY(0px) scaleX(1); }
+    50% { transform: translateY(-4px) scaleX(1.02); }
+  }
+}
+
+:root {
+  --background: #FEFCE8;
+  --foreground: #0F172A;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}

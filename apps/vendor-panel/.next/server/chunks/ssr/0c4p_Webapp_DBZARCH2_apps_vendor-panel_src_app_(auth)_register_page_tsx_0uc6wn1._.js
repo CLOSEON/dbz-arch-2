@@ -1,0 +1,3 @@
+module.exports=[36984,a=>{"use strict";var b=a.i(31185),c=a.i(35517),d=a.i(38078);a.s(["default",0,function(){let a=(0,d.useRouter)();return(0,c.useEffect)(()=>{a.replace("/login")},[a]),(0,b.jsx)("div",{className:"min-h-screen bg-ivory flex items-center justify-center",children:(0,b.jsx)("p",{className:"text-slate-500 text-sm font-medium",children:"Redirecting…"})})}])}];
+
+//# sourceMappingURL=0c4p_Webapp_DBZARCH2_apps_vendor-panel_src_app_%28auth%29_register_page_tsx_0uc6wn1._.js.map

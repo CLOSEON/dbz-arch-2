@@ -1,0 +1,1 @@
+self.__SSG_MANIFEST=new Set(["\u002Fadmin\u002Fvendors\u002F[vendorId]"]);self.__SSG_MANIFEST_CB&&self.__SSG_MANIFEST_CB()
