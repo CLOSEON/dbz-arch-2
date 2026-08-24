@@ -63,9 +63,15 @@ export async function uploadImage(file: File | Blob, path = 'uploads'): Promise<
 }
 
 /**
- * A helper to provide consistent image URLs.
+ * A helper to provide consistent image URLs with safe fallback on production.
  */
-export function getImageUrl(url: string): string {
-  if (!url) return '';
+export function getImageUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return '';
+  // Avoid localhost/emulator ports when running on production domains (e.g. dabzzo.in)
+  if (url.includes('localhost:') || url.includes('127.0.0.1:')) {
+    if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+      return '';
+    }
+  }
   return url;
 }

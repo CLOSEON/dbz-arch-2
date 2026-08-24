@@ -191,12 +191,52 @@ export default function OrdersPage() {
         // Active subscriptions listener
         const qSubs = query(
           collection(db, 'subscriptions'),
-          where('user_id', '==', user.id),
-          where('status', '==', 'active')
+          where('user_id', '==', user.id)
         );
-        const unsubSubs = onSnapshot(qSubs, (snap) => {
+        const unsubSubs = onSnapshot(qSubs, async (snap) => {
           if (!mounted) return;
-          setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+          const allUserSubs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const activeOnly = allUserSubs.filter(s => s.status === 'active');
+          setActiveSubs(activeOnly);
+
+          // Real-time enrich orders
+          try {
+            const vendorList = vendorsList.length > 0 ? vendorsList : await getApprovedVendors().catch(() => []);
+            const vendorMap: Record<string, any> = {};
+            vendorList.forEach((v) => { vendorMap[v.id] = v; });
+
+            const enriched: EnrichedSubscription[] = allUserSubs.map((s) => {
+              const vendor = vendorMap[s.vendor_id] ?? {};
+              const mealType = s.meal_type;
+              let price = s.paid_amount ?? s.price ?? 0;
+              let title = 'Subscription';
+
+              if (mealType === 'lunch') {
+                price = price || vendor.rate_lunch_weekly || vendor.rate_lunch || 0;
+                title = 'Lunch Plan';
+              } else if (mealType === 'dinner') {
+                price = price || vendor.rate_dinner_weekly || vendor.rate_dinner || 0;
+                title = 'Dinner Plan';
+              } else if (mealType === 'both') {
+                price = price || vendor.rate_both_weekly || vendor.rate_both || 0;
+                title = 'Lunch + Dinner';
+              }
+
+              return {
+                ...s,
+                vendorName: vendor.kitchen_name ?? vendor.name ?? 'Vendor',
+                vendorImage: vendor.image ?? '',
+                planTitle: title,
+                planPrice: price,
+                planFrequency: s.frequency || 'weekly',
+                createdMs: toMillis(s.created_at),
+              };
+            });
+
+            setOrders(enriched.sort((a, b) => (b.createdMs ?? 0) - (a.createdMs ?? 0)));
+          } catch (e) {
+            console.warn('[OrdersPage] Real-time enrich warning:', e);
+          }
         });
         unsubscribers.push(unsubSubs);
 

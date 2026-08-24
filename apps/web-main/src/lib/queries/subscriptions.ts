@@ -12,6 +12,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -168,13 +169,25 @@ export async function createSubscription(data: {
   if (data.meal_type === 'both') {
     const lunchDocId = subDocId(data.user_id, data.vendor_id, 'lunch');
     const dinnerDocId = subDocId(data.user_id, data.vendor_id, 'dinner');
-    await updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel lunch during upgrade:', err));
-    await updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel dinner during upgrade:', err));
+    getDoc(doc(db, 'subscriptions', lunchDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
+    getDoc(doc(db, 'subscriptions', dinnerDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
   }
   // If user subscribes to 'lunch' or 'dinner', cancel any existing 'both' for this vendor
   else if (data.meal_type === 'lunch' || data.meal_type === 'dinner') {
     const bothDocId = subDocId(data.user_id, data.vendor_id, 'both');
-    await updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel both during downgrade:', err));
+    getDoc(doc(db, 'subscriptions', bothDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   invalidateSubsCache(data.user_id);
