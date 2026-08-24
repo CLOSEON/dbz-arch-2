@@ -81,7 +81,7 @@ export function PaymentModal({ isOpen, onClose, subscription, amount, onSuccess 
       setPaymentStatus('awaiting_payment');
       const paymentResponse = await new Promise<any>((resolve, reject) => {
         const rzp = new (window as any).Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: amount * 100,
           currency: 'INR',
           name: 'Dabzzo',

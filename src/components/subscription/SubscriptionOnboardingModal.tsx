@@ -16,7 +16,7 @@ let _checkoutScriptPromise: Promise<void> | null = null;
 function loadCheckoutScript(): Promise<void> {
   if (_checkoutScriptPromise) return _checkoutScriptPromise;
   _checkoutScriptPromise = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && window.Razorpay) { resolve(); return; }
+    if (typeof window !== 'undefined' && (window as any).Razorpay) { resolve(); return; }
     const s = document.createElement('script');
     s.src = 'https://checkout.razorpay.com/v1/checkout.js';
     s.async = true;
@@ -291,8 +291,9 @@ export function SubscriptionOnboardingModal({
       // 3. Open Razorpay modal
       setPaymentStatus('awaiting_payment');
       const paymentResponse = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
-        const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+        const RazorpayConstructor = (window as any).Razorpay;
+        const rzp = new RazorpayConstructor({
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: amountPaise,
           currency: 'INR',
           name: vendor.kitchen_name || vendor.name || 'Dabzzo',

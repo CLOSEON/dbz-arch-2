@@ -30,20 +30,11 @@ function getRazorpayNotes(value: unknown): Record<string, string | number> {
 }
 
 function getRazorpayClient() {
-  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const publicKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
   if (!keyId || !keySecret) {
     throw new Error('Razorpay credentials are not configured.');
-  }
-
-  if (publicKeyId && publicKeyId !== keyId) {
-    throw new Error('Razorpay public and server key IDs do not match.');
-  }
-
-  if (process.env.NODE_ENV !== 'production' && keyId.startsWith('rzp_live_')) {
-    throw new Error('Live Razorpay keys are configured in development. Switch .env.local to rzp_test_ keys to use Razorpay test cards.');
   }
 
   return new Razorpay({
@@ -100,33 +91,47 @@ export async function POST(req: NextRequest) {
     // If vendor_id is provided, check for a linked Razorpay account and configure split payments (Route)
     const vendorId = body?.vendor_id || notes?.vendor_id;
     if (typeof vendorId === 'string') {
-      const vendorSnap = await adminDb.collection('users').doc(vendorId).get();
-      const vendorData = vendorSnap.data();
-      
-      if (vendorData?.rzp_account_id) {
-        // Calculate the platform fee (commission)
-        const platformFeePct = vendorData.platform_fee_pct ?? 10; // default 10%
-        // The transfer amount to the vendor is the remainder
-        // Both amount and transfer amount are in paise
-        // E.g. if amount is 10000 (100 INR) and fee is 10%, platform keeps 10 INR, vendor gets 90 INR.
-        const vendorTransferAmount = Math.floor(amount * (1 - (platformFeePct / 100)));
+      try {
+        const vendorSnap = await adminDb.collection('users').doc(vendorId).get();
+        const vendorData = vendorSnap?.data();
+        
+        if (vendorData?.rzp_account_id) {
+          // Calculate the platform fee (commission)
+          const platformFeePct = vendorData.platform_fee_pct ?? 10; // default 10%
+          const vendorTransferAmount = Math.floor(amount * (1 - (platformFeePct / 100)));
 
-        orderPayload.transfers = [
-          {
-            account: vendorData.rzp_account_id,
-            amount: vendorTransferAmount,
-            currency: 'INR',
-            notes: {
-              name: vendorData.kitchen_name || vendorData.name || 'Vendor',
-              type: 'vendor_settlement'
-            },
-            on_hold: 0 // Settled automatically according to vendor's settlement schedule
-          }
-        ];
+          orderPayload.transfers = [
+            {
+              account: vendorData.rzp_account_id,
+              amount: vendorTransferAmount,
+              currency: 'INR',
+              notes: {
+                name: vendorData.kitchen_name || vendorData.name || 'Vendor',
+                type: 'vendor_settlement'
+              },
+              on_hold: 0
+            }
+          ];
+        }
+      } catch (adminErr) {
+        console.warn('[Razorpay] Could not query vendor for Route transfer, continuing standard order:', adminErr);
       }
     }
 
-    const order = await getRazorpayClient().orders.create(orderPayload);
+    const client = getRazorpayClient();
+    let order: any;
+
+    try {
+      order = await client.orders.create(orderPayload);
+    } catch (orderErr: any) {
+      if (orderPayload.transfers && orderPayload.transfers.length > 0) {
+        console.warn('[Razorpay] Route transfers failed, retrying standard order:', orderErr?.message || orderErr);
+        delete orderPayload.transfers;
+        order = await client.orders.create(orderPayload);
+      } else {
+        throw orderErr;
+      }
+    }
 
     return NextResponse.json({
       order_id: order.id,

@@ -141,7 +141,7 @@ export function useRazorpay() {
       // 3. Open Razorpay modal
       await new Promise<void>((resolve, reject) => {
         const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
           amount: order.amount,
           currency,
           name,

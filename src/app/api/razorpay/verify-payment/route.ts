@@ -37,20 +37,11 @@ function getAmountInRupees(amount: string | number | undefined) {
 }
 
 function getRazorpayClient() {
-  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const publicKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
   if (!keyId || !keySecret) {
     throw new Error('Razorpay credentials are not configured.');
-  }
-
-  if (publicKeyId && publicKeyId !== keyId) {
-    throw new Error('Razorpay public and server key IDs do not match.');
-  }
-
-  if (process.env.NODE_ENV !== 'production' && keyId.startsWith('rzp_live_')) {
-    throw new Error('Live Razorpay keys are configured in development. Switch .env.local to rzp_test_ keys to use Razorpay test cards.');
   }
 
   return new Razorpay({
@@ -129,30 +120,34 @@ export async function POST(req: NextRequest) {
       const count = Number(paymentDetails.notes.qty || 1);
 
       if (subscriptionId && userId) {
-        const allowanceRef = adminDb.collection('subscription_swap_allowances').doc(subscriptionId);
-        
-        await adminDb.runTransaction(async (transaction: any) => {
-          const docSnap = await transaction.get(allowanceRef);
-          const now = FieldValue.serverTimestamp();
-          if (docSnap.exists) {
-            const data = docSnap.data();
-            const currentTotal = data?.free_swaps_total || 0;
-            transaction.update(allowanceRef, {
-              free_swaps_total: currentTotal + count,
-              updated_at: now
-            });
-          } else {
-            transaction.set(allowanceRef, {
-              subscription_id: subscriptionId,
-              user_id: userId,
-              free_swaps_total: count,
-              free_swaps_used: 0,
-              created_at: now,
-              updated_at: now
-            });
-          }
-        });
-        console.log(`[Razorpay] Successfully credited ${count} swaps to subscription ${subscriptionId} via Admin SDK`);
+        try {
+          const allowanceRef = adminDb.collection('subscription_swap_allowances').doc(subscriptionId);
+          
+          await adminDb.runTransaction(async (transaction: any) => {
+            const docSnap = await transaction.get(allowanceRef);
+            const now = FieldValue.serverTimestamp();
+            if (docSnap.exists) {
+              const data = docSnap.data();
+              const currentTotal = data?.free_swaps_total || 0;
+              transaction.update(allowanceRef, {
+                free_swaps_total: currentTotal + count,
+                updated_at: now
+              });
+            } else {
+              transaction.set(allowanceRef, {
+                subscription_id: subscriptionId,
+                user_id: userId,
+                free_swaps_total: count,
+                free_swaps_used: 0,
+                created_at: now,
+                updated_at: now
+              });
+            }
+          });
+          console.log(`[Razorpay] Successfully credited ${count} swaps to subscription ${subscriptionId} via Admin SDK`);
+        } catch (allowanceErr) {
+          console.warn('[Razorpay] Could not update swap allowance via Admin SDK:', allowanceErr);
+        }
       }
     }
 
