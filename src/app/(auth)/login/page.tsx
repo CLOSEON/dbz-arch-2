@@ -15,7 +15,7 @@ import {
 } from '@/lib/queries/users';
 import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 // ─── Step Types ──────────────────────────────────────────────────────────────
 
@@ -288,39 +288,30 @@ export default function LoginPage() {
     }
   };
 
-  // ─── RENDER (Customer / User Portal: Gold/Amber Theme) ─────────────────────
+  // ─── RENDER (Customer / User Portal: Clean Layout) ────────────────────────
 
   return (
-    <div
-      className="min-h-screen flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans"
-      style={{
-        background: 'radial-gradient(ellipse 90% 55% at 50% -5%, rgba(245, 158, 11, 0.18) 0%, rgba(255, 251, 235, 0.85) 50%, #FAF8F5 100%)',
-      }}
-    >
-      {/* Subtle Ambient Lighting Orbs */}
-      <div className="absolute top-0 right-1/4 w-72 h-72 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-60 h-60 rounded-full bg-orange-500/10 blur-2xl pointer-events-none" />
-
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans">
       {/* ── Main Content Area ── */}
       <div className="w-full max-w-md mx-auto my-auto relative z-10 flex flex-col">
         
-        {/* ── Brand Header ── */}
+        {/* ── Prominent Brand Logo Header ── */}
         <div className="flex flex-col items-center mb-8 animate-fade-in text-center">
           <div className="flex justify-center">
             <Image
               src="/logo-main-text.png"
               alt="Dabzzo"
-              width={260}
-              height={70}
+              width={340}
+              height={95}
               priority
               unoptimized
-              className="h-12 sm:h-14 w-auto object-contain"
+              className="h-16 sm:h-20 w-auto object-contain drop-shadow-xs"
             />
           </div>
         </div>
 
         {/* ── Elevated Form Container ── */}
-        <div className="bg-white/90 backdrop-blur-xl border border-amber-100/90 rounded-3xl p-7 shadow-[0_12px_36px_rgba(217,119,6,0.08)]">
+        <div className="bg-white border border-slate-100 rounded-3xl p-7 shadow-[0_12px_36px_rgba(0,0,0,0.04)]">
           {/* ── STEP 1: Phone Input ───────────────────────────────────────── */}
           {step === 'phone' && (
             <form onSubmit={handleSendOTP} className="w-full space-y-5 animate-fade-in">
@@ -328,7 +319,7 @@ export default function LoginPage() {
                 <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block mb-2 ml-1">
                   Mobile Number
                 </label>
-                <div className="flex items-center bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:bg-white focus-within:border-brand focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300">
+                <div className="flex items-center bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:bg-white focus-within:border-[#E68A00] focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300">
                   <span className="text-base font-black text-slate-500 select-none mr-3">+91</span>
                   <div className="w-px h-5 bg-slate-200 mr-3" />
                   <input
@@ -347,7 +338,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || phone.length !== 10}
-                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
               >
                 {loading ? (
                   <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -376,7 +367,7 @@ export default function LoginPage() {
                   type="text"
                   inputMode="numeric"
                   placeholder="------"
-                  className="w-full text-center text-3xl font-black py-4 bg-slate-50/80 border-2 border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 tracking-[0.35em] text-slate-900"
+                  className="w-full text-center text-3xl font-black py-4 bg-slate-50/80 border-2 border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#E68A00] focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 tracking-[0.35em] text-slate-900"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
                   autoComplete="one-time-code"
@@ -386,7 +377,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || otp.length < OTP_LENGTH}
-                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
               >
                 {loading ? (
                   <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -416,7 +407,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleResend}
                   disabled={resendTimer > 0 || loading}
-                  className="text-xs font-bold text-brand hover:text-brand-650 transition-colors disabled:text-slate-300"
+                  className="text-xs font-bold text-[#E68A00] hover:text-[#D97706] transition-colors disabled:text-slate-300"
                 >
                   {resendTimer > 0 ? `Resend code in ${resendTimer}s` : 'Resend code'}
                 </button>
@@ -434,7 +425,7 @@ export default function LoginPage() {
                 <input
                   type="text"
                   placeholder="Your Name"
-                  className="w-full bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 text-base font-bold outline-none focus:bg-white focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
+                  className="w-full bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 text-base font-bold outline-none focus:bg-white focus:border-[#E68A00] focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
@@ -444,7 +435,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || !name.trim()}
-                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-4 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-4 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
               >
                 {loading ? (
                   <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />

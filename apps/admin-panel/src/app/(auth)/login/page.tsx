@@ -178,16 +178,7 @@ export default function AdminLoginPage() {
   // ─── RENDER (Admin Operations Console: Slate Dark Theme) ──────────────────
 
   return (
-    <div
-      className="min-h-screen flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans"
-      style={{
-        background: 'radial-gradient(ellipse 90% 55% at 50% -5%, rgba(15, 23, 42, 0.12) 0%, rgba(241, 245, 249, 0.85) 50%, #F8FAFC 100%)',
-      }}
-    >
-      {/* Ambient Lighting Orbs */}
-      <div className="absolute top-0 right-1/4 w-72 h-72 rounded-full bg-slate-400/15 blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-60 h-60 rounded-full bg-slate-900/10 blur-2xl pointer-events-none" />
-
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans">
       {/* ── Main Content Area ── */}
       <div className="w-full max-w-md mx-auto my-auto relative z-10 flex flex-col">
         
@@ -197,17 +188,17 @@ export default function AdminLoginPage() {
             <Image
               src="/logo-main-text.png"
               alt="Dabzzo"
-              width={260}
-              height={70}
+              width={340}
+              height={95}
               priority
               unoptimized
-              className="h-12 sm:h-14 w-auto object-contain"
+              className="h-16 sm:h-20 w-auto object-contain drop-shadow-xs"
             />
           </div>
         </div>
 
         {/* ── Elevated Form Container ── */}
-        <div className="bg-white/90 backdrop-blur-xl border border-slate-200 rounded-3xl p-7 shadow-[0_12px_36px_rgba(15,23,42,0.08)]">
+        <div className="bg-white border border-slate-100 rounded-3xl p-7 shadow-[0_12px_36px_rgba(0,0,0,0.04)]">
           {/* ── STEP 1: Phone Input ───────────────────────────────────────── */}
           {step === 'phone' && (
             <form onSubmit={handleSendOTP} className="w-full space-y-5 animate-fade-in">
