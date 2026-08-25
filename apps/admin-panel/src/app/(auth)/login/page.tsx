@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
-import { signInWithGoogle, isSuperadminEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
+import { signInWithGoogle, isSuperadminEmail, extractUserEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
 import { resolveUserProfile } from '@/lib/queries/users';
 import type { User } from 'firebase/auth';
 
@@ -34,14 +34,14 @@ export default function AdminLoginPage() {
 
   const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
-      const email = (firebaseUser.email || '').toLowerCase().trim();
+      const email = extractUserEmail(firebaseUser);
       const isSuper = isSuperadminEmail(email);
 
       let profile: any = null;
       try {
         const res = await resolveUserProfile(
           firebaseUser.uid,
-          email,
+          email || null,
           firebaseUser.displayName,
           firebaseUser.photoURL,
         );
@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
       }
 
       if (!profile || (profile.role !== 'admin' && !isSuper)) {
-        addToast('Access denied. Admin accounts only.', 'error');
+        addToast(`Access denied. Account (${email || 'No email'}) is not an admin.`, 'error');
         const { signOut } = await import('@/lib/auth');
         await signOut();
         return;

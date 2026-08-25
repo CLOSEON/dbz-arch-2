@@ -10,9 +10,29 @@ import { Capacitor } from '@capacitor/core';
 
 export const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
 
+export function normalizeEmail(e: string): string {
+  const clean = e.toLowerCase().trim();
+  const [local, domain] = clean.split('@');
+  if (!domain) return clean;
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return local.replace(/\./g, '') + '@gmail.com';
+  }
+  return clean;
+}
+
 export function isSuperadminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return email.toLowerCase().trim() === SUPERADMIN_EMAIL.toLowerCase().trim();
+  return normalizeEmail(email) === normalizeEmail(SUPERADMIN_EMAIL);
+}
+
+export function extractUserEmail(user: User | null | undefined): string {
+  if (!user) return '';
+  return (
+    user.email ||
+    user.providerData?.[0]?.email ||
+    (user as any).reloadUserInfo?.email ||
+    ''
+  );
 }
 
 // ─── Return Types ─────────────────────────────────────────────────────────────
