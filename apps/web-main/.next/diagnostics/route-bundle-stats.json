@@ -115,7 +115,7 @@
   },
   {
     "route": "/login",
-    "firstLoadUncompressedJsBytes": 1305763,
+    "firstLoadUncompressedJsBytes": 1305608,
     "firstLoadChunkPaths": [
       ".next/static/chunks/0y8r90f38bvq_.js",
       ".next/static/chunks/07fxglkru40.~.js",
@@ -127,7 +127,7 @@
       ".next/static/chunks/10dlco-3uvp4e.js",
       ".next/static/chunks/0fgxxoe48xpy9.js",
       ".next/static/chunks/0v0y7_hl5vzz7.js",
-      ".next/static/chunks/0ph9tk36nq3ye.js",
+      ".next/static/chunks/0ontd90n5imcm.js",
       ".next/static/chunks/0fry8scm1cwir.js",
       ".next/static/chunks/019_g0j1xdm63.js",
       ".next/static/chunks/0o_urckcz21w_.js",
