@@ -1,459 +1,270 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
-import { sendOtp, verifyOtp, cleanupAuth } from '@/lib/auth';
-import type { SendOtpResult } from '@/lib/auth';
-import {
-  resolveUserProfile,
-  formatPhoneE164,
-  isTestAccount,
-  completeOnboarding,
-} from '@/lib/queries/users';
+import { signInWithGoogle, signInWithApple, signInWithFacebook } from '@/lib/auth';
+import { resolveUserProfile, completeOnboarding } from '@/lib/queries/users';
 import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
+import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
 
-// ─── Step Types ──────────────────────────────────────────────────────────────
+type AuthStep = 'social' | 'phone-capture';
 
-type AuthStep = 'phone' | 'otp' | 'onboarding';
+// SVG provider icons
+const GoogleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>
+);
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+const AppleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+  </svg>
+);
 
-const OTP_LENGTH = 6;
-const RESEND_COOLDOWN = 30; // seconds
+const FacebookIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
+    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+  </svg>
+);
 
 export default function LoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
   const addToast = useUiStore((s) => s.addToast);
 
-  // ─── State ─────────────────────────────────────────────────────────────────
-  const [step, setStep] = useState<AuthStep>('phone');
+  const [step, setStep] = useState<AuthStep>('social');
+  const [loading, setLoading] = useState<'google' | 'apple' | 'facebook' | null>(null);
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [name, setName] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('user');
-  const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [prefillName, setPrefillName] = useState('');
+  const [prefillEmail, setPrefillEmail] = useState<string | null>(null);
+  const [prefillPhoto, setPrefillPhoto] = useState<string | null>(null);
+  const [savingPhone, setSavingPhone] = useState(false);
 
-  // Firebase auth confirmation / verificationId
-  const [verificationId, setVerificationId] = useState<string | null>(null);
-
-  // For onboarding step: track uid & phone
-  const [newUserId, setNewUserId] = useState<string | null>(null);
-  const [newUserPhone, setNewUserPhone] = useState<string | null>(null);
-  const [isExistingUserMissingName, setIsExistingUserMissingName] = useState(false);
-
-  const otpInputRef = useRef<HTMLInputElement>(null);
-
-  // ─── Cleanup on unmount ────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      cleanupAuth();
-    };
-  }, []);
-
-  // ─── Read query params on mount ────────────────────────────────────────────
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const r = params.get('role');
-      if (r === 'vendor' || r === 'delivery' || r === 'user' || r === 'admin') {
-        setSelectedRole(r as UserRole);
-      }
-      const p = params.get('phone');
-      if (p) {
-        const cleanPhone = p.replace(/\D/g, '').slice(-10);
-        if (cleanPhone.length === 10) {
-          setPhone(cleanPhone);
-        }
-      }
-    }
-  }, []);
-
-  // ─── Resend timer ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (resendTimer <= 0) return;
-    const interval = setInterval(() => {
-      setResendTimer((t) => (t <= 1 ? 0 : t - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [resendTimer]);
-
-  // ─── Auto-focus OTP input ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (step === 'otp') {
-      setTimeout(() => otpInputRef.current?.focus(), 100);
-    }
-  }, [step]);
-
-  // ─── Route user after successful auth ──────────────────────────────────────
-  const routeToRole = useCallback((role: string) => {
-    if (role === 'admin') {
-      router.replace('/admin/dashboard');
-      return;
-    }
-    const paths: Record<string, string> = {
-      vendor: '/dashboard',
-      delivery: '/dashboard',
-      customer: '/dashboard',
-      user: '/dashboard',
-    };
-    router.replace(paths[role] || '/dashboard');
-  }, [router]);
-
-  // ─── Handle successful Firebase user ───────────────────────────────────────
-  const handleAuthSuccess = useCallback(async (firebaseUser: any) => {
-    const e164 = formatPhoneE164(phone);
-
+  // ── After social sign-in succeeds ──────────────────────────────────────────
+  const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
-      const tokenResult = await firebaseUser.getIdTokenResult(true);
-      const { auth } = await import('@/lib/firebase');
-      await auth.authStateReady();
+      const email = firebaseUser.email;
+      const displayName = firebaseUser.displayName;
+      const photoURL = firebaseUser.photoURL;
 
       const { user: profile, isNewUser } = await resolveUserProfile(
         firebaseUser.uid,
-        firebaseUser.phoneNumber || e164
+        email,
+        displayName,
+        photoURL,
       );
 
-      const isAdmin = Boolean(tokenResult?.claims?.admin || profile?.role === 'admin');
-      const finalRole: UserRole = isAdmin ? 'admin' : (profile.role || 'user');
-      const finalProfile = { ...profile, role: finalRole };
-
-      if (isNewUser) {
-        setNewUserId(firebaseUser.uid);
-        setNewUserPhone(firebaseUser.phoneNumber || e164);
-        if (profile.role) {
-          setSelectedRole(finalRole);
-          setIsExistingUserMissingName(true);
-          addToast('Welcome back! Please tell us your name 👋', 'info');
-        } else {
-          setIsExistingUserMissingName(false);
-          addToast('Welcome to Dabzzo! Set up your profile 🎉', 'success');
-        }
-        setStep('onboarding');
+      if (!isNewUser) {
+        setUser(profile);
+        addToast(`Welcome back, ${profile.name || 'Foodie'}! 🎉`, 'success');
+        try { await migrateSubscriptions(firebaseUser.uid); } catch {}
+        const paths: Record<string, string> = {
+          admin: '/admin/dashboard',
+          vendor: '/dashboard',
+          delivery: '/dashboard',
+          user: '/dashboard',
+        };
+        router.replace(paths[profile.role] || '/dashboard');
         return;
       }
 
-      setUser(finalProfile);
-      addToast(`Welcome back, ${profile.name || 'Foodie'}! 🎉`, 'success');
-
-      try {
-        await migrateSubscriptions(firebaseUser.uid);
-      } catch (migErr) {
-        console.warn('[Login] Subscription migration skipped/failed:', migErr);
-      }
-
-      routeToRole(finalRole);
+      // New user — capture phone number
+      setPendingUser(firebaseUser);
+      setPrefillName(displayName || '');
+      setPrefillEmail(email || null);
+      setPrefillPhoto(photoURL || null);
+      setStep('phone-capture');
     } catch (err: any) {
-      console.error('[Login] Profile resolution error:', err);
-      addToast(err.message || 'Login failed during profile resolution', 'error');
+      addToast(err.message || 'Sign-in failed. Please try again.', 'error');
     }
-  }, [phone, addToast, setUser, routeToRole]);
+  }, [setUser, addToast, router]);
 
-  // ─── Step 1: Send OTP ─────────────────────────────────────────────────────
-  const handleSendOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (phone.length !== 10) {
-      addToast('Enter a valid 10-digit mobile number', 'warning');
-      return;
-    }
-
-    setLoading(true);
+  // ── Social provider buttons ────────────────────────────────────────────────
+  const handleGoogle = async () => {
+    setLoading('google');
     try {
-      const e164 = formatPhoneE164(phone);
-      const result: SendOtpResult = await sendOtp(e164);
-
-      if (!result.success) {
-        addToast(result.error || 'Failed to send OTP. Try again.', 'error');
-        return;
-      }
-
-      if ('verificationId' in result) {
-        setVerificationId(result.verificationId);
-        setStep('otp');
-        setResendTimer(RESEND_COOLDOWN);
-        addToast('OTP sent successfully!', 'success');
-      }
-    } catch (err: any) {
-      console.error('[Login] Send OTP error:', err);
-      addToast(err.message || 'Failed to send verification code', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ─── Step 2: Verify OTP ───────────────────────────────────────────────────
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp.length < OTP_LENGTH) {
-      addToast(`Enter the complete ${OTP_LENGTH}-digit OTP`, 'warning');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await verifyOtp(verificationId || '', otp.trim());
-
-      if (!result.success || !result.user) {
-        addToast(result.error || 'Invalid verification code', 'error');
-        return;
-      }
-
+      const result = await signInWithGoogle();
+      if (!result.success) { addToast(result.error, 'error'); return; }
       await handleAuthSuccess(result.user);
-    } catch (err: any) {
-      console.error('[Login] Verify OTP error:', err);
-      addToast(err.message || 'Verification failed. Try again.', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(null); }
   };
 
-  // ─── Step 3: Complete Onboarding ──────────────────────────────────────────
-  const handleOnboarding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      addToast('Please enter your name', 'warning');
-      return;
-    }
-    if (!newUserId) return;
-
-    setLoading(true);
+  const handleApple = async () => {
+    setLoading('apple');
     try {
-      let vendorDetails: any = undefined;
-      if (selectedRole === 'vendor') {
-        const stored = localStorage.getItem('pending_vendor_onboarding');
-        if (stored) {
-          try {
-            vendorDetails = JSON.parse(stored);
-            localStorage.removeItem('pending_vendor_onboarding');
-          } catch (err) {
-            console.error('Failed to parse pending vendor details:', err);
-          }
-        }
-      }
+      const result = await signInWithApple();
+      if (!result.success) { addToast(result.error, 'error'); return; }
+      await handleAuthSuccess(result.user);
+    } finally { setLoading(null); }
+  };
 
+  const handleFacebook = async () => {
+    setLoading('facebook');
+    try {
+      const result = await signInWithFacebook();
+      if (!result.success) { addToast(result.error, 'error'); return; }
+      await handleAuthSuccess(result.user);
+    } finally { setLoading(null); }
+  };
+
+  // ── Phone capture & onboarding ──────────────────────────────────────────────
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (phone.length !== 10) { addToast('Enter a valid 10-digit number', 'warning'); return; }
+    if (!pendingUser) return;
+
+    setSavingPhone(true);
+    try {
       const user = await completeOnboarding(
-        newUserId,
-        newUserPhone || formatPhoneE164(phone),
-        name.trim(),
-        selectedRole,
-        vendorDetails
+        pendingUser.uid,
+        `+91${phone}`,
+        prefillName || 'User',
+        'user' as UserRole,
+        prefillEmail,
+        prefillPhoto,
       );
       setUser(user);
-
-      if (selectedRole === 'vendor') {
-        addToast('Kitchen registered successfully! Awaiting admin approval.', 'success');
-      } else {
-        addToast(`Welcome to Dabzzo, ${name}! 🎉`, 'success');
-      }
-
-      routeToRole(user.role);
+      addToast(`Welcome to Dabzzo, ${user.name || 'Foodie'}! 🎉`, 'success');
+      router.replace('/dashboard');
     } catch (err: any) {
-      console.error('[Login] Onboarding error:', err);
       addToast(err.message || 'Setup failed. Try again.', 'error');
     } finally {
-      setLoading(false);
+      setSavingPhone(false);
     }
   };
 
-  // ─── Resend OTP ────────────────────────────────────────────────────────────
-  const handleResend = async () => {
-    if (resendTimer > 0 || loading) return;
-    setOtp('');
-    setVerificationId(null);
-    cleanupAuth();
-
-    setLoading(true);
-    try {
-      const e164 = formatPhoneE164(phone);
-      const result = await sendOtp(e164);
-      if (!result.success) {
-        addToast(result.error || 'Resend failed', 'error');
-        return;
-      }
-      if ('verificationId' in result) {
-        setVerificationId(result.verificationId);
-        setResendTimer(RESEND_COOLDOWN);
-        addToast('New OTP sent!', 'success');
-      }
-    } catch (err: any) {
-      addToast(err.message || 'Resend failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ─── RENDER (Customer / User Portal: Clean Layout) ────────────────────────
+  const isAnyLoading = loading !== null;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans">
-      {/* ── Main Content Area ── */}
-      <div className="w-full max-w-md mx-auto my-auto relative z-10 flex flex-col">
-        
-        {/* ── Prominent Brand Logo Header ── */}
-        <div className="flex flex-col items-center mb-8 animate-fade-in text-center">
-          <div className="flex justify-center">
-            <Image
-              src="/logo-main-text.png"
-              alt="Dabzzo"
-              width={340}
-              height={95}
-              priority
-              unoptimized
-              className="h-16 sm:h-20 w-auto object-contain drop-shadow-xs"
-            />
-          </div>
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center px-6 py-10 font-sans">
+      <div className="w-full max-w-md mx-auto flex flex-col">
+
+        {/* ── Logo ── */}
+        <div className="flex justify-center mb-10">
+          <Image
+            src="/logo-main-text.png"
+            alt="Dabzzo"
+            width={340}
+            height={95}
+            priority
+            unoptimized
+            className="h-16 sm:h-20 w-auto object-contain"
+          />
         </div>
 
-        {/* ── Elevated Form Container ── */}
-        <div className="bg-white border border-slate-100 rounded-3xl p-7 shadow-[0_12px_36px_rgba(0,0,0,0.04)]">
-          {/* ── STEP 1: Phone Input ───────────────────────────────────────── */}
-          {step === 'phone' && (
-            <form onSubmit={handleSendOTP} className="w-full space-y-5 animate-fade-in">
-              <div className="relative">
+        {/* ── Card ── */}
+        <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-[0_12px_36px_rgba(0,0,0,0.05)]">
+
+          {/* ── STEP 1: Social Sign-in ── */}
+          {step === 'social' && (
+            <div className="space-y-4 animate-fade-in">
+              <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-widest mb-6">
+                Sign in to continue
+              </p>
+
+              {/* Google */}
+              <button
+                onClick={handleGoogle}
+                disabled={isAnyLoading}
+                className="w-full flex items-center gap-3 bg-white border-2 border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold text-sm py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading === 'google'
+                  ? <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin" />
+                  : <GoogleIcon />}
+                <span className="flex-1 text-center">Continue with Google</span>
+              </button>
+
+              {/* Apple */}
+              <button
+                onClick={handleApple}
+                disabled={isAnyLoading}
+                className="w-full flex items-center gap-3 bg-black hover:bg-slate-900 text-white font-semibold text-sm py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading === 'apple'
+                  ? <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  : <AppleIcon />}
+                <span className="flex-1 text-center">Continue with Apple</span>
+              </button>
+
+              {/* Facebook */}
+              <button
+                onClick={handleFacebook}
+                disabled={isAnyLoading}
+                className="w-full flex items-center gap-3 bg-[#1877F2] hover:bg-[#166fe5] text-white font-semibold text-sm py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading === 'facebook'
+                  ? <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  : <FacebookIcon />}
+                <span className="flex-1 text-center">Continue with Facebook</span>
+              </button>
+            </div>
+          )}
+
+          {/* ── STEP 2: Phone Capture ── */}
+          {step === 'phone-capture' && (
+            <form onSubmit={handlePhoneSubmit} className="space-y-5 animate-fade-in">
+              {prefillPhoto && (
+                <div className="flex justify-center mb-2">
+                  <img src={prefillPhoto} alt={prefillName} className="w-14 h-14 rounded-full ring-2 ring-brand/20 object-cover" />
+                </div>
+              )}
+              <div className="text-center mb-4">
+                <p className="text-base font-bold text-slate-800">
+                  Hi, {prefillName || 'there'} 👋
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  One last step — your number helps riders reach you
+                </p>
+              </div>
+
+              <div>
                 <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block mb-2 ml-1">
                   Mobile Number
                 </label>
-                <div className="flex items-center bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:bg-white focus-within:border-[#E68A00] focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300">
-                  <span className="text-base font-black text-slate-500 select-none mr-3">+91</span>
+                <div className="flex items-center bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:bg-white focus-within:border-[#E68A00] focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300">
+                  <span className="text-base font-black text-slate-400 select-none mr-3">+91</span>
                   <div className="w-px h-5 bg-slate-200 mr-3" />
                   <input
                     type="tel"
                     inputMode="numeric"
                     maxLength={10}
-                    placeholder="Enter 10 digit number"
-                    className="w-full bg-transparent text-base font-bold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-medium"
+                    placeholder="10 digit number"
+                    autoFocus
+                    className="w-full bg-transparent text-base font-bold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    autoFocus
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || phone.length !== 10}
-                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
+                disabled={savingPhone || phone.length !== 10}
+                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 hover:bg-[#D97706]"
               >
-                {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                ) : (
-                  <>
-                    <span>Continue to Dabzzo</span>
-                    <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-                  </>
-                )}
+                {savingPhone
+                  ? <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  : <><span>Get Started</span><ArrowRight className="w-4 h-4" strokeWidth={2.5} /></>}
               </button>
             </form>
           )}
-
-          {/* ── STEP 2: OTP Verification ──────────────────────────────────── */}
-          {step === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="w-full space-y-5 animate-fade-in">
-              <div className="text-center mb-2">
-                <p className="text-xs font-medium text-slate-500">
-                  Code sent to <span className="text-slate-900 font-bold">+91 {phone}</span>
-                </p>
-              </div>
-
-              <div className="relative">
-                <input
-                  ref={otpInputRef}
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="------"
-                  className="w-full text-center text-3xl font-black py-4 bg-slate-50/80 border-2 border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#E68A00] focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 tracking-[0.35em] text-slate-900"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
-                  autoComplete="one-time-code"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || otp.length < OTP_LENGTH}
-                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                ) : (
-                  <>
-                    <span>Verify Code</span>
-                    <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-                  </>
-                )}
-              </button>
-
-              <div className="flex items-center justify-center gap-4 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('phone');
-                    setOtp('');
-                    setVerificationId(null);
-                    cleanupAuth();
-                  }}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                  Edit number
-                </button>
-                <div className="w-1 h-1 rounded-full bg-slate-300" />
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={resendTimer > 0 || loading}
-                  className="text-xs font-bold text-[#E68A00] hover:text-[#D97706] transition-colors disabled:text-slate-300"
-                >
-                  {resendTimer > 0 ? `Resend code in ${resendTimer}s` : 'Resend code'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* ── STEP 3: Onboarding ────────────────────────────────────────── */}
-          {step === 'onboarding' && (
-            <form onSubmit={handleOnboarding} className="w-full space-y-5 animate-fade-in">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block ml-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Your Name"
-                  className="w-full bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 text-base font-bold outline-none focus:bg-white focus:border-[#E68A00] focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || !name.trim()}
-                className="w-full bg-[#E68A00] text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-4 shadow-lg shadow-[#E68A00]/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#D97706]"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                ) : (
-                  isExistingUserMissingName ? 'Save Profile' : 'Complete Setup'
-                )}
-              </button>
-            </form>
-          )}
-
         </div>
-        
+
         {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-[11px] text-slate-400 font-medium">
-            Dabzzo • Fresh Home Cooked Tiffins • <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Terms & Privacy</span>
-          </p>
-        </div>
+        <p className="mt-8 text-center text-[11px] text-slate-400 font-medium">
+          Dabzzo · Fresh Home Cooked Tiffins ·{' '}
+          <span className="underline decoration-slate-300 underline-offset-2 cursor-pointer hover:text-slate-600">Terms & Privacy</span>
+        </p>
 
       </div>
     </div>

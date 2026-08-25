@@ -87,9 +87,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (!existingUser || existingUser.id !== activeUser.uid) {
             setUser({
               id: activeUser.uid,
+              email: activeUser.email || undefined,
+              name: activeUser.displayName || '',
               phone: activeUser.phoneNumber || '',
-              name: '',
-              role: 'user'
+              role: 'user',
             });
           }
 

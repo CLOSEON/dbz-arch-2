@@ -1,3 +1,0 @@
-module.exports=[65818,a=>{"use strict";var b=a.i(61303);a.i(27214);var c=a.i(34286),c=c,d=a.i(24894),e=c;async function f(a){try{let f=(0,c.aX)(b.db,"users",a.userId,"notifications");return await (0,d.addDoc)(f,{title:a.title,message:a.message,type:a.type,read:!1,created_at:e.av.now()}),console.log(`[SMS Alert Sent] To ${a.phone}: "${a.title} - ${a.message}"`),{success:!0}}catch(a){return console.error("[Notification Alert Failed]",a),{success:!1,error:a.message}}}a.s(["sendNotificationAlert",0,f],65818)}];
-
-//# sourceMappingURL=0niy_applications_Webapp_DBZARCH2_apps_rider-panel_src_lib_notifications_ts_07flr0t._.js.map

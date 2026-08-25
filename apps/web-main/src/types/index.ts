@@ -5,16 +5,17 @@ export type UserRole = 'user' | 'vendor' | 'delivery' | 'admin';
 export interface AppUser {
   id: string;          // Firebase Auth UID
   name: string;
-  phone: string;       // PRIMARY — 10-digit, always set
+  phone: string;       // 10-digit, required for on-ground operations (set during onboarding)
   role: UserRole;
-  email?: string;      // Optional — admins only
-  image?: string;
+  email?: string;      // Provided from social auth (Google, Apple, Facebook)
+  image?: string;      // Profile photo from social provider
+  is_superadmin?: boolean; // Only closeon.st@gmail.com
   is_approved?: boolean;
   is_rejected?: boolean;
   push_tokens?: string[];
-  location?: { lat: number; lng: number; updated_at: number }; // For live tracking
+  location?: { lat: number; lng: number; updated_at: number };
   address?: string;
-  deliveryPreference?: '8am' | '11am'; // For lunch delivery slot
+  deliveryPreference?: '8am' | '11am';
   // Vendor-specific
   kitchen_name?: string;
   bio?: string;
@@ -37,8 +38,8 @@ export interface AppUser {
   review_count?: number;
   rating_avg?: number;
   subscriberCount?: number;
-  capacity?: number; // max tiffin capacity, null for unlimited
-  capacityUnlimited?: boolean; // true if vendor chooses no limit
+  capacity?: number;
+  capacityUnlimited?: boolean;
   // Razorpay Route (Settlements)
   rzp_account_id?: string;
   bank_details?: {
@@ -46,7 +47,7 @@ export interface AppUser {
     ifsc: string;
     beneficiary_name: string;
   };
-  platform_fee_pct?: number; // Configurable commission % (default 10)
+  platform_fee_pct?: number;
   // Partner Verification
   verification_status?: 'pending' | 'details_requested' | 'verified' | 'rejected';
   admin_note?: string;
