@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
@@ -13,7 +14,7 @@ import { db } from '@/lib/firebase';
 import { VendorCard } from '@/components/vendor/VendorCard';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { LocationSheet, type SelectedLocation } from '@/components/shared/LocationSheet';
+import type { SelectedLocation } from '@/components/shared/LocationSheet';
 import type { Vendor } from '@/types';
 import {
   Search,
@@ -26,6 +27,12 @@ import {
   RefreshCw,
   ChefHat,
 } from 'lucide-react';
+
+// Dynamic import for heavy LocationSheet to cut critical bundle weight & blocking time
+const LocationSheet = dynamic(
+  () => import('@/components/shared/LocationSheet').then((m) => m.LocationSheet),
+  { ssr: false }
+);
 
 /* ─── Data ─────────────────────────────────────────────────────── */
 
@@ -77,62 +84,80 @@ export default function UserDashboard() {
   const [activeSubs, setActiveSubs] = useState<any[]>([]);
   const [activeDelivery, setActiveDelivery] = useState<any>(null);
 
+  // Defer Firestore real-time subscriptions off critical rendering path
   useEffect(() => {
     if (!user) return;
 
-    // Listen to active subscriptions
-    const qSubs = query(
-      collection(db, 'subscriptions'),
-      where('user_id', '==', user.id),
-      where('status', '==', 'active')
-    );
-    const unsubSubs = onSnapshot(qSubs, (snap) => {
-      setActiveSubs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    let unsubSubs = () => {};
+    let unsubOrders = () => {};
+    let unsubDeliveries = () => {};
 
-    // Listen to today's active delivery order
-    const ACTIVE_STATUSES = ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery'];
-    let ordersList: any[] = [];
-    let deliveryOrdersList: any[] = [];
+    const timer = setTimeout(() => {
+      // Listen to active subscriptions
+      const qSubs = query(
+        collection(db, 'subscriptions'),
+        where('user_id', '==', user.id),
+        where('status', '==', 'active')
+      );
+      unsubSubs = onSnapshot(qSubs, (snap) => {
+        setActiveSubs(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      });
 
-    const updateActiveDelivery = () => {
-      const allActive = [...ordersList, ...deliveryOrdersList];
-      if (allActive.length > 0) {
-        const priorityOrder: Record<string, number> = {
-          out_for_delivery: 1,
-          picked_up: 2,
-          ready: 3,
-          preparing: 4,
-          pending: 5,
-        };
-        allActive.sort((a, b) => (priorityOrder[a.status] || 9) - (priorityOrder[b.status] || 9));
-        setActiveDelivery(allActive[0]);
-      } else {
-        setActiveDelivery(null);
-      }
-    };
+      // Listen to today's active delivery order
+      const ACTIVE_STATUSES = ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery'];
+      let ordersList: any[] = [];
+      let deliveryOrdersList: any[] = [];
 
-    const qOrders = query(
-      collection(db, 'orders'),
-      where('user_id', '==', user.id),
-      where('status', 'in', ACTIVE_STATUSES)
-    );
-    const unsubOrders = onSnapshot(qOrders, (snap) => {
-      ordersList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      updateActiveDelivery();
-    }, (err) => console.warn('Dashboard orders listener warning:', err.message));
+      const updateActiveDelivery = () => {
+        const allActive = [...ordersList, ...deliveryOrdersList];
+        if (allActive.length > 0) {
+          const priorityOrder: Record<string, number> = {
+            out_for_delivery: 1,
+            picked_up: 2,
+            ready: 3,
+            preparing: 4,
+            pending: 5,
+          };
+          allActive.sort(
+            (a, b) => (priorityOrder[a.status] || 9) - (priorityOrder[b.status] || 9)
+          );
+          setActiveDelivery(allActive[0]);
+        } else {
+          setActiveDelivery(null);
+        }
+      };
 
-    const qDeliveries = query(
-      collection(db, 'delivery_orders'),
-      where('customerId', '==', user.id),
-      where('status', 'in', ACTIVE_STATUSES)
-    );
-    const unsubDeliveries = onSnapshot(qDeliveries, (snap) => {
-      deliveryOrdersList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      updateActiveDelivery();
-    }, (err) => console.warn('Dashboard delivery_orders listener warning:', err.message));
+      const qOrders = query(
+        collection(db, 'orders'),
+        where('user_id', '==', user.id),
+        where('status', 'in', ACTIVE_STATUSES)
+      );
+      unsubOrders = onSnapshot(
+        qOrders,
+        (snap) => {
+          ordersList = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          updateActiveDelivery();
+        },
+        (err) => console.warn('Dashboard orders listener warning:', err.message)
+      );
+
+      const qDeliveries = query(
+        collection(db, 'delivery_orders'),
+        where('customerId', '==', user.id),
+        where('status', 'in', ACTIVE_STATUSES)
+      );
+      unsubDeliveries = onSnapshot(
+        qDeliveries,
+        (snap) => {
+          deliveryOrdersList = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          updateActiveDelivery();
+        },
+        (err) => console.warn('Dashboard delivery_orders listener warning:', err.message)
+      );
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       unsubSubs();
       unsubOrders();
       unsubDeliveries();
@@ -146,12 +171,22 @@ export default function UserDashboard() {
       const raw = await getApprovedVendors();
       const countMap: Record<string, number> = {};
       try {
-        const snap = await getDocs(query(collection(db, 'subscriptions'), where('status', '==', 'active')));
-        snap.forEach((d) => { const s = d.data(); if (s.vendor_id) countMap[s.vendor_id] = (countMap[s.vendor_id] ?? 0) + 1; });
-      } catch { /* subscription permission fallback */ }
+        const snap = await getDocs(
+          query(collection(db, 'subscriptions'), where('status', '==', 'active'))
+        );
+        snap.forEach((d) => {
+          const s = d.data();
+          if (s.vendor_id) countMap[s.vendor_id] = (countMap[s.vendor_id] ?? 0) + 1;
+        });
+      } catch {
+        /* subscription permission fallback */
+      }
       setVendors(raw.map((v) => ({ ...v, subscriberCount: countMap[v.id] ?? 0 })));
-    } catch { addToast('Failed to load vendors', 'error'); }
-    finally  { setLoading(false); }
+    } catch {
+      addToast('Failed to load kitchens', 'error');
+    } finally {
+      setLoading(false);
+    }
   }, [addToast, setVendors]);
 
   useEffect(() => {
@@ -163,7 +198,11 @@ export default function UserDashboard() {
     let list = [...vendors];
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter((v) => v.name.toLowerCase().includes(q) || (v.cuisine_type ?? '').toLowerCase().includes(q));
+      list = list.filter(
+        (v) =>
+          v.name.toLowerCase().includes(q) ||
+          (v.cuisine_type ?? '').toLowerCase().includes(q)
+      );
     }
     if (category !== 'all') {
       list = list.filter((v) => (v.cuisine_type ?? '').toLowerCase().includes(category));
@@ -193,25 +232,18 @@ export default function UserDashboard() {
           }}
         >
           {/* ── 2D Geometric Graphics & Vector Accents ── */}
-          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden select-none">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden select-none"
+          >
             {/* Top-Right Large 2D Concentric Circles */}
-            <div
-              className="absolute -right-16 -top-16 w-72 h-72 rounded-full border-2 border-white/15"
-            />
-            <div
-              className="absolute -right-8 -top-8 w-56 h-56 rounded-full bg-white/10"
-            />
-            <div
-              className="absolute right-4 top-4 w-32 h-32 rounded-full border border-white/20"
-            />
+            <div className="absolute -right-16 -top-16 w-72 h-72 rounded-full border-2 border-white/15" />
+            <div className="absolute -right-8 -top-8 w-56 h-56 rounded-full bg-white/10" />
+            <div className="absolute right-4 top-4 w-32 h-32 rounded-full border border-white/20" />
 
             {/* Bottom-Left 2D Circles & Arc */}
-            <div
-              className="absolute -left-12 bottom-6 w-48 h-48 rounded-full border-2 border-white/10"
-            />
-            <div
-              className="absolute -left-6 bottom-12 w-32 h-32 rounded-full bg-white/8"
-            />
+            <div className="absolute -left-12 bottom-6 w-48 h-48 rounded-full border-2 border-white/10" />
+            <div className="absolute -left-6 bottom-12 w-32 h-32 rounded-full bg-white/8" />
 
             {/* Subtle 2D Decorative Dots & Vector Accents */}
             <div className="absolute left-8 top-28 flex flex-col gap-2 opacity-25">
@@ -228,26 +260,38 @@ export default function UserDashboard() {
             </div>
 
             <div className="absolute right-12 bottom-20 opacity-20">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"
+                  fill="white"
+                />
               </svg>
             </div>
           </div>
 
           <div className="relative z-10 px-5 sm:px-6">
-
             {/* ── Top bar ── */}
             <div className="mb-6 flex items-center justify-between">
-
-              {/* Location — opens full sheet */}
+              {/* Location — opens dynamic sheet */}
               <button
                 type="button"
                 aria-label="Select delivery location"
                 onClick={() => setLocationOpen(true)}
                 className="flex items-center gap-1.5 rounded-full border border-white/30 bg-black/15 py-2 pl-3 pr-3.5 text-white transition-all duration-200 hover:bg-black/25 active:scale-95 backdrop-blur-md shadow-xs"
               >
-                <LocationIcon className="h-3.5 w-3.5 shrink-0 text-amber-200" strokeWidth={2.5} />
-                <span className="max-w-[130px] truncate text-[12.5px] font-bold leading-none">{locationDisplay}</span>
+                <LocationIcon
+                  className="h-3.5 w-3.5 shrink-0 text-amber-200"
+                  strokeWidth={2.5}
+                />
+                <span className="max-w-[130px] truncate text-[12.5px] font-bold leading-none">
+                  {locationDisplay}
+                </span>
                 <ChevronDown className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2.5} />
               </button>
 
@@ -293,7 +337,9 @@ export default function UserDashboard() {
                 className="font-black leading-[1.08] tracking-[-0.025em] text-white"
                 style={{ fontSize: 'clamp(28px, 8vw, 36px)' }}
               >
-                Fresh Home Tiffins<br />Delivered Daily.
+                Fresh Home Tiffins
+                <br />
+                Delivered Daily.
               </h1>
             </div>
 
@@ -303,7 +349,9 @@ export default function UserDashboard() {
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Live Delivery Status</span>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                      Live Delivery Status
+                    </span>
                   </div>
                   <span className="text-[9.5px] font-bold text-white/50 uppercase">Today</span>
                 </div>
@@ -327,14 +375,18 @@ export default function UserDashboard() {
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Subscription Active</span>
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
+                      Subscription Active
+                    </span>
                   </div>
                   <span className="text-[9.5px] font-bold text-white/50 uppercase">
                     {activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}
                   </span>
                 </div>
                 <p className="text-white font-bold text-base leading-tight">
-                  {activeSubs[0].meal_type ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions` : 'Daily Meals'}
+                  {activeSubs[0].meal_type
+                    ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions`
+                    : 'Daily Meals'}
                 </p>
                 <p className="text-slate-400 text-xs mt-1">
                   Your kitchen meals are scheduled and tracking automatically.
@@ -362,14 +414,12 @@ export default function UserDashboard() {
               </div>
             )}
           </div>
-
         </section>
 
         {/* ════════════════════════════════════════
             BODY — Clean Slate Canvas
         ════════════════════════════════════════ */}
         <div className="px-5 pb-8 sm:px-6">
-
           {/* ── Search Bar ── */}
           <div className="group relative -mt-7 mb-5">
             <div className="pointer-events-none absolute left-4.5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-brand">
@@ -388,7 +438,10 @@ export default function UserDashboard() {
               {search ? (
                 <button
                   aria-label="Clear search"
-                  onClick={() => { setSearch(''); searchRef.current?.focus(); }}
+                  onClick={() => {
+                    setSearch('');
+                    searchRef.current?.focus();
+                  }}
                   className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-500 transition-all duration-200 hover:bg-rose-100 active:scale-95"
                 >
                   <X className="h-3.5 w-3.5" strokeWidth={2.4} />
@@ -398,7 +451,11 @@ export default function UserDashboard() {
           </div>
 
           {/* ── Cuisine Category Pills ── */}
-          <div role="group" aria-label="Filter by cuisine" className="-mx-5 mb-5 flex gap-2 overflow-x-auto px-5 pb-1 scrollbar-none">
+          <div
+            role="group"
+            aria-label="Filter by cuisine"
+            className="-mx-5 mb-5 flex gap-2 overflow-x-auto px-5 pb-1 scrollbar-none"
+          >
             {CATEGORIES.map((cat) => {
               const active = category === cat.value;
               return (
@@ -436,7 +493,10 @@ export default function UserDashboard() {
               <h2 className="text-[18px] font-black tracking-tight text-slate-900">
                 Nearest Kitchens
               </h2>
-              <div className="mt-1 h-[3px] w-8 rounded-full" style={{ background: '#E68A00' }} />
+              <div
+                className="mt-1 h-[3px] w-8 rounded-full"
+                style={{ background: '#E68A00' }}
+              />
             </div>
             {!loading && (
               <button
@@ -456,14 +516,26 @@ export default function UserDashboard() {
             <SkeletonList count={3} hasImage />
           ) : filtered.length === 0 ? (
             <EmptyState
-              icon={<div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 border border-orange-100"><ChefHat className="w-9 h-9 text-brand stroke-[1.5]" /></div>}
+              icon={
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 border border-orange-100">
+                  <ChefHat className="w-9 h-9 text-brand stroke-[1.5]" />
+                </div>
+              }
               title="No kitchens found"
-              description={search ? `No kitchens matching "${search}". Try searching for another keyword.` : 'Try selecting a different category above.'}
+              description={
+                search
+                  ? `No kitchens matching "${search}". Try searching for another keyword.`
+                  : 'Try selecting a different category above.'
+              }
             />
           ) : (
             <div className="space-y-3.5">
               {filtered.map((v, i) => (
-                <div key={v.id} className="animate-slide-up-soft" style={{ animationDelay: `${Math.min(i, 5) * 50}ms` }}>
+                <div
+                  key={v.id}
+                  className="animate-slide-up-soft"
+                  style={{ animationDelay: `${Math.min(i, 5) * 50}ms` }}
+                >
                   <VendorCard vendor={v} />
                 </div>
               ))}
@@ -472,12 +544,14 @@ export default function UserDashboard() {
         </div>
       </div>
 
-      {/* ── Location bottom sheet ── */}
-      <LocationSheet
-        isOpen={locationOpen}
-        onClose={() => setLocationOpen(false)}
-        onSelect={handleLocationSelect}
-      />
+      {/* ── Location bottom sheet (Loaded dynamically only when opened) ── */}
+      {locationOpen && (
+        <LocationSheet
+          isOpen={locationOpen}
+          onClose={() => setLocationOpen(false)}
+          onSelect={handleLocationSelect}
+        />
+      )}
     </div>
   );
 }

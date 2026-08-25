@@ -2,18 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: 'export',
+  compress: true,
   transpilePackages: ["@dabzzo/shared-auth", "@dabzzo/shared-ui"],
   images: {
     unoptimized: true,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'firebasestorage.googleapis.com',
-      },
-    ],
   },
   reactStrictMode: true,
-  poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns', 'framer-motion'],
+  },
 };
 
 export default nextConfig;

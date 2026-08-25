@@ -20,7 +20,7 @@
       "jsx",
       "js"
     ],
-    "poweredByHeader": false,
+    "poweredByHeader": true,
     "compress": true,
     "images": {
       "deviceSizes": [
@@ -63,12 +63,7 @@
           "search": ""
         }
       ],
-      "remotePatterns": [
-        {
-          "protocol": "https",
-          "hostname": "firebasestorage.googleapis.com"
-        }
-      ],
+      "remotePatterns": [],
       "qualities": [
         75
       ],
@@ -229,6 +224,7 @@
       "optimizePackageImports": [
         "lucide-react",
         "date-fns",
+        "framer-motion",
         "lodash-es",
         "ramda",
         "antd",

@@ -41,13 +41,7 @@
         "search": ""
       }
     ],
-    "remotePatterns": [
-      {
-        "protocol": "https",
-        "hostname": "^(?:^(?:firebasestorage\\.googleapis\\.com)$)$",
-        "pathname": "^(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)\\/?)$"
-      }
-    ],
+    "remotePatterns": [],
     "qualities": [
       75
     ],

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  compress: true,
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -16,6 +17,9 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns', 'framer-motion'],
+  },
   async headers() {
     return [
       {
