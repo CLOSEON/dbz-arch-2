@@ -224,6 +224,7 @@ self.__SERVER_FILES_MANIFEST={
       "optimizePackageImports": [
         "lucide-react",
         "date-fns",
+        "framer-motion",
         "lodash-es",
         "ramda",
         "antd",

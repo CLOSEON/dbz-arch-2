@@ -29,7 +29,7 @@
         "**/node_modules/**"
       ],
       "cleanUrls": true,
-      "trailingSlash": true,
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/razorpay/**",
@@ -76,7 +76,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         },
@@ -85,16 +85,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/**/",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         }
@@ -109,7 +100,7 @@
         "**/node_modules/**"
       ],
       "cleanUrls": true,
-      "trailingSlash": true,
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/razorpay/**",
@@ -156,7 +147,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         },
@@ -165,16 +156,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/**/",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         }
@@ -189,7 +171,7 @@
         "**/node_modules/**"
       ],
       "cleanUrls": true,
-      "trailingSlash": true,
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/razorpay/**",
@@ -236,7 +218,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         },
@@ -245,16 +227,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/**/",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         }
@@ -269,7 +242,7 @@
         "**/node_modules/**"
       ],
       "cleanUrls": true,
-      "trailingSlash": true,
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/razorpay/**",
@@ -316,7 +289,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         },
@@ -325,16 +298,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/**/",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         }
@@ -349,7 +313,7 @@
         "**/node_modules/**"
       ],
       "cleanUrls": true,
-      "trailingSlash": true,
+      "trailingSlash": false,
       "rewrites": [
         {
           "source": "/api/razorpay/**",
@@ -396,7 +360,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         },
@@ -405,16 +369,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
-            }
-          ]
-        },
-        {
-          "source": "/**/",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "public, max-age=0, must-revalidate"
             }
           ]
         }

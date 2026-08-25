@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: 'export',
+  compress: true,
   transpilePackages: ["@dabzzo/shared-auth", "@dabzzo/shared-ui"],
   images: {
     unoptimized: true,
@@ -18,6 +19,9 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns', 'framer-motion'],
+  },
   webpack: (config) => {
     config.ignoreWarnings = [
       { module: /node_modules\/@protobufjs\/inquire/ },
