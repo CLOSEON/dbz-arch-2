@@ -15,6 +15,7 @@ import {
 } from '@/lib/queries/users';
 import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 // ─── Step Types ──────────────────────────────────────────────────────────────
 
@@ -287,53 +288,66 @@ export default function LoginPage() {
     }
   };
 
-  // ─── RENDER (Classic Clean UI) ─────────────────────────────────────────────
+  // ─── RENDER (Customer / User Portal: Gold/Amber Theme) ─────────────────────
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative overflow-hidden font-sans">
-      
-      {/* ── Minimalist Curved Top Section ── */}
-      <div className="absolute top-0 left-0 w-full h-[45vh] bg-white rounded-b-[40px] shadow-[0_4px_40px_rgba(0,0,0,0.03)] z-0" />
+    <div
+      className="min-h-screen flex flex-col justify-between px-6 py-10 relative overflow-hidden font-sans"
+      style={{
+        background: 'radial-gradient(ellipse 90% 55% at 50% -5%, rgba(245, 158, 11, 0.18) 0%, rgba(255, 251, 235, 0.85) 50%, #FAF8F5 100%)',
+      }}
+    >
+      {/* Subtle Ambient Lighting Orbs */}
+      <div className="absolute top-0 right-1/4 w-72 h-72 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 left-1/4 w-60 h-60 rounded-full bg-orange-500/10 blur-2xl pointer-events-none" />
 
       {/* ── Main Content Area ── */}
-      <div className="flex-1 flex flex-col relative z-10 px-6 pt-12 pb-8">
+      <div className="w-full max-w-md mx-auto my-auto relative z-10 flex flex-col">
         
-        <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-center">
+        {/* ── Typographic Brand Header ── */}
+        <div className="flex flex-col items-center mb-8 animate-fade-in text-center">
           
-          {/* Logo & Header */}
-          <div className="flex flex-col items-center mb-10 animate-fade-in text-center">
-            <div className="w-24 h-24 bg-white rounded-[2rem] flex items-center justify-center shadow-lg shadow-slate-200/50 mb-6 p-4 border border-slate-100">
-              <Image
-                src="/icon.png"
-                alt="Dabzzo"
-                width={72}
-                height={72}
-                priority
-                unoptimized
-                className="object-contain"
-              />
-            </div>
-
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-              Welcome to Dabzzo
-            </h1>
-            <p className="text-base font-medium text-slate-500">
-              {step === 'phone'
-                ? 'Premium meal subscriptions'
-                : step === 'otp'
-                ? 'Verify your number'
-                : 'Complete your profile'}
-            </p>
+          {/* Brand Logo Wordmark (Transparent, No Box) */}
+          <div className="mb-3 flex justify-center">
+            <Image
+              src="/logo-main-text.png"
+              alt="Dabzzo"
+              width={260}
+              height={70}
+              priority
+              unoptimized
+              className="h-13 sm:h-15 w-auto object-contain drop-shadow-xs"
+            />
           </div>
 
+          {/* Sub-Brand Pill Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-100/90 border border-amber-300 shadow-xs mb-3">
+            <Sparkles className="w-3.5 h-3.5 text-amber-700 stroke-[2.2]" />
+            <span className="text-[11px] font-black text-amber-950 uppercase tracking-[0.2em] leading-none">
+              Daily Meal Subscriptions
+            </span>
+          </div>
+
+          {/* Context Subtitle */}
+          <p className="text-sm font-medium text-slate-600 max-w-[300px] leading-relaxed">
+            {step === 'phone'
+              ? 'Healthy homestyle tiffins & meals delivered daily to your door'
+              : step === 'otp'
+              ? 'Enter the 6-digit code sent to your mobile'
+              : 'Complete your profile setup'}
+          </p>
+        </div>
+
+        {/* ── Elevated Form Container ── */}
+        <div className="bg-white/90 backdrop-blur-xl border border-amber-100/90 rounded-3xl p-7 shadow-[0_12px_36px_rgba(217,119,6,0.08)]">
           {/* ── STEP 1: Phone Input ───────────────────────────────────────── */}
           {step === 'phone' && (
-            <form onSubmit={handleSendOTP} className="w-full space-y-6 animate-fade-in">
+            <form onSubmit={handleSendOTP} className="w-full space-y-5 animate-fade-in">
               <div className="relative">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2 ml-1">
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block mb-2 ml-1">
                   Mobile Number
                 </label>
-                <div className="flex items-center bg-white border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:border-brand focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.1)] transition-all duration-300 shadow-sm">
+                <div className="flex items-center bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 focus-within:bg-white focus-within:border-brand focus-within:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300">
                   <span className="text-base font-black text-slate-500 select-none mr-3">+91</span>
                   <div className="w-px h-5 bg-slate-200 mr-3" />
                   <input
@@ -341,7 +355,7 @@ export default function LoginPage() {
                     inputMode="numeric"
                     maxLength={10}
                     placeholder="Enter 10 digit number"
-                    className="w-full bg-transparent text-base font-bold text-slate-900 outline-none placeholder:text-slate-300 placeholder:font-medium"
+                    className="w-full bg-transparent text-base font-bold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-medium"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     autoFocus
@@ -352,12 +366,15 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || phone.length !== 10}
-                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
               >
                 {loading ? (
-                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
-                  'Continue'
+                  <>
+                    <span>Continue to Dabzzo</span>
+                    <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                  </>
                 )}
               </button>
             </form>
@@ -365,10 +382,10 @@ export default function LoginPage() {
 
           {/* ── STEP 2: OTP Verification ──────────────────────────────────── */}
           {step === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="w-full space-y-6 animate-fade-in">
+            <form onSubmit={handleVerifyOTP} className="w-full space-y-5 animate-fade-in">
               <div className="text-center mb-2">
-                <p className="text-sm font-medium text-slate-500">
-                  Enter the code sent to <span className="text-slate-900 font-bold">+91 {phone}</span>
+                <p className="text-xs font-medium text-slate-500">
+                  Code sent to <span className="text-slate-900 font-bold">+91 {phone}</span>
                 </p>
               </div>
 
@@ -378,7 +395,7 @@ export default function LoginPage() {
                   type="text"
                   inputMode="numeric"
                   placeholder="------"
-                  className="w-full text-center text-[40px] font-bold py-5 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.1)] transition-all duration-300 tracking-[0.4em] text-slate-900 shadow-sm"
+                  className="w-full text-center text-3xl font-black py-4 bg-slate-50/80 border-2 border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 tracking-[0.35em] text-slate-900"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
                   autoComplete="one-time-code"
@@ -388,16 +405,19 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || otp.length < OTP_LENGTH}
-                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
               >
                 {loading ? (
-                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
-                  'Verify Code'
+                  <>
+                    <span>Verify Code</span>
+                    <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                  </>
                 )}
               </button>
 
-              <div className="flex items-center justify-center gap-6 pt-2">
+              <div className="flex items-center justify-center gap-4 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -406,16 +426,16 @@ export default function LoginPage() {
                     setVerificationId(null);
                     cleanupAuth();
                   }}
-                  className="text-sm font-bold text-slate-400 hover:text-slate-700 transition-colors"
+                  className="text-xs font-bold text-slate-400 hover:text-slate-700 transition-colors"
                 >
                   Edit number
                 </button>
-                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                <div className="w-1 h-1 rounded-full bg-slate-300" />
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={resendTimer > 0 || loading}
-                  className="text-sm font-bold text-brand hover:text-brand-650 transition-colors disabled:text-slate-300"
+                  className="text-xs font-bold text-brand hover:text-brand-650 transition-colors disabled:text-slate-300"
                 >
                   {resendTimer > 0 ? `Resend code in ${resendTimer}s` : 'Resend code'}
                 </button>
@@ -426,63 +446,27 @@ export default function LoginPage() {
           {/* ── STEP 3: Onboarding ────────────────────────────────────────── */}
           {step === 'onboarding' && (
             <form onSubmit={handleOnboarding} className="w-full space-y-5 animate-fade-in">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block ml-1">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block ml-1">
                   Full Name
                 </label>
                 <input
                   type="text"
                   placeholder="Your Name"
-                  className="w-full bg-white border-2 border-slate-100 rounded-2xl px-5 py-4 text-lg font-bold outline-none focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.1)] transition-all duration-300 text-slate-900 shadow-sm placeholder:text-slate-300"
+                  className="w-full bg-slate-50/80 border-2 border-slate-100 rounded-2xl px-4 py-3.5 text-base font-bold outline-none focus:bg-white focus:border-brand focus:shadow-[0_0_0_4px_rgba(230,138,0,0.12)] transition-all duration-300 text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
                 />
               </div>
 
-              {!isExistingUserMissingName && (
-                <div className="pt-4">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-3 ml-1">
-                    Account Type
-                  </label>
-                  <div className="flex flex-col gap-3">
-                    {([
-                      { role: 'user' as UserRole, title: 'Customer', desc: 'Order and manage subscriptions' },
-                      { role: 'vendor' as UserRole, title: 'Vendor', desc: 'List and sell meals' },
-                      { role: 'delivery' as UserRole, title: 'Delivery', desc: 'Deliver orders' },
-                    ]).map(({ role, title, desc }) => (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setSelectedRole(role)}
-                        className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-[0.99] ${
-                          selectedRole === role
-                            ? 'border-brand bg-brand/5 shadow-sm'
-                            : 'border-slate-100 bg-white hover:border-slate-200'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <p className={`font-bold text-base ${selectedRole === role ? 'text-brand' : 'text-slate-700'}`}>
-                            {title}
-                          </p>
-                          <p className="text-xs font-medium text-slate-500 mt-0.5">{desc}</p>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedRole === role ? 'border-brand' : 'border-slate-300'}`}>
-                          {selectedRole === role && <div className="w-2.5 h-2.5 bg-brand rounded-full" />}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <button
                 type="submit"
                 disabled={loading || !name.trim()}
-                className="w-full bg-brand text-white font-bold text-lg py-[18px] rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-6 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
+                className="w-full bg-brand text-white font-bold text-base py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center mt-4 shadow-lg shadow-brand/25 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-650"
               >
                 {loading ? (
-                  <div className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
                   isExistingUserMissingName ? 'Save Profile' : 'Complete Setup'
                 )}
@@ -493,9 +477,9 @@ export default function LoginPage() {
         </div>
         
         {/* Footer */}
-        <div className="mt-auto pt-8">
-          <p className="text-xs text-slate-400 font-medium text-center">
-            By continuing, you agree to our <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Terms</span> & <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Privacy</span>
+        <div className="mt-8 text-center">
+          <p className="text-[11px] text-slate-400 font-medium">
+            Dabzzo • Fresh Home Cooked Tiffins • <span className="font-bold underline decoration-slate-300 underline-offset-2 hover:text-slate-600 cursor-pointer">Terms & Privacy</span>
           </p>
         </div>
 
