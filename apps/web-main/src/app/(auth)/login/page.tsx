@@ -304,11 +304,9 @@ export default function LoginPage() {
       {/* ── Main Content Area ── */}
       <div className="w-full max-w-md mx-auto my-auto relative z-10 flex flex-col">
         
-        {/* ── Typographic Brand Header ── */}
+        {/* ── Brand Header ── */}
         <div className="flex flex-col items-center mb-8 animate-fade-in text-center">
-          
-          {/* Brand Logo Wordmark (Transparent, No Box) */}
-          <div className="mb-3 flex justify-center">
+          <div className="flex justify-center">
             <Image
               src="/logo-main-text.png"
               alt="Dabzzo"
@@ -316,26 +314,9 @@ export default function LoginPage() {
               height={70}
               priority
               unoptimized
-              className="h-13 sm:h-15 w-auto object-contain drop-shadow-xs"
+              className="h-12 sm:h-14 w-auto object-contain"
             />
           </div>
-
-          {/* Sub-Brand Pill Badge */}
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-100/90 border border-amber-300 shadow-xs mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-amber-700 stroke-[2.2]" />
-            <span className="text-[11px] font-black text-amber-950 uppercase tracking-[0.2em] leading-none">
-              Daily Meal Subscriptions
-            </span>
-          </div>
-
-          {/* Context Subtitle */}
-          <p className="text-sm font-medium text-slate-600 max-w-[300px] leading-relaxed">
-            {step === 'phone'
-              ? 'Healthy homestyle tiffins & meals delivered daily to your door'
-              : step === 'otp'
-              ? 'Enter the 6-digit code sent to your mobile'
-              : 'Complete your profile setup'}
-          </p>
         </div>
 
         {/* ── Elevated Form Container ── */}
