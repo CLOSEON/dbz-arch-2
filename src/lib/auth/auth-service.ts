@@ -1,49 +1,31 @@
 import {
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  PhoneAuthProvider,
-  signInWithCredential,
-  type ConfirmationResult,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
   type User,
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { Capacitor } from '@capacitor/core';
-import { isTestAccount } from '@/lib/queries/users';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Superadmin Seed ─────────────────────────────────────────────────────────
 
-const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
+export const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
 
-// ─── Return Types ────────────────────────────────────────────────────────────
+// ─── Return Types ─────────────────────────────────────────────────────────────
 
-export interface WebOtpSentResult {
+export interface SocialAuthResult {
   success: true;
-  verificationId: string;
-}
-
-export interface NativeAutoVerifiedResult {
-  success: true;
-  autoVerified: true;
   user: User;
 }
 
-export interface NativeCodeSentResult {
-  success: true;
-  autoVerified: false;
-  verificationId: string;
-}
-
-export interface OtpErrorResult {
+export interface AuthErrorResult {
   success: false;
   error: string;
   code?: string;
 }
 
-export type SendOtpResult =
-  | WebOtpSentResult
-  | NativeAutoVerifiedResult
-  | NativeCodeSentResult
-  | OtpErrorResult;
+export type SignInResult = SocialAuthResult | AuthErrorResult;
 
 export interface VerifyOtpResult {
   success: boolean;
@@ -51,122 +33,25 @@ export interface VerifyOtpResult {
   error?: string;
 }
 
-// ─── Internal State ──────────────────────────────────────────────────────────
-
-let _recaptchaVerifier: RecaptchaVerifier | null = null;
-let _confirmationResult: ConfirmationResult | null = null;
-
-// ─── Platform Detection ──────────────────────────────────────────────────────
-
-const isNative = Capacitor.isNativePlatform();
-
-// ─── reCAPTCHA Setup & Web Implementation (Stable Singleton) ──────────────────
-
-function getOrCreateRecaptcha(): RecaptchaVerifier {
-  if (typeof window === 'undefined') {
-    throw new Error('reCAPTCHA is only supported in browser environment.');
-  }
-
-  // Ensure DOM container exists
-  let container = document.getElementById('firebase-recaptcha-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'firebase-recaptcha-container';
-    document.body.appendChild(container);
-  }
-
-  // Reuse existing singleton if already initialized
-  if (_recaptchaVerifier) {
-    return _recaptchaVerifier;
-  }
-
-  _recaptchaVerifier = new RecaptchaVerifier(auth, container, {
-    size: 'invisible',
-    callback: () => {
-      console.log('[Auth] reCAPTCHA solved');
-    },
-    'expired-callback': () => {
-      console.warn('[Auth] reCAPTCHA expired, resetting verifier');
-      cleanupAuth();
-    },
-  });
-
-  return _recaptchaVerifier;
+// Keep legacy types for any code still importing them
+export interface WebOtpSentResult {
+  success: true;
+  verificationId: string;
 }
+export type SendOtpResult = WebOtpSentResult | AuthErrorResult;
 
-async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
-  console.log('[Auth] Starting Web OTP flow for:', phoneNumber);
+// ─── Error Mapping ────────────────────────────────────────────────────────────
 
-  try {
-    const verifier = getOrCreateRecaptcha();
-
-    // Trigger Phone Auth
-    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-
-    console.log('[Auth] Web: OTP sent successfully');
-    return {
-      success: true,
-      verificationId: '_web_confirmation',
-    };
-  } catch (err: any) {
-    console.error('[Auth] Web OTP Error:', err);
-
-    // On failure, reset verifier so next attempt gets a fresh instance
-    cleanupAuth();
-
-    if (err.code === 'auth/too-many-requests') {
-      return {
-        success: false,
-        error: 'Too many OTP attempts. Please wait a few minutes before trying again.',
-        code: err.code,
-      };
-    }
-    if (err.code === 'auth/invalid-app-credential' || err.code === 'auth/captcha-check-failed') {
-      return {
-        success: false,
-        error: 'Security verification failed for this domain. Please ensure domain is whitelisted or refresh the page.',
-        code: err.code,
-      };
-    }
-
-    return mapFirebaseError(err);
-  }
-}
-
-// ─── Cleanup ─────────────────────────────────────────────────────────────────
-
-export function cleanupAuth(): void {
-  if (_recaptchaVerifier) {
-    try {
-      _recaptchaVerifier.clear();
-    } catch {
-      // ignore clear error
-    }
-    _recaptchaVerifier = null;
-  }
-  const oldContainer = document.getElementById('firebase-recaptcha-container');
-  if (oldContainer) {
-    oldContainer.innerHTML = '';
-  }
-  _confirmationResult = null;
-}
-
-// ─── Error Mapping ───────────────────────────────────────────────────────────
-
-function mapFirebaseError(err: any): OtpErrorResult {
+function mapFirebaseError(err: any): AuthErrorResult {
   const code = err?.code || '';
   const map: Record<string, string> = {
-    'auth/invalid-phone-number': 'Invalid phone number. Please check and try again.',
-    'auth/too-many-requests': 'Too many attempts. Please wait a few minutes before trying again.',
-    'auth/quota-exceeded': 'SMS quota exceeded. Please try again later.',
-    'auth/captcha-check-failed': 'Security verification failed. Please refresh and try again.',
-    'auth/missing-phone-number': 'Phone number is required.',
-    'auth/invalid-verification-code': 'Invalid OTP code. Please check and try again.',
-    'auth/code-expired': 'OTP has expired. Please request a new one.',
-    'auth/session-expired': 'Session expired. Please request a new OTP.',
+    'auth/popup-closed-by-user':   'Sign-in was cancelled.',
+    'auth/popup-blocked':          'Pop-up was blocked. Please allow pop-ups for this site.',
+    'auth/cancelled-popup-request':'Another sign-in is in progress.',
+    'auth/account-exists-with-different-credential': 'An account already exists with this email using a different sign-in method.',
     'auth/network-request-failed': 'Network error. Please check your connection.',
-    'auth/app-not-authorized': 'This app is not authorized for phone auth. Check Firebase config.',
-    'auth/missing-client-identifier': 'reCAPTCHA verification required. Please try again.',
+    'auth/too-many-requests':      'Too many attempts. Please wait a few minutes.',
+    'auth/user-disabled':          'This account has been disabled.',
   };
 
   return {
@@ -176,90 +61,118 @@ function mapFirebaseError(err: any): OtpErrorResult {
   };
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
+// ─── Native Social Auth (Capacitor) ──────────────────────────────────────────
 
-export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
-  // Test accounts fast-path
-  if (isTestAccount(phoneNumber)) {
-    console.log('[Auth] Test account detected. Skipping reCAPTCHA/SMS.');
-  }
-
-  if (isNative) {
-    return sendOtpNative(phoneNumber);
-  }
-  return sendOtpWeb(phoneNumber);
-}
-
-export async function verifyOtp(
-  verificationId: string,
-  otpCode: string
-): Promise<VerifyOtpResult> {
-  if (isNative) {
-    return verifyOtpNative(verificationId, otpCode);
-  }
-  return verifyOtpWeb(otpCode);
-}
-
-// ─── Web Verify ──────────────────────────────────────────────────────────────
-
-async function verifyOtpWeb(otpCode: string): Promise<VerifyOtpResult> {
-  if (!_confirmationResult) {
-    return {
-      success: false,
-      error: 'No active OTP request found. Please request a new OTP.',
-    };
-  }
-
+async function signInNativeGoogle(): Promise<SignInResult> {
   try {
-    const result = await _confirmationResult.confirm(otpCode);
-    cleanupAuth();
-    return { success: true, user: result.user };
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithGoogle();
+    if (!result.credential?.idToken) throw new Error('No ID token received.');
+    const { GoogleAuthProvider: GAP, signInWithCredential } = await import('firebase/auth');
+    const credential = GAP.credential(result.credential.idToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
   } catch (err: any) {
-    console.error('[Auth] Web verify error:', err);
-    return {
-      success: false,
-      error:
-        err.code === 'auth/invalid-verification-code'
-          ? 'Invalid OTP. Please check the code and try again.'
-          : err.code === 'auth/code-expired'
-          ? 'OTP has expired. Please request a new one.'
-          : err.message || 'Verification failed.',
-    };
-  }
-}
-
-// ─── Native Implementation (Capacitor SMS Retriever) ──────────────────────────
-
-async function sendOtpNative(phoneNumber: string): Promise<SendOtpResult> {
-  console.log('[Auth] Starting Native OTP flow for:', phoneNumber);
-
-  try {
-    const verifier = getOrCreateRecaptcha();
-    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-    return {
-      success: true,
-      autoVerified: false,
-      verificationId: '_native_confirmation',
-    };
-  } catch (err: any) {
-    console.error('[Auth] Native OTP Error:', err);
-    cleanupAuth();
     return mapFirebaseError(err);
   }
 }
 
-async function verifyOtpNative(
-  verificationId: string,
-  otpCode: string
-): Promise<VerifyOtpResult> {
-  return verifyOtpWeb(otpCode);
+async function signInNativeApple(): Promise<SignInResult> {
+  try {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithApple();
+    if (!result.credential?.idToken) throw new Error('No ID token received.');
+    const { OAuthProvider: OAP, signInWithCredential } = await import('firebase/auth');
+    const provider = new OAP('apple.com');
+    const credential = provider.credential({
+      idToken: result.credential.idToken,
+      rawNonce: result.credential.nonce,
+    });
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
+  } catch (err: any) {
+    return mapFirebaseError(err);
+  }
+}
+
+async function signInNativeFacebook(): Promise<SignInResult> {
+  try {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithFacebook();
+    if (!result.credential?.accessToken) throw new Error('No access token received.');
+    const { FacebookAuthProvider: FAP, signInWithCredential } = await import('firebase/auth');
+    const credential = FAP.credential(result.credential.accessToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
+  } catch (err: any) {
+    return mapFirebaseError(err);
+  }
+}
+
+// ─── Web Social Auth (Popup) ─────────────────────────────────────────────────
+
+async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider): Promise<SignInResult> {
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return { success: true, user: result.user };
+  } catch (err: any) {
+    return mapFirebaseError(err);
+  }
+}
+
+// ─── Public Social Auth API ──────────────────────────────────────────────────
+
+export async function signInWithGoogle(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeGoogle();
+  const provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return signInWebPopup(provider);
+}
+
+export async function signInWithFacebook(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeFacebook();
+  const provider = new FacebookAuthProvider();
+  provider.addScope('email');
+  provider.addScope('public_profile');
+  return signInWebPopup(provider);
+}
+
+export async function signInWithApple(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeApple();
+  const provider = new OAuthProvider('apple.com');
+  provider.addScope('email');
+  provider.addScope('name');
+  return signInWebPopup(provider);
+}
+
+// ─── Legacy Stubs (phone OTP — kept for Capacitor backward-compat if needed) ──
+// These are effectively disabled; they return an error to prevent accidental usage.
+
+export async function sendOtp(_phoneNumber: string): Promise<SendOtpResult> {
+  return {
+    success: false,
+    error: 'Phone OTP has been disabled. Please use Google, Facebook, or Apple sign-in.',
+  };
+}
+
+export async function verifyOtp(_verificationId: string, _otpCode: string): Promise<VerifyOtpResult> {
+  return {
+    success: false,
+    error: 'Phone OTP has been disabled. Please use social sign-in.',
+  };
+}
+
+export function cleanupAuth(): void {
+  // No-op: reCAPTCHA / phone auth removed
 }
 
 // ─── Sign Out ────────────────────────────────────────────────────────────────
 
-export async function signOut(): Promise<void> {
-  cleanupAuth();
+const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
 
+export async function signOut(): Promise<void> {
   if (auth.currentUser) {
     const token =
       typeof window !== 'undefined' ? localStorage.getItem(FCM_TOKEN_STORAGE_KEY) : null;
@@ -277,7 +190,7 @@ export async function signOut(): Promise<void> {
     }
   }
 
-  if (isNative) {
+  if (Capacitor.isNativePlatform()) {
     try {
       const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
       await FirebaseAuthentication.signOut();

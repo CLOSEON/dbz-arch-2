@@ -9,13 +9,15 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { 
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import type { AppUser, UserRole, Vendor } from '@/types';
+
+// ─── Superadmin Seed ─────────────────────────────────────────────────────────
+const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
+
+export function isSuperadminEmail(email: string | null | undefined): boolean {
+  return (email || '').toLowerCase().trim() === SUPERADMIN_EMAIL;
+}
 
 // ─── Module-level TTL cache ──────────────────────────────────────────────────
 // Prevents hammering Firestore with repeated full-collection reads on every
@@ -41,35 +43,30 @@ export function formatPhoneE164(phone: string): string {
 }
 
 export function isTestAccount(e164: string): boolean {
-  const TEST_NUMBERS = [
-    '+919000000001',
-    '+919000000002',
-    '+919000000003',
-    '+919000000004',
-    '+919930577000', // Added user test phone number
-    '+919900990011'  // Added new user test phone number
-  ];
-  if (TEST_NUMBERS.includes(e164)) return true;
-  // Treat any test prefix 90000xxxxx or 00000xxxxx as test accounts
-  if (e164.startsWith('+9190000') || e164.startsWith('+9100000')) return true;
+  // Legacy: only kept for any residual test code paths
   return false;
 }
 
-/** Resolve or Create a user profile in Firestore */
+/** Resolve or Create a user profile in Firestore (Social Auth) */
 export async function resolveUserProfile(
   uid: string,
-  phone: string
+  email: string | null,
+  displayName?: string | null,
+  photoURL?: string | null,
 ): Promise<{ user: AppUser; isNewUser: boolean }> {
   const userRef = doc(db, 'users', uid);
-  
+
   let userDoc: any;
   let retries = 3;
   while (retries > 0) {
     try {
       userDoc = await getDoc(userRef);
-      break; // Success
+      break;
     } catch (error: any) {
-      if ((error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) && retries > 1) {
+      if (
+        (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) &&
+        retries > 1
+      ) {
         console.warn(`[resolveUserProfile] Permission denied, retrying in 1s... (${retries - 1} left)`);
         retries--;
         await new Promise(r => setTimeout(r, 1000));
@@ -82,18 +79,56 @@ export async function resolveUserProfile(
   if (userDoc.exists()) {
     const data = userDoc.data() as Partial<AppUser>;
     if (data.is_rejected) throw new Error('Account rejected.');
-    
-    // Treat as new user (onboarding required) if missing name OR role
-    if (!data.name || data.name.trim() === '' || !data.role) {
-      return { user: { id: uid, ...data } as AppUser, isNewUser: true };
+
+    // Patch email/photo if missing from earlier sign-ins
+    const updates: Partial<AppUser> = {};
+    if (email && !data.email) updates.email = email;
+    if (photoURL && !data.image) updates.image = photoURL;
+    if (Object.keys(updates).length > 0) {
+      await updateDoc(userRef, { ...updates, updated_at: Timestamp.now() });
     }
 
-    return { user: { id: uid, ...data } as AppUser, isNewUser: false };
+    // Superadmin auto-elevate
+    if (isSuperadminEmail(email) && data.role !== 'admin') {
+      await updateDoc(userRef, { role: 'admin', is_approved: true, is_superadmin: true, verification_status: 'verified', updated_at: Timestamp.now() });
+      return { user: { id: uid, ...data, role: 'admin', is_approved: true, is_superadmin: true } as AppUser, isNewUser: false };
+    }
+
+    // Needs onboarding if missing phone or role
+    if (!data.phone || !data.role) {
+      return { user: { id: uid, ...data, ...updates } as AppUser, isNewUser: true };
+    }
+
+    return { user: { id: uid, ...data, ...updates } as AppUser, isNewUser: false };
   }
 
-  // Brand new user has no role defined yet so the frontend onboarding form renders the Account Type selector
+  // ── Brand new user from social sign-in ──
+  // Auto-elevate superadmin on first sign-in
+  if (isSuperadminEmail(email)) {
+    const superData: Partial<AppUser> = {
+      email: email!,
+      name: displayName || 'Superadmin',
+      image: photoURL || undefined,
+      role: 'admin',
+      is_approved: true,
+      is_superadmin: true,
+      verification_status: 'verified',
+      created_at: Timestamp.now() as any,
+    };
+    await setDoc(userRef, superData);
+    return { user: { id: uid, ...superData } as AppUser, isNewUser: false };
+  }
+
   return {
-    user: { id: uid, phone, name: '', is_approved: false, verification_status: 'pending' } as any,
+    user: {
+      id: uid,
+      email: email || undefined,
+      name: displayName || '',
+      image: photoURL || undefined,
+      phone: '',
+      is_approved: false,
+      verification_status: 'pending',
+    } as any,
     isNewUser: true,
   };
 }
@@ -103,6 +138,8 @@ export async function completeOnboarding(
   phone: string,
   name: string,
   role: UserRole,
+  email?: string | null,
+  image?: string | null,
   vendorDetails?: Partial<AppUser>
 ): Promise<AppUser> {
   const safeRole: UserRole = role === 'admin' ? 'user' : role;
@@ -119,24 +156,53 @@ export async function completeOnboarding(
     created_at: Timestamp.now() as any,
   };
 
+  if (email) userData.email = email;
+  if (image) userData.image = image;
+
   if (isVendorRole) {
     userData.kitchen_name = `${name}'s Kitchen`;
-    if (vendorDetails) {
-      Object.assign(userData, vendorDetails);
-    }
+    if (vendorDetails) Object.assign(userData, vendorDetails);
   }
 
   await setDoc(doc(db, 'users', uid), userData, { merge: true });
   return { id: uid, ...userData } as AppUser;
 }
 
-// ─── Missing Exports Re-added ───────────────────────────────────────────────
+// ─── Admin Role Management (Superadmin only) ──────────────────────────────────
 
+export async function grantAdminRole(targetUid: string, requestingUserEmail: string | null): Promise<void> {
+  if (!isSuperadminEmail(requestingUserEmail)) {
+    throw new Error('Only the Superadmin can grant admin roles.');
+  }
+  await updateDoc(doc(db, 'users', targetUid), {
+    role: 'admin',
+    is_approved: true,
+    verification_status: 'verified',
+    updated_at: Timestamp.now(),
+  });
+  invalidateUserCache();
+}
+
+export async function revokeAdminRole(targetUid: string, requestingUserEmail: string | null): Promise<void> {
+  if (!isSuperadminEmail(requestingUserEmail)) {
+    throw new Error('Only the Superadmin can revoke admin roles.');
+  }
+  await updateDoc(doc(db, 'users', targetUid), {
+    role: 'user',
+    is_approved: true,
+    verification_status: 'verified',
+    updated_at: Timestamp.now(),
+  });
+  invalidateUserCache();
+}
+
+// ─── Admin/Email Login (legacy, kept for console fallback) ──────────────────
 export async function loginWithEmailPassword(
   email: string,
   password: string
 ): Promise<AppUser> {
-  const { user: authUser } = await signInWithEmailAndPassword(auth, email, password);
+  const { signInWithEmailAndPassword: signIn } = await import('firebase/auth');
+  const { user: authUser } = await signIn(auth, email, password);
   const userDoc = await getDoc(doc(db, 'users', authUser.uid));
   if (!userDoc.exists()) throw new Error('Admin profile not found.');
   const data = userDoc.data() as Partial<AppUser>;
@@ -156,7 +222,13 @@ export async function getAllUsers(): Promise<AppUser[]> {
 }
 
 export async function setVendorApproval(id: string, approved: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', id), { is_approved: approved });
+  await updateDoc(doc(db, 'users', id), {
+    is_approved: approved,
+    verification_status: approved ? 'verified' : 'rejected',
+    is_rejected: !approved,
+    is_suspended: false,
+    updated_at: Timestamp.now(),
+  });
   invalidateUserCache();
 }
 
