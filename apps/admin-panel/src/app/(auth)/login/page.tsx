@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
-import { signInWithGoogle } from '@/lib/auth';
+import { signInWithGoogle, isSuperadminEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
 import { resolveUserProfile } from '@/lib/queries/users';
 import type { User } from 'firebase/auth';
 
@@ -21,23 +21,31 @@ const GoogleIcon = () => (
 export default function AdminLoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
+  const currentUser = useAuthStore((s) => s.user);
   const addToast = useUiStore((s) => s.addToast);
   const [loading, setLoading] = useState(false);
 
+  // If already authenticated as admin / superadmin, redirect to dashboard
+  useEffect(() => {
+    if (currentUser && (currentUser.role === 'admin' || isSuperadminEmail(currentUser.email))) {
+      router.replace('/admin/dashboard');
+    }
+  }, [currentUser, router]);
+
   const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
-      const { isSuperadminEmail, SUPERADMIN_EMAIL } = await import('@/lib/auth');
-      const isSuper = isSuperadminEmail(firebaseUser.email);
+      const email = (firebaseUser.email || '').toLowerCase().trim();
+      const isSuper = isSuperadminEmail(email);
 
-      let profile: any;
+      let profile: any = null;
       try {
-        const { user } = await resolveUserProfile(
+        const res = await resolveUserProfile(
           firebaseUser.uid,
-          firebaseUser.email,
+          email,
           firebaseUser.displayName,
           firebaseUser.photoURL,
         );
-        profile = user;
+        profile = res.user;
       } catch (e) {
         console.warn('resolveUserProfile fallback for superadmin:', e);
       }
@@ -46,12 +54,13 @@ export default function AdminLoginPage() {
         profile = {
           ...(profile || {}),
           id: firebaseUser.uid,
-          email: firebaseUser.email || SUPERADMIN_EMAIL,
+          email: email || SUPERADMIN_EMAIL,
           name: firebaseUser.displayName || profile?.name || 'Superadmin',
           image: firebaseUser.photoURL || profile?.image,
           role: 'admin',
           is_superadmin: true,
           is_approved: true,
+          verification_status: 'verified',
         };
       }
 
@@ -74,9 +83,16 @@ export default function AdminLoginPage() {
     setLoading(true);
     try {
       const result = await signInWithGoogle();
-      if (!result.success) { addToast(result.error, 'error'); return; }
+      if (!result.success) {
+        addToast(result.error, 'error');
+        return;
+      }
       await handleAuthSuccess(result.user);
-    } finally { setLoading(false); }
+    } catch (err: any) {
+      addToast(err.message || 'Login error occurred.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -100,10 +116,19 @@ export default function AdminLoginPage() {
             Admin Console
           </p>
 
-          <button onClick={handleGoogle} disabled={loading}
-            className="w-full flex items-center gap-3 bg-white hover:bg-slate-100 text-slate-800 font-semibold text-sm py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50">
-            {loading ? <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin" /> : <GoogleIcon />}
-            <span className="flex-1 text-center">Sign in with Google</span>
+          <button
+            onClick={handleGoogle}
+            disabled={loading}
+            className="w-full flex items-center gap-3 bg-white hover:bg-slate-100 text-slate-800 font-semibold text-sm py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
+          >
+            {loading ? (
+              <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin mx-auto" />
+            ) : (
+              <>
+                <GoogleIcon />
+                <span className="flex-1 text-center">Sign in with Google</span>
+              </>
+            )}
           </button>
 
           <p className="text-center text-[11px] text-slate-600 mt-6">

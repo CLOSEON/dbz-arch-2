@@ -82,15 +82,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         if (activeUser) {
+          const userEmail = (activeUser.email || '').toLowerCase().trim();
+          const isSuper = userEmail === 'closeon.st@gmail.com';
+
           // 1. Initial hydration from Zustand (fast)
           const existingUser = useAuthStore.getState().user;
           if (!existingUser || existingUser.id !== activeUser.uid) {
             setUser({
               id: activeUser.uid,
               email: activeUser.email || undefined,
-              name: activeUser.displayName || '',
+              name: activeUser.displayName || (isSuper ? 'Superadmin' : ''),
               phone: activeUser.phoneNumber || '',
-              role: 'user',
+              role: isSuper ? 'admin' : 'user',
+              is_superadmin: isSuper ? true : undefined,
+              is_approved: isSuper ? true : undefined,
             });
           }
 
@@ -108,22 +113,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   await new Promise(r => setTimeout(r, 1000));
                   retries--;
                 } else {
-                  throw error;
+                  break;
                 }
               } else {
-                throw error;
+                break;
               }
             }
           }
           
           if (userDoc && userDoc.exists() && mounted.current) {
             const data = userDoc.data();
+            if (isSuper) {
+              data.role = 'admin';
+              data.is_superadmin = true;
+              data.is_approved = true;
+            }
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
             // Register push tokens
             import('@/lib/notifications/pushInit').then(({ initPushNotifications }) => {
               initPushNotifications(activeUser!.uid);
             });
+          } else if (isSuper && mounted.current) {
+            const superProfile: AppUser = {
+              id: activeUser.uid,
+              email: activeUser.email || 'closeon.st@gmail.com',
+              name: activeUser.displayName || 'Superadmin',
+              image: activeUser.photoURL || undefined,
+              phone: activeUser.phoneNumber || '',
+              role: 'admin',
+              is_superadmin: true,
+              is_approved: true,
+              verification_status: 'verified',
+            };
+            try {
+              const { setDoc: setFirestoreDoc } = await import('firebase/firestore');
+              await setFirestoreDoc(doc(db, 'users', activeUser.uid), superProfile, { merge: true });
+            } catch (e) {
+              console.warn('[AuthProvider] setDoc superProfile fallback:', e);
+            }
+            setUser(superProfile);
           }
         } else {
           logout();
