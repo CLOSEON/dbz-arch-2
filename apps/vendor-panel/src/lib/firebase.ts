@@ -10,23 +10,12 @@ import {
 import { getFunctions, type Functions } from 'firebase/functions';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
-// ─── Dynamic Same-Origin Auth Domain ─────────────────────────────────────────
-// Using the same-origin hosting domain (e.g. dabzzo.in / dabzo.web.app) eliminates
-// the slow cross-origin /__/auth/iframe.js and getProjectConfig network waterfall.
-const getDynamicAuthDomain = (): string => {
-  if (typeof window !== 'undefined' && window.location.hostname) {
-    const host = window.location.hostname;
-    if (host !== 'localhost' && host !== '127.0.0.1' && host !== 'capacitor') {
-      return host;
-    }
-  }
-  return process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'dabzofb.firebaseapp.com';
-};
-
 // ─── Firebase Configuration ─────────────────────────────────────────────────
+// authDomain MUST be dabzofb.firebaseapp.com for OAuth popup/redirect handlers
+// to work seamlessly with Google Sign-In across custom domains without mismatch errors.
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDDuCCfdoGZUv92B_tgK3ibzOU8io5bee0',
-  authDomain: getDynamicAuthDomain(),
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'dabzofb.firebaseapp.com',
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'dabzofb',
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'dabzofb.firebasestorage.app',
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '651368129597',
