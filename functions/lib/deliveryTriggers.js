@@ -396,16 +396,15 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istNow = new Date(now.getTime() + istOffset);
     const istHour = istNow.getUTCHours();
-    const existingSnap = await db.collection('delivery_orders')
-        .where('subscriptionId', '==', subId)
-        .where('status', '==', 'pending')
+    const existingSnap = await db.collection('orders')
+        .where('subscription_id', '==', subId)
+        .where('status', 'in', ['created', 'pending'])
         .get();
     const cleanBatch = db.batch();
     existingSnap.docs.forEach(d => cleanBatch.delete(d.ref));
     if (!existingSnap.empty)
         await cleanBatch.commit();
     const batch = db.batch();
-    let driverIdx = 0;
     let ordersCreated = 0;
     for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
         for (const mealType of mealTypes) {
@@ -415,43 +414,41 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
                 if (mealType === 'dinner' && istHour >= 19)
                     continue;
             }
-            const mealName = mealType === 'dinner' ? 'Dinner' : 'Lunch';
             const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
             const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-            const assignedDriverId = driverIds.length > 0 ? driverIds[driverIdx++ % driverIds.length] : null;
+            const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
             const otp = String(Math.floor(1000 + Math.random() * 9000));
-            const newOrderRef = db.collection('delivery_orders').doc();
+            const newOrderRef = db.collection('orders').doc();
             batch.set(newOrderRef, {
-                subscriptionId: subId,
-                customerId: sub.user_id,
-                customerPhone: user.phone || user.phoneNumber || '',
-                vendorId: sub.vendor_id,
-                vendorPhone: vendor.phone || vendor.phoneNumber || '',
-                driverId: assignedDriverId,
-                status: 'pending',
-                otp,
-                otpVerified: false,
-                meal: {
-                    name: `${vendor.kitchen_name || vendor.name}'s ${mealName}`,
-                    type: mealType,
-                },
-                address: {
+                order_id: newOrderRef.id,
+                user_id: sub.user_id,
+                customer_phone: user.phone || user.phoneNumber || '',
+                subscription_id: subId,
+                date: dateStr,
+                meal_type: mealType,
+                delivery_slot: scheduledSlot,
+                vendor_id: sub.vendor_id,
+                vendor_phone: vendor.phone || vendor.phoneNumber || '',
+                batch_id: null,
+                delivery_address: {
                     line1: user.address || `${user.name}'s Location`,
-                    landmark: '',
                     lat: userLat,
                     lng: userLng,
                 },
-                driverLocation: null,
-                scheduledSlot,
-                timestamps: { preparedAt: null, pickedAt: null, outAt: null, deliveredAt: null },
-                createdAt: admin.firestore.Timestamp.fromDate(orderDate),
+                status: 'created',
+                otp,
+                rider_trip_id: null,
+                swap_ref: null,
+                skip_ref: null,
+                created_at: admin.firestore.FieldValue.serverTimestamp(),
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
             ordersCreated++;
         }
     }
     if (ordersCreated > 0)
         await batch.commit();
-    console.log(`[onSubscriptionCreated] Generated ${ordersCreated} delivery orders for sub ${subId}`);
+    console.log(`[onSubscriptionCreated] Generated ${ordersCreated} canonical orders for sub ${subId}`);
 });
 exports.onSubscriptionCancelled = (0, firestore_1.onDocumentUpdated)('subscriptions/{subId}', async (event) => {
     const before = event.data?.before.data();
@@ -462,10 +459,10 @@ exports.onSubscriptionCancelled = (0, firestore_1.onDocumentUpdated)('subscripti
         return;
     const subId = event.params.subId;
     const db = admin.firestore();
-    console.log(`[onSubscriptionCancelled] Cancelling future delivery orders for sub ${subId}`);
-    const ordersSnap = await db.collection('delivery_orders')
-        .where('subscriptionId', '==', subId)
-        .where('status', 'in', ['pending', 'preparing'])
+    console.log(`[onSubscriptionCancelled] Cancelling future orders for sub ${subId}`);
+    const ordersSnap = await db.collection('orders')
+        .where('subscription_id', '==', subId)
+        .where('status', 'in', ['created', 'pending', 'preparing'])
         .get();
     if (ordersSnap.empty) {
         console.log(`[onSubscriptionCancelled] No pending orders found for sub ${subId}`);
@@ -475,11 +472,11 @@ exports.onSubscriptionCancelled = (0, firestore_1.onDocumentUpdated)('subscripti
     ordersSnap.docs.forEach(doc => {
         batch.update(doc.ref, {
             status: 'cancelled',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
         });
     });
     await batch.commit();
-    console.log(`[onSubscriptionCancelled] Cancelled ${ordersSnap.size} delivery orders for sub ${subId}`);
+    console.log(`[onSubscriptionCancelled] Cancelled ${ordersSnap.size} orders for sub ${subId}`);
 });
 exports.generateTestDelivery = (0, https_1.onCall)(async (request) => {
     const { auth } = request;

@@ -14,10 +14,10 @@ export function Logo({ className = '', size = 36 }: LogoProps) {
     <div className={`flex items-center gap-2 ${className}`}>
       {!imgError ? (
         <img
-          src="/logo.png"
+          src="/logo-vendor.png"
           alt="Dabzzo Vendor"
           style={{ height: `${size}px`, width: 'auto' }}
-          className="object-contain rounded-xl"
+          className="object-contain rounded-xl shadow-xs"
           onError={() => setImgError(true)}
         />
       ) : (

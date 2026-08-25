@@ -31,7 +31,7 @@ export default function VendorDashboard() {
   const { batches, pickups, deliveries, subscriptions, loading } = useVendorData();
 
   const isVendorRole = user?.role === 'vendor' || user?.role === 'admin';
-  const isVerifiedVendor = user?.is_approved === true && user?.verification_status === 'verified';
+  const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
 
   if (user && (!isVendorRole || !isVerifiedVendor)) {
     return <PendingVerificationScreen role="vendor" />;

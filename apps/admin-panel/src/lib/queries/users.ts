@@ -156,7 +156,13 @@ export async function getAllUsers(): Promise<AppUser[]> {
 }
 
 export async function setVendorApproval(id: string, approved: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', id), { is_approved: approved });
+  await updateDoc(doc(db, 'users', id), {
+    is_approved: approved,
+    verification_status: approved ? 'verified' : 'rejected',
+    is_rejected: !approved,
+    is_suspended: false,
+    updated_at: Timestamp.now(),
+  });
   invalidateUserCache();
 }
 

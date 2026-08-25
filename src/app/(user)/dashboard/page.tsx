@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorStore } from '@/store/vendorStore';
@@ -21,13 +22,8 @@ import {
   Home,
   Briefcase,
   ChevronDown,
-  ArrowLeftRight,
-  CalendarCheck2,
-  Zap,
-  ChevronRight,
   X,
   RefreshCw,
-  Leaf,
   ChefHat,
 } from 'lucide-react';
 
@@ -38,13 +34,11 @@ const CATEGORIES = [
   { label: 'Home Style',   value: 'home'  },
   { label: 'North Indian', value: 'north' },
   { label: 'South Indian', value: 'south' },
-  { label: 'Jain',         value: 'jain'  },
   { label: 'Pure Veg',     value: 'veg'   },
+  { label: 'Jain Menu',    value: 'jain'  },
 ] as const;
 
 type CatValue = typeof CATEGORIES[number]['value'];
-
-
 
 function greeting() {
   const h = new Date().getHours();
@@ -70,11 +64,10 @@ export default function UserDashboard() {
   /* Derived location pill text */
   const locationDisplay = selectedLoc
     ? (['Home', 'Work', 'Other'].includes(selectedLoc.label)
-        ? selectedLoc.label                                       // saved label
-        : selectedLoc.locality || selectedLoc.city || 'My Location') // GPS/searched
+        ? selectedLoc.label
+        : selectedLoc.locality || selectedLoc.city || 'My Location')
     : 'Near You';
 
-  /* Pill icon: Home icon for saved Home, Briefcase for Work, MapPin otherwise */
   const LocationIcon =
     selectedLoc?.label === 'Home' ? Home
     : selectedLoc?.label === 'Work' ? Briefcase
@@ -97,7 +90,7 @@ export default function UserDashboard() {
       setActiveSubs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Listen to today's active delivery order across canonical 'orders' and 'delivery_orders'
+    // Listen to today's active delivery order
     const ACTIVE_STATUSES = ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery'];
     let ordersList: any[] = [];
     let deliveryOrdersList: any[] = [];
@@ -105,7 +98,6 @@ export default function UserDashboard() {
     const updateActiveDelivery = () => {
       const allActive = [...ordersList, ...deliveryOrdersList];
       if (allActive.length > 0) {
-        // Prioritize out_for_delivery / picked_up > ready > preparing > pending
         const priorityOrder: Record<string, number> = {
           out_for_delivery: 1,
           picked_up: 2,
@@ -147,9 +139,6 @@ export default function UserDashboard() {
     };
   }, [user]);
 
-
-
-
   /* Vendor load */
   const loadVendors = useCallback(async () => {
     setLoading(true);
@@ -159,7 +148,7 @@ export default function UserDashboard() {
       try {
         const snap = await getDocs(query(collection(db, 'subscriptions'), where('status', '==', 'active')));
         snap.forEach((d) => { const s = d.data(); if (s.vendor_id) countMap[s.vendor_id] = (countMap[s.vendor_id] ?? 0) + 1; });
-      } catch { /* users may not have subscription list permission */ }
+      } catch { /* subscription permission fallback */ }
       setVendors(raw.map((v) => ({ ...v, subscriberCount: countMap[v.id] ?? 0 })));
     } catch { addToast('Failed to load vendors', 'error'); }
     finally  { setLoading(false); }
@@ -182,7 +171,6 @@ export default function UserDashboard() {
     return list;
   }, [vendors, search, category]);
 
-  /* Handlers */
   const handleLocationSelect = useCallback((loc: SelectedLocation) => {
     setSelectedLoc(loc);
   }, []);
@@ -191,251 +179,305 @@ export default function UserDashboard() {
 
   /* ─── Render ─────────────────────────────────────────────────── */
   return (
-    <div style={{ background: '#FEFCE8', minHeight: '100dvh' }}>
+    <div className="min-h-screen bg-[#F8FAFC]">
       <div className="animate-fade-in">
         {/* ════════════════════════════════════════
-            HERO — flat brand red, zero orbs
+            HERO — Solid Orange with Crisp 2D Graphics
         ════════════════════════════════════════ */}
         <section
           className="relative rounded-b-[36px] overflow-hidden"
           style={{
-            background: '#FF3B30',
-            paddingBottom: '48px',
+            background: '#E68A00',
+            paddingBottom: '44px',
             paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
           }}
         >
-        {/* Subtle top-right highlight (1 layer, intentional) */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute right-0 top-0 h-48 w-48 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.06)', transform: 'translate(25%,-25%)' }}
-        />
+          {/* ── 2D Geometric Graphics & Vector Accents ── */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden select-none">
+            {/* Top-Right Large 2D Concentric Circles */}
+            <div
+              className="absolute -right-16 -top-16 w-72 h-72 rounded-full border-2 border-white/15"
+            />
+            <div
+              className="absolute -right-8 -top-8 w-56 h-56 rounded-full bg-white/10"
+            />
+            <div
+              className="absolute right-4 top-4 w-32 h-32 rounded-full border border-white/20"
+            />
 
-        <div className="relative z-10 px-5 sm:px-6">
+            {/* Bottom-Left 2D Circles & Arc */}
+            <div
+              className="absolute -left-12 bottom-6 w-48 h-48 rounded-full border-2 border-white/10"
+            />
+            <div
+              className="absolute -left-6 bottom-12 w-32 h-32 rounded-full bg-white/8"
+            />
 
-          {/* ── Top bar ── */}
-          <div className="mb-7 flex items-center justify-between">
+            {/* Subtle 2D Decorative Dots & Vector Accents */}
+            <div className="absolute left-8 top-28 flex flex-col gap-2 opacity-25">
+              <div className="flex gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              </div>
+              <div className="flex gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              </div>
+            </div>
 
-            {/* Location — opens full sheet */}
-            <button
-              type="button"
-              aria-label="Select delivery location"
-              onClick={() => setLocationOpen(true)}
-              className="flex items-center gap-1.5 rounded-full border border-white/30 bg-black/10 py-2 pl-2.5 pr-3 text-white transition-all duration-200 hover:bg-black/20 active:scale-95"
-            >
-              <LocationIcon className="h-3.5 w-3.5 shrink-0" style={{ color: '#FFCC00' }} strokeWidth={2.5} />
-              <span className="max-w-[120px] truncate text-[12.5px] font-bold leading-none">{locationDisplay}</span>
-              <ChevronDown className="h-3 w-3 shrink-0 opacity-55" strokeWidth={2.5} />
-            </button>
-
-            {/* Right — wordmark + bell */}
-            <div className="flex items-center gap-2">
-              <Link
-                href="/dashboard"
-                aria-label="Dabzzo home"
-                className="rounded-full px-4 py-2 text-[13px] font-black leading-none tracking-tight text-slate-900 transition-all duration-200 hover:scale-105 active:scale-95"
-                style={{ background: '#FFCC00', boxShadow: '0 4px 16px rgba(255,204,0,0.5)' }}
-              >
-                Dabzzo.in
-              </Link>
-
-              <button
-                type="button"
-                aria-label="Notifications"
-                onClick={() => router.push('/support')}
-                className="relative flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/25 bg-black/10 text-white transition-all duration-200 hover:bg-black/20 active:scale-95"
-              >
-                <Bell className="h-[17px] w-[17px]" strokeWidth={2} />
-                <span
-                  aria-label="New notifications"
-                  className="absolute right-2 top-2 h-[7px] w-[7px] rounded-full border-[1.5px] border-[#FF3B30]"
-                  style={{ background: '#FFCC00' }}
-                />
-              </button>
+            <div className="absolute right-12 bottom-20 opacity-20">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="white" />
+              </svg>
             </div>
           </div>
 
-          {/* ── Headline ── */}
-          <div className="mb-5">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55">
-              {greeting()}, {firstName}
-            </p>
-            <h1
-              className="font-black leading-[1.06] tracking-[-0.025em] text-white"
-              style={{ fontSize: 'clamp(28px, 8vw, 36px)' }}
-            >
-              Fresh Home Tiffins<br />Delivered Daily.
-            </h1>
-          </div>
+          <div className="relative z-10 px-5 sm:px-6">
 
-          {/* ── Blended Status/Onboarding Panel ── */}
-          {activeDelivery ? (
-            <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4 shadow-lg border border-white/10 animate-fade-in">
-              <div className="flex items-center justify-between gap-3 mb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Live Order Status</span>
+            {/* ── Top bar ── */}
+            <div className="mb-6 flex items-center justify-between">
+
+              {/* Location — opens full sheet */}
+              <button
+                type="button"
+                aria-label="Select delivery location"
+                onClick={() => setLocationOpen(true)}
+                className="flex items-center gap-1.5 rounded-full border border-white/30 bg-black/15 py-2 pl-3 pr-3.5 text-white transition-all duration-200 hover:bg-black/25 active:scale-95 backdrop-blur-md shadow-xs"
+              >
+                <LocationIcon className="h-3.5 w-3.5 shrink-0 text-amber-200" strokeWidth={2.5} />
+                <span className="max-w-[130px] truncate text-[12.5px] font-bold leading-none">{locationDisplay}</span>
+                <ChevronDown className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2.5} />
+              </button>
+
+              {/* Right — brand logo + notification bell */}
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboard"
+                  aria-label="Dabzzo home"
+                  className="flex items-center transition-all duration-200 hover:opacity-90 active:scale-95 py-1"
+                >
+                  <Image
+                    src="/logo-white.png"
+                    alt="Dabzzo"
+                    width={120}
+                    height={28}
+                    priority
+                    unoptimized
+                    className="h-7 w-auto object-contain drop-shadow-xs"
+                  />
+                </Link>
+
+                <button
+                  type="button"
+                  aria-label="Notifications"
+                  onClick={() => router.push('/support')}
+                  className="relative flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/25 bg-black/15 text-white transition-all duration-200 hover:bg-black/25 active:scale-95 backdrop-blur-md shadow-xs"
+                >
+                  <Bell className="h-[17px] w-[17px]" strokeWidth={2.2} />
+                  <span
+                    aria-label="New notifications"
+                    className="absolute right-2.5 top-2.5 h-[7px] w-[7px] rounded-full border-[1.5px] border-[#E68A00] bg-amber-200"
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* ── Headline ── */}
+            <div className="mb-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-100/90 mb-1">
+                {greeting()}, {firstName}!
+              </p>
+              <h1
+                className="font-black leading-[1.08] tracking-[-0.025em] text-white"
+                style={{ fontSize: 'clamp(28px, 8vw, 36px)' }}
+              >
+                Fresh Home Tiffins<br />Delivered Daily.
+              </h1>
+            </div>
+
+            {/* ── Status / Subscription Card ── */}
+            {activeDelivery ? (
+              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Live Delivery Status</span>
+                  </div>
+                  <span className="text-[9.5px] font-bold text-white/50 uppercase">Today</span>
                 </div>
-                <span className="text-[9px] font-bold text-white/50 uppercase">Today</span>
+                <p className="text-white font-bold text-base leading-tight">
+                  {activeDelivery.partnerName || 'Your Kitchen'}
+                </p>
+                <p className="text-slate-400 text-xs mt-1 capitalize">
+                  Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
+                </p>
+                <div className="mt-3.5 flex gap-2">
+                  <Link
+                    href="/track"
+                    className="flex-1 text-center py-2.5 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98]"
+                  >
+                    Track Live Delivery
+                  </Link>
+                </div>
               </div>
-              <p className="text-white font-bold text-base leading-tight">
-                {activeDelivery.partnerName || 'Your kitchen'}
-              </p>
-              <p className="text-slate-400 text-xs mt-1 capitalize">
-                Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Link
-                  href="/track"
-                  className="flex-1 text-center py-2.5 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98]"
-                >
-                  Track Live Delivery
-                </Link>
+            ) : activeSubs.length > 0 ? (
+              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Subscription Active</span>
+                  </div>
+                  <span className="text-[9.5px] font-bold text-white/50 uppercase">
+                    {activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <p className="text-white font-bold text-base leading-tight">
+                  {activeSubs[0].meal_type ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions` : 'Daily Meals'}
+                </p>
+                <p className="text-slate-400 text-xs mt-1">
+                  Your kitchen meals are scheduled and tracking automatically.
+                </p>
+                <div className="mt-3.5">
+                  <Link
+                    href="/orders"
+                    className="block w-full text-center py-2.5 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/5"
+                  >
+                    Manage Weekly Planner
+                  </Link>
+                </div>
               </div>
+            ) : (
+              <div className="relative overflow-hidden rounded-2xl bg-black/15 backdrop-blur-md p-4.5 border border-white/15 shadow-sm">
+                <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/15 text-white">
+                  Premium Meal Service
+                </span>
+                <h2 className="mt-2 text-base font-bold text-white leading-snug">
+                  Healthy Home Tiffins. Pause or Swap Anytime.
+                </h2>
+                <p className="mt-1 text-[11.5px] text-white/80 leading-relaxed font-normal">
+                  Switch kitchens easily if you want a change, or pause when you are away.
+                </p>
+              </div>
+            )}
+          </div>
+
+        </section>
+
+        {/* ════════════════════════════════════════
+            BODY — Clean Slate Canvas
+        ════════════════════════════════════════ */}
+        <div className="px-5 pb-8 sm:px-6">
+
+          {/* ── Search Bar ── */}
+          <div className="group relative -mt-7 mb-5">
+            <div className="pointer-events-none absolute left-4.5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-brand">
+              <Search className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </div>
-          ) : activeSubs.length > 0 ? (
-            <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4 shadow-lg border border-white/10 animate-fade-in">
-              <div className="flex items-center justify-between gap-3 mb-2.5">
-                <span className="text-[10px] font-bold text-brand-secondary uppercase tracking-wider">Subscription Active</span>
-                <span className="text-[9px] font-bold text-white/50 uppercase">{activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}</span>
-              </div>
-              <p className="text-white font-bold text-base leading-tight">
-                {activeSubs[0].meal_type ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions` : 'Daily Meals'}
-              </p>
-              <p className="text-slate-400 text-xs mt-1">
-                Your kitchen meals are scheduled and tracking automatically.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Link
-                  href="/orders"
-                  className="flex-1 text-center py-2.5 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/5"
+            <input
+              ref={searchRef}
+              aria-label="Search vendors or cuisines"
+              className="w-full rounded-2xl border border-slate-200/90 bg-white py-[14px] pl-12 pr-12 text-sm font-medium text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:-translate-y-0.5 focus:border-brand focus:shadow-[0_8px_24px_rgba(230,138,0,0.12)]"
+              style={{ boxShadow: '0 4px 20px rgba(15,23,42,0.06)' }}
+              placeholder="Explore kitchens or cuisines…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {search ? (
+                <button
+                  aria-label="Clear search"
+                  onClick={() => { setSearch(''); searchRef.current?.focus(); }}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-500 transition-all duration-200 hover:bg-rose-100 active:scale-95"
                 >
-                  Manage Weekly Planner
-                </Link>
-              </div>
+                  <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+                </button>
+              ) : null}
             </div>
-          ) : (
-            <div className="relative overflow-hidden rounded-2xl bg-black/15 backdrop-blur-md p-5 border border-white/10 shadow-sm">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-xl -mr-6 -mt-6" />
-              <span className="rounded-[6px] px-2 py-0.5 text-[9.5px] font-bold tracking-wide uppercase bg-white/10 text-white/90">
-                Premium Meal Service
-              </span>
-              <h2 className="mt-2.5 text-base font-bold text-white leading-tight">
-                Healthy Home Tiffins. Pause or Swap Anytime.
+          </div>
+
+          {/* ── Cuisine Category Pills ── */}
+          <div role="group" aria-label="Filter by cuisine" className="-mx-5 mb-5 flex gap-2 overflow-x-auto px-5 pb-1 scrollbar-none">
+            {CATEGORIES.map((cat) => {
+              const active = category === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setCategory(cat.value)}
+                  className="shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200 active:scale-95 border"
+                  style={
+                    active
+                      ? {
+                          background: '#0F172A',
+                          color: '#FFFFFF',
+                          borderColor: '#0F172A',
+                          boxShadow: '0 4px 12px rgba(15,23,42,0.12)',
+                        }
+                      : {
+                          background: '#FFFFFF',
+                          color: '#475569',
+                          borderColor: '#E2E8F0',
+                        }
+                  }
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Vendor Section Header ── */}
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-[18px] font-black tracking-tight text-slate-900">
+                Nearest Kitchens
               </h2>
-              <p className="mt-1.5 text-[11.5px] text-white/70 leading-relaxed max-w-[90%]">
-                Switch kitchens instantly if you get bored, and pause your subscription easily when you are away.
-              </p>
+              <div className="mt-1 h-[3px] w-8 rounded-full" style={{ background: '#E68A00' }} />
+            </div>
+            {!loading && (
+              <button
+                type="button"
+                aria-label="Refresh vendor list"
+                onClick={() => void loadVendors()}
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500 transition-all duration-200 hover:border-brand hover:text-brand active:scale-95 shadow-2xs"
+              >
+                <RefreshCw className="h-3 w-3" strokeWidth={2.4} />
+                {filtered.length} found
+              </button>
+            )}
+          </div>
+
+          {/* ── Vendor list ── */}
+          {loading ? (
+            <SkeletonList count={3} hasImage />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 border border-orange-100"><ChefHat className="w-9 h-9 text-brand stroke-[1.5]" /></div>}
+              title="No kitchens found"
+              description={search ? `No kitchens matching "${search}". Try searching for another keyword.` : 'Try selecting a different category above.'}
+            />
+          ) : (
+            <div className="space-y-3.5">
+              {filtered.map((v, i) => (
+                <div key={v.id} className="animate-slide-up-soft" style={{ animationDelay: `${Math.min(i, 5) * 50}ms` }}>
+                  <VendorCard vendor={v} />
+                </div>
+              ))}
             </div>
           )}
         </div>
-
-      </section>
-
-      {/* ════════════════════════════════════════
-          BODY — ivory
-      ════════════════════════════════════════ */}
-      <div className="px-5 pb-6 sm:px-6" style={{ background: '#FEFCE8' }}>
-
-        {/* ── Search ── */}
-        <div className="group relative -mt-7 mb-5">
-          <div className="pointer-events-none absolute left-5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors duration-200 group-focus-within:text-brand">
-            <Search className="h-[17px] w-[17px]" strokeWidth={2.3} />
-          </div>
-          <input
-            ref={searchRef}
-            aria-label="Search vendors or cuisines"
-            className="w-full rounded-2xl border border-slate-200/90 bg-white py-[14px] pl-12 pr-14 text-sm font-medium text-slate-900 outline-none transition-all duration-300 placeholder:text-slate-400 focus:-translate-y-0.5 focus:border-brand/40 focus:shadow-[0_12px_36px_rgba(255,59,48,0.12)]"
-            style={{ boxShadow: '0 4px 24px rgba(15,23,42,0.08)' }}
-            placeholder="Explore now…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            {search ? (
-              <button
-                aria-label="Clear search"
-                onClick={() => { setSearch(''); searchRef.current?.focus(); }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-400 transition-all duration-200 hover:bg-rose-100 hover:text-rose-600 active:scale-95"
-              >
-                <X className="h-[14px] w-[14px]" strokeWidth={2.4} />
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        {/* ── Category pills ── */}
-        <div role="group" aria-label="Filter by cuisine" className="-mx-5 mb-5 flex gap-2 overflow-x-auto px-5 pb-1 scrollbar-none">
-          {CATEGORIES.map((cat) => {
-            const active = category === cat.value;
-            return (
-              <button
-                key={cat.value}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setCategory(cat.value)}
-                className="shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-all duration-200 active:scale-95"
-                style={
-                  active
-                    ? { background: '#0f172a', color: '#fff', borderColor: 'transparent', boxShadow: '0 4px 12px rgba(15,23,42,0.15)' }
-                    : { background: '#fff', color: '#475569', borderColor: '#e2e8f0' }
-                }
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
-
-
-        {/* ── Vendor header ── */}
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-[17.5px] font-black tracking-tight text-slate-950">Nearest Vendors</h2>
-            <div className="mt-1.5 h-[3px] w-8 rounded-full" style={{ background: '#FF3B30' }} />
-          </div>
-          {!loading && (
-            <button
-              type="button"
-              aria-label="Refresh vendor list"
-              onClick={() => void loadVendors()}
-              className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 transition-all duration-200 hover:border-brand/40 hover:text-brand active:scale-95"
-              style={{ boxShadow: '0 2px 8px rgba(15,23,42,0.06)' }}
-            >
-              <RefreshCw className="h-3 w-3" strokeWidth={2.4} />
-              {filtered.length} found
-            </button>
-          )}
-        </div>
-
-        {/* ── Vendor list ── */}
-        {loading ? (
-          <SkeletonList count={3} hasImage />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={<div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: 'rgba(255,59,48,0.08)' }}><ChefHat className="w-9 h-9 text-brand stroke-[1.25]" /></div>}
-            title="No vendors found"
-            description={search ? `No results for "${search}". Try another keyword.` : 'Try a different category above.'}
-          />
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((v, i) => (
-              <div key={v.id} className="animate-slide-up-soft" style={{ animationDelay: `${Math.min(i, 5) * 55}ms` }}>
-                <VendorCard vendor={v} />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
-    </div>
 
-    {/* ── Location bottom sheet ── */}
-    <LocationSheet
-      isOpen={locationOpen}
-      onClose={() => setLocationOpen(false)}
-      onSelect={handleLocationSelect}
-    />
-  </div>
-);
+      {/* ── Location bottom sheet ── */}
+      <LocationSheet
+        isOpen={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onSelect={handleLocationSelect}
+      />
+    </div>
+  );
 }

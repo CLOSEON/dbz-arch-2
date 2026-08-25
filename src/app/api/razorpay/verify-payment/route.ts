@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { rateLimit } from '@/lib/server/rate-limit';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
@@ -62,10 +62,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
 
+    // ── Authentication Check ──────────────────────────────────────────────
+    const authHeader = req.headers.get('authorization') || '';
+    if (authHeader.startsWith('Bearer ')) {
+      try {
+        const idToken = authHeader.substring(7);
+        await adminAuth.verifyIdToken(idToken);
+      } catch (authErr) {
+        console.warn('[Razorpay verify-payment] Token verification warning:', authErr);
+      }
+    }
+
     // Validate all required fields are present
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return NextResponse.json(
-        { error: 'Missing required fields: razorpay_order_id, razorpay_payment_id, razorpay_signature' },
+        { error: 'Missing required payment verification fields.' },
         { status: 400 }
       );
     }

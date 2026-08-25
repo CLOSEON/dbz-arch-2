@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: #FF3B30;
-  --color-brand-50: #FFECEB;
-  --color-brand-100: #FFD9D6;
-  --color-brand-500: #FF3B30;
-  --color-brand-600: #E6352B;
-  --color-brand-700: #CC2F26;
-  --color-brand-secondary: #FFCC00;
+  --color-brand: #E68A00;
+  --color-brand-50: #FFFBEB;
+  --color-brand-100: #FEF3C7;
+  --color-brand-500: #E68A00;
+  --color-brand-600: #D97706;
+  --color-brand-700: #B45309;
+  --color-brand-secondary: #F59E0B;
   --color-ivory: #FEFCE8;
   --color-ivory-dark: #FEF08A;
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
   --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-bg: rgba(,,,);
+  --glass-border: rgba(,,,);
   --glass-blur: blur(16px);
-  --shadow-soft: 0 8px 32px rgba(15, 23, 42, 0.08);
-  --shadow-glow: 0 0 24px rgba(255, 59, 48, 0.3);
+  --shadow-soft: 0 8px 32px rgba(,,,);
+  --shadow-glow: 0 0 24px rgba(,,,);
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -36,9 +36,9 @@
   }
 
   @keyframes pulseRing {
-    0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.22); }
-    70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(,,,); }
+    70% { box-shadow: 0 0 0 12px rgba(,,,); }
+    100% { box-shadow: 0 0 0 0 rgba(,,,); }
   }
 
   @keyframes slideUpSoft {
@@ -115,8 +115,8 @@
 
   body {
     background:
-      radial-gradient(900px 260px at 0% -120px, rgba(255, 59, 48, 0.075), transparent 62%),
-      radial-gradient(820px 240px at 100% -100px, rgba(255, 204, 0, 0.09), transparent 58%),
+      radial-gradient(900px 260px at 0% -120px, rgba(,,,), transparent 62%),
+      radial-gradient(820px 240px at 100% -100px, rgba(,,,), transparent 58%),
       linear-gradient(180deg, #FEFCE8 0%, #FFFBEB 52%, #FFF7ED 100%);
     color: #0f172a;
     font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -142,8 +142,8 @@
     padding-top: max(1.5rem, env(safe-area-inset-top));
     padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
     background:
-      radial-gradient(1200px 280px at 0% -130px, rgba(255, 59, 48, 0.08), transparent 62%),
-      radial-gradient(1000px 240px at 100% -110px, rgba(255, 204, 0, 0.07), transparent 58%);
+      radial-gradient(1200px 280px at 0% -130px, rgba(,,,), transparent 62%),
+      radial-gradient(1000px 240px at 100% -110px, rgba(,,,), transparent 58%);
   }
 
   .page-shell-vendor {
@@ -151,20 +151,20 @@
     padding-top: max(1.5rem, env(safe-area-inset-top));
     padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
     background:
-      radial-gradient(1200px 280px at 0% -130px, rgba(255, 59, 48, 0.09), transparent 62%),
-      radial-gradient(1000px 240px at 100% -110px, rgba(255, 204, 0, 0.07), transparent 58%);
+      radial-gradient(1200px 280px at 0% -130px, rgba(,,,), transparent 62%),
+      radial-gradient(1000px 240px at 100% -110px, rgba(,,,), transparent 58%);
   }
 
   .card {
-    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] ring-1 ring-white/80;
+    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(,,,)] ring-1 ring-white/80;
   }
 
   .btn-primary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(255,59,48,0.22)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
   }
 
   .btn-secondary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
   }
 
   .btn-outline {
@@ -184,7 +184,7 @@
   }
 
   .pill.active {
-    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(255,59,48,0.18)];
+    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(,,,)];
   }
 
   .pill-container {
@@ -217,7 +217,7 @@
     position: absolute;
     inset: -30% auto -30% -55%;
     width: 42%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.52), transparent);
+    background: linear-gradient(90deg, transparent, rgba(,,,), transparent);
     transform: translateX(-140%) skewX(-18deg);
     pointer-events: none;
   }
@@ -253,7 +253,7 @@
 
 @layer utilities {
   .shadow-card {
-    @apply shadow-[0_18px_40px_rgba(15,23,42,0.06)];
+    @apply shadow-[0_18px_40px_rgba(,,,)];
   }
 
   .pb-safe {

@@ -1,3 +1,0 @@
-module.exports=[94339,(a,b,c)=>{"use strict";c._=function(a){return a&&a.__esModule?a:{default:a}}},81291,a=>{"use strict";let b=(0,a.i(93778).default)("loader-circle",[["path",{d:"M21 12a9 9 0 1 1-6.219-8.56",key:"13zald"}]]);a.s(["Loader2",0,b],81291)},47310,a=>{"use strict";let b=(0,a.i(93778).default)("phone",[["path",{d:"M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384",key:"9njp5v"}]]);a.s(["Phone",0,b],47310)}];
-
-//# sourceMappingURL=0rk6_0wjb~60._.js.map

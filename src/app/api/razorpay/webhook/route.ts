@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import {
-  doc,
-  updateDoc,
-  getDoc,
-  setDoc,
-  Timestamp,
-  collection,
-  query,
-  where,
-  getDocs,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { adminDb } from '@/lib/firebaseAdmin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
 
@@ -181,10 +171,9 @@ async function handlePaymentAuthorized(payment: any) {
       notes,
     } = payment;
 
-    // Store payment in history
+    // Store payment in history using adminDb
     const paymentDocId = `payment_${payment_id}`;
-    await setDoc(
-      doc(db, 'payment_history', paymentDocId),
+    await adminDb.collection('payment_history').doc(paymentDocId).set(
       {
         payment_id,
         order_id,
@@ -192,8 +181,8 @@ async function handlePaymentAuthorized(payment: any) {
         currency,
         status,
         notes,
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -219,10 +208,9 @@ async function handlePaymentFailed(payment: any) {
       notes,
     } = payment;
 
-    // Store failed payment in history
+    // Store failed payment in history using adminDb
     const paymentDocId = `payment_${payment_id}`;
-    await setDoc(
-      doc(db, 'payment_history', paymentDocId),
+    await adminDb.collection('payment_history').doc(paymentDocId).set(
       {
         payment_id,
         order_id,
@@ -230,8 +218,8 @@ async function handlePaymentFailed(payment: any) {
         error_code,
         error_description,
         notes,
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
         status: 'failed',
       },
       { merge: true }
@@ -252,11 +240,11 @@ async function handleSubscriptionAuthenticated(subscription: any) {
     const { id: subscription_id, customer_id, status, notes } = subscription;
 
     const docId = `rzp_sub_${subscription_id}`;
-    await updateDoc(doc(db, 'payment_subscriptions', docId), {
+    await adminDb.collection('payment_subscriptions').doc(docId).update({
       status,
       customer_id,
-      updated_at: Timestamp.now(),
-      authenticated_at: Timestamp.now(),
+      updated_at: FieldValue.serverTimestamp(),
+      authenticated_at: FieldValue.serverTimestamp(),
     });
 
     console.log(`[Webhook] Subscription authenticated: ${subscription_id}`);
@@ -281,55 +269,52 @@ async function handleSubscriptionActive(subscription: any) {
     } = subscription;
 
     const docId = `rzp_sub_${subscription_id}`;
-    const subDoc = await getDoc(doc(db, 'payment_subscriptions', docId));
+    const subDoc = await adminDb.collection('payment_subscriptions').doc(docId).get();
 
-    if (!subDoc.exists()) {
+    if (!subDoc.exists) {
       console.warn(`[Webhook] Subscription doc not found: ${subscription_id}`);
       return;
     }
 
-    const subData = subDoc.data();
+    const subData = subDoc.data()!;
     const { user_id, vendor_id, plan_id } = subData;
 
     // Update payment subscription
-    await updateDoc(doc(db, 'payment_subscriptions', docId), {
+    await adminDb.collection('payment_subscriptions').doc(docId).update({
       status,
       customer_id,
-      updated_at: Timestamp.now(),
-      activated_at: Timestamp.now(),
-      current_start: Timestamp.fromDate(new Date(current_start * 1000)),
+      updated_at: FieldValue.serverTimestamp(),
+      activated_at: FieldValue.serverTimestamp(),
+      current_start: current_start ? Timestamp.fromDate(new Date(current_start * 1000)) : FieldValue.serverTimestamp(),
     });
 
     // Also mark the main subscription as active if needed
-    const subRefCol = collection(db, 'subscriptions');
-    const q = query(
-      subRefCol,
-      where('user_id', '==', user_id),
-      where('vendor_id', '==', vendor_id),
-      where('meal_type', '==', plan_id)
-    );
-    const snap = await getDocs(q);
+    const snap = await adminDb.collection('subscriptions')
+      .where('user_id', '==', user_id)
+      .where('vendor_id', '==', vendor_id)
+      .where('meal_type', '==', plan_id)
+      .get();
 
     if (!snap.empty) {
       const subRef = snap.docs[0];
       const mainSubId = subRef.id;
       const subDataReal = subRef.data();
-      await updateDoc(subRef.ref, {
+      await subRef.ref.update({
         razorpay_subscription_id: subscription_id,
         status: 'active',
-        updated_at: Timestamp.now(),
+        updated_at: FieldValue.serverTimestamp(),
       });
 
       // Initialize or Reset Swap Allowance for the new billing cycle
-      const allowanceRef = doc(db, 'subscription_swap_allowances', mainSubId);
+      const allowanceRef = adminDb.collection('subscription_swap_allowances').doc(mainSubId);
       const freeSwapsTotal = subDataReal.meal_type === 'both' ? 2 : 1;
-      await setDoc(allowanceRef, {
+      await allowanceRef.set({
         subscription_id: mainSubId,
         user_id: user_id,
         free_swaps_total: freeSwapsTotal,
         free_swaps_used: 0,
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now()
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp()
       }, { merge: true }).catch(err => console.warn('[Webhook] Failed to init/reset swap allowance:', err));
     }
 
@@ -347,10 +332,10 @@ async function handleSubscriptionPaused(subscription: any) {
     const { id: subscription_id, status } = subscription;
 
     const docId = `rzp_sub_${subscription_id}`;
-    await updateDoc(doc(db, 'payment_subscriptions', docId), {
+    await adminDb.collection('payment_subscriptions').doc(docId).update({
       status,
-      updated_at: Timestamp.now(),
-      paused_at: Timestamp.now(),
+      updated_at: FieldValue.serverTimestamp(),
+      paused_at: FieldValue.serverTimestamp(),
     });
 
     console.log(`[Webhook] Subscription paused: ${subscription_id}`);
@@ -367,36 +352,33 @@ async function handleSubscriptionCancelled(subscription: any) {
     const { id: subscription_id, status, short_url, notes } = subscription;
 
     const docId = `rzp_sub_${subscription_id}`;
-    const subDoc = await getDoc(doc(db, 'payment_subscriptions', docId));
+    const subDoc = await adminDb.collection('payment_subscriptions').doc(docId).get();
 
-    if (subDoc.exists()) {
-      const subData = subDoc.data();
+    if (subDoc.exists) {
+      const subData = subDoc.data()!;
       const { user_id, vendor_id, plan_id } = subData;
 
       // Update payment subscription
-      await updateDoc(doc(db, 'payment_subscriptions', docId), {
+      await adminDb.collection('payment_subscriptions').doc(docId).update({
         status,
-        updated_at: Timestamp.now(),
-        cancelled_at: Timestamp.now(),
+        updated_at: FieldValue.serverTimestamp(),
+        cancelled_at: FieldValue.serverTimestamp(),
       });
 
       // Also cancel the main subscription
-      const subRefCol = collection(db, 'subscriptions');
-      const q = query(
-        subRefCol,
-        where('user_id', '==', user_id),
-        where('vendor_id', '==', vendor_id),
-        where('meal_type', '==', plan_id)
-      );
-      const snap = await getDocs(q);
+      const snap = await adminDb.collection('subscriptions')
+        .where('user_id', '==', user_id)
+        .where('vendor_id', '==', vendor_id)
+        .where('meal_type', '==', plan_id)
+        .get();
 
       if (!snap.empty) {
         const subRef = snap.docs[0];
-        await updateDoc(subRef.ref, {
+        await subRef.ref.update({
           status: 'cancelled',
-          cancelled_at: Timestamp.now(),
+          cancelled_at: FieldValue.serverTimestamp(),
           cancelled_by: 'razorpay_webhook',
-          updated_at: Timestamp.now(),
+          updated_at: FieldValue.serverTimestamp(),
         });
       }
     }
@@ -415,34 +397,31 @@ async function handleSubscriptionResumed(subscription: any) {
     const { id: subscription_id, status, start_at } = subscription;
 
     const docId = `rzp_sub_${subscription_id}`;
-    const subDoc = await getDoc(doc(db, 'payment_subscriptions', docId));
+    const subDoc = await adminDb.collection('payment_subscriptions').doc(docId).get();
 
-    if (subDoc.exists()) {
-      const subData = subDoc.data();
+    if (subDoc.exists) {
+      const subData = subDoc.data()!;
       const { user_id, vendor_id, plan_id } = subData;
 
       // Update payment subscription
-      await updateDoc(doc(db, 'payment_subscriptions', docId), {
+      await adminDb.collection('payment_subscriptions').doc(docId).update({
         status,
-        updated_at: Timestamp.now(),
-        resumed_at: Timestamp.now(),
+        updated_at: FieldValue.serverTimestamp(),
+        resumed_at: FieldValue.serverTimestamp(),
       });
 
       // Also reactivate the main subscription
-      const subRefCol = collection(db, 'subscriptions');
-      const q = query(
-        subRefCol,
-        where('user_id', '==', user_id),
-        where('vendor_id', '==', vendor_id),
-        where('meal_type', '==', plan_id)
-      );
-      const snap = await getDocs(q);
+      const snap = await adminDb.collection('subscriptions')
+        .where('user_id', '==', user_id)
+        .where('vendor_id', '==', vendor_id)
+        .where('meal_type', '==', plan_id)
+        .get();
 
       if (!snap.empty) {
         const subRef = snap.docs[0];
-        await updateDoc(subRef.ref, {
+        await subRef.ref.update({
           status: 'active',
-          updated_at: Timestamp.now(),
+          updated_at: FieldValue.serverTimestamp(),
         });
       }
     }

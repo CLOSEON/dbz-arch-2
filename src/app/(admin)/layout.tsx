@@ -9,7 +9,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Desktop Sidebar */}
         <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white/90 backdrop-blur-xl border-r border-slate-200/70 z-50 shadow-[12px_0_40px_rgba(15,23,42,0.04)]">
           <div className="p-6 flex items-center border-b border-slate-100">
-            <Image src="/assets/dabzzo-logo.png" alt="Dabzzo" width={120} height={72} priority className="object-contain" />
+            <Image src="/logo-admin.png" alt="Dabzzo Admin" width={40} height={40} priority className="h-10 w-10 rounded-xl object-contain shadow-xs" />
+            <span className="ml-3 text-lg font-black text-slate-900">Dabzzo <span className="text-xs font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">Admin</span></span>
           </div>
           <AdminNav variant="sidebar" />
         </aside>

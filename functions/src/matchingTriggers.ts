@@ -217,8 +217,9 @@ export const assignRiderTrips = functions.https.onCall(async (data, context) => 
     }
   }
 
-  const { vendorId, slot } = data || {};
-  return await coreAssignRiderTrips(vendorId, slot, 99999);
+  const { vendorId, slot, radius } = data || {};
+  const maxRadius = typeof radius === 'number' && radius > 0 ? Math.min(radius, 5.0) : 2.0;
+  return await coreAssignRiderTrips(vendorId, slot, maxRadius);
 });
 
 /**

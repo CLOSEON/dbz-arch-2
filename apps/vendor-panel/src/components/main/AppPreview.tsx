@@ -175,7 +175,7 @@ export function AppPreview() {
   return (
     <section className="py-24 bg-slate-900 text-white overflow-hidden relative">
       {/* Subtle texture */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,59,48,0.15),transparent_60%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(230, 138, 0, 0.15),transparent_60%)] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}

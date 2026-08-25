@@ -787,7 +787,7 @@ export default function OrdersPage() {
                   onClick={() => setSelectedDayIndex(idx)}
                   className={`flex flex-col items-center justify-center shrink-0 rounded-2xl w-14 py-3 border transition-all duration-200 active:scale-95 ${
                     isSelected
-                      ? 'bg-brand text-white border-transparent shadow-[0_8px_20px_rgba(255,59,48,0.25)]'
+                      ? 'bg-brand text-white border-transparent shadow-[0_8px_20px_rgba(230, 138, 0, 0.25)]'
                       : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
                   }`}
                 >

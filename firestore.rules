@@ -295,36 +295,36 @@ service cloud.firestore {
 
     match /delivery_orders/{orderId} {
       allow list, get: if request.auth != null;
-      allow create, update: if request.auth != null;
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /subscription_swap_allowances/{docId} {
-      allow get: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && (request.resource.data.user_id == request.auth.uid || isAdmin());
-      allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || request.resource.data.user_id == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
     }
 
     match /swap_requests/{requestId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-      allow delete: if isAdmin();
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.get('target_user_id', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
     }
 
     match /swap_broadcasts/{broadcastId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
-      allow delete: if isAdmin();
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
     }
 
     match /user_credits/{creditId} {
-      allow get: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && (request.resource.data.user_id == request.auth.uid || isAdmin());
-      allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || request.resource.data.user_id == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
     }
 
     match /free_meal_vouchers/{voucherId} {
@@ -333,11 +333,13 @@ service cloud.firestore {
     }
 
     match /payment_history/{paymentId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
     }
 
     match /payment_subscriptions/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
     }
   }
 }

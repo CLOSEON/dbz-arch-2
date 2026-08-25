@@ -8,12 +8,12 @@ function SteamWisp({ x, delay }: { x: number; delay: number }) {
   return (
     <motion.path
       d={`M${x} 0 Q${x - 6} -10 ${x} -20 Q${x + 6} -30 ${x} -40`}
-      stroke="rgba(255,255,255,0.55)"
+      stroke="rgba(251, 191, 36, 0.65)"
       strokeWidth="3"
       strokeLinecap="round"
       fill="none"
       initial={{ opacity: 0, scaleY: 0, y: 0 }}
-      animate={{ opacity: [0, 0.7, 0], scaleY: [0, 1, 1.2], y: [0, -12, -24] }}
+      animate={{ opacity: [0, 0.8, 0], scaleY: [0, 1, 1.2], y: [0, -12, -24] }}
       transition={{
         repeat: Infinity,
         duration: 2.2,
@@ -32,16 +32,16 @@ function Bubble({ cx, cy, r, delay }: { cx: number; cy: number; r: number; delay
       cx={cx}
       cy={cy}
       r={r}
-      fill="rgba(255,255,255,0.22)"
+      fill="rgba(254, 243, 199, 0.4)"
       initial={{ y: 0, opacity: 0, scale: 0 }}
-      animate={{ y: [-2, -10, -18], opacity: [0, 0.8, 0], scale: [0.4, 1, 0.6] }}
+      animate={{ y: [-2, -10, -18], opacity: [0, 0.9, 0], scale: [0.4, 1, 0.6] }}
       transition={{ repeat: Infinity, duration: 1.6, delay, ease: 'easeOut' }}
     />
   );
 }
 
 // ─── Tiffin Box (Indian dabba) ─────────────────────────────────────────────────
-// Three-tier stacked tiffin — drawn in SVG using the brand palette
+// Three-tier stacked tiffin — rendered with Dabzzo luxury gold & signature orange gradients
 function TiffinSVG({ cooking }: { cooking: boolean }) {
   return (
     <svg
@@ -49,34 +49,91 @@ function TiffinSVG({ cooking }: { cooking: boolean }) {
       width={140}
       height={150}
       xmlns="http://www.w3.org/2000/svg"
+      className="drop-shadow-lg"
     >
+      <defs>
+        {/* Tier 3 (Bottom) Gradient: Deep Dabzzo Signature Orange */}
+        <linearGradient id="tier3Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F59E0B" />
+          <stop offset="40%" stopColor="#E68A00" />
+          <stop offset="100%" stopColor="#B45309" />
+        </linearGradient>
+
+        {/* Tier 2 (Middle) Gradient: Vibrant Amber Orange */}
+        <linearGradient id="tier2Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FBBF24" />
+          <stop offset="45%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+
+        {/* Tier 1 (Top) Gradient: Radiant Honey Gold */}
+        <linearGradient id="tier1Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FDE68A" />
+          <stop offset="40%" stopColor="#FBBF24" />
+          <stop offset="100%" stopColor="#E68A00" />
+        </linearGradient>
+
+        {/* Lid Gradient */}
+        <linearGradient id="lidGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F59E0B" />
+          <stop offset="50%" stopColor="#E68A00" />
+          <stop offset="100%" stopColor="#B45309" />
+        </linearGradient>
+
+        {/* Metallic Brass Clasp */}
+        <linearGradient id="claspGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#FDE047" />
+          <stop offset="45%" stopColor="#F59E0B" />
+          <stop offset="85%" stopColor="#D97706" />
+          <stop offset="100%" stopColor="#B45309" />
+        </linearGradient>
+
+        {/* Handle Gradient */}
+        <linearGradient id="handleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#FBBF24" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+
+        {/* Subtle Specular Highlight */}
+        <linearGradient id="sheenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.45)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0.05)" />
+        </linearGradient>
+      </defs>
+
       {/* ── Tier 3 (bottom) ─────────────────── */}
-      <rect x="20" y="90" width="80" height="30" rx="6" fill="#FF3B30" />
-      <rect x="20" y="90" width="80" height="8" rx="6" fill="#CC2F26" />
-      <rect x="16" y="92" width="88" height="6" rx="3" fill="#E6352B" />
+      <rect x="20" y="90" width="80" height="30" rx="6" fill="url(#tier3Grad)" />
+      <rect x="20" y="90" width="80" height="7" rx="4" fill="#92400E" opacity="0.6" />
+      <rect x="16" y="92" width="88" height="5" rx="2.5" fill="#D97706" />
+      {/* Specular sheen bottom */}
+      <rect x="24" y="96" width="72" height="3" rx="1.5" fill="url(#sheenGrad)" />
 
       {/* ── Tier 2 (middle) ─────────────────── */}
-      <rect x="20" y="58" width="80" height="30" rx="6" fill="#FF5F56" />
-      <rect x="20" y="58" width="80" height="8" rx="6" fill="#CC2F26" />
-      <rect x="16" y="60" width="88" height="6" rx="3" fill="#FF3B30" />
+      <rect x="20" y="58" width="80" height="30" rx="6" fill="url(#tier2Grad)" />
+      <rect x="20" y="58" width="80" height="7" rx="4" fill="#B45309" opacity="0.55" />
+      <rect x="16" y="60" width="88" height="5" rx="2.5" fill="#D97706" />
+      {/* Specular sheen middle */}
+      <rect x="24" y="64" width="72" height="3" rx="1.5" fill="url(#sheenGrad)" />
 
       {/* ── Tier 1 (top) ────────────────────── */}
-      <rect x="20" y="26" width="80" height="30" rx="6" fill="#FF7B73" />
-      <rect x="20" y="26" width="80" height="8" rx="6" fill="#FF5F56" />
-      <rect x="16" y="28" width="88" height="6" rx="3" fill="#FF5F56" />
+      <rect x="20" y="26" width="80" height="30" rx="6" fill="url(#tier1Grad)" />
+      <rect x="20" y="26" width="80" height="7" rx="4" fill="#D97706" opacity="0.5" />
+      <rect x="16" y="28" width="88" height="5" rx="2.5" fill="#F59E0B" />
+      {/* Specular sheen top */}
+      <rect x="24" y="32" width="72" height="3" rx="1.5" fill="url(#sheenGrad)" />
 
       {/* ── Lid ──────────────────────────────── */}
-      <rect x="16" y="16" width="88" height="14" rx="7" fill="#CC2F26" />
+      <rect x="16" y="16" width="88" height="14" rx="7" fill="url(#lidGrad)" />
       {/* Lid handle */}
-      <rect x="48" y="8" width="24" height="10" rx="5" fill="#E6352B" />
-      <rect x="50" y="6" width="20" height="6" rx="3" fill="#FF3B30" />
+      <rect x="48" y="8" width="24" height="10" rx="5" fill="url(#handleGrad)" />
+      <rect x="50" y="6" width="20" height="5" rx="2.5" fill="#FDE047" />
 
-      {/* ── Clasp ────────────────────────────── */}
-      <rect x="53" y="14" width="14" height="72" rx="3" fill="#FFCC00" opacity="0.85" />
-      <rect x="55" y="14" width="10" height="72" rx="2" fill="#FFD700" opacity="0.5" />
+      {/* ── Clasp (Vertical Brass Lock) ────────────────────────────── */}
+      <rect x="53" y="14" width="14" height="72" rx="3" fill="url(#claspGrad)" />
+      <rect x="55" y="14" width="10" height="72" rx="2" fill="#FEF08A" opacity="0.35" />
 
       {/* ── Sheen on lid ─────────────────────── */}
-      <ellipse cx="60" cy="20" rx="24" ry="4" fill="rgba(255,255,255,0.12)" />
+      <ellipse cx="60" cy="20" rx="26" ry="3.5" fill="url(#sheenGrad)" />
 
       {/* ── Steam layer (only when cooking) ─── */}
       {cooking && (
@@ -112,15 +169,22 @@ function FlyingSpoon({ trigger }: { trigger: boolean }) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
         >
-          {/* Spoon SVG in brand red/orange */}
+          {/* Spoon SVG in signature Dabzzo gold/orange */}
           <svg viewBox="0 0 120 40" width={130} height={44}>
+            <defs>
+              <linearGradient id="spoonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#FDE047" />
+                <stop offset="50%" stopColor="#F59E0B" />
+                <stop offset="100%" stopColor="#E68A00" />
+              </linearGradient>
+            </defs>
             {/* Handle */}
-            <rect x="20" y="16" width="78" height="8" rx="4" fill="#FF3B30" />
+            <rect x="20" y="16" width="78" height="8" rx="4" fill="#E68A00" />
             {/* Bowl of spoon */}
-            <ellipse cx="14" cy="20" rx="14" ry="11" fill="#FF5F56" />
-            <ellipse cx="11" cy="18" rx="6" ry="5" fill="rgba(255,255,255,0.25)" />
+            <ellipse cx="14" cy="20" rx="14" ry="11" fill="url(#spoonGrad)" />
+            <ellipse cx="11" cy="18" rx="6" ry="5" fill="rgba(255,255,255,0.4)" />
             {/* Shine on handle */}
-            <rect x="30" y="17" width="40" height="3" rx="1.5" fill="rgba(255,255,255,0.3)" />
+            <rect x="30" y="17" width="40" height="3" rx="1.5" fill="rgba(255,255,255,0.35)" />
           </svg>
         </motion.div>
       )}
@@ -132,13 +196,13 @@ function FlyingSpoon({ trigger }: { trigger: boolean }) {
 function GlowRing() {
   return (
     <motion.div
-      className="absolute rounded-full"
+      className="absolute rounded-full pointer-events-none"
       style={{
-        width: 180,
-        height: 180,
-        background: 'radial-gradient(circle, rgba(255,59,48,0.18) 0%, transparent 70%)',
+        width: 190,
+        height: 190,
+        background: 'radial-gradient(circle, rgba(230, 138, 0, 0.22) 0%, rgba(251, 191, 36, 0.08) 50%, transparent 75%)',
       }}
-      animate={{ scale: [1, 1.18, 1], opacity: [0.5, 0.9, 0.5] }}
+      animate={{ scale: [1, 1.22, 1], opacity: [0.6, 0.95, 0.6] }}
       transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
     />
   );
@@ -147,13 +211,13 @@ function GlowRing() {
 // ─── Dot loader bar ───────────────────────────────────────────────────────────
 function DotLoader() {
   return (
-    <div className="flex gap-2 items-center">
+    <div className="flex gap-2.5 items-center">
       {[0, 0.18, 0.36].map((delay, i) => (
         <motion.span
           key={i}
-          className="block rounded-full bg-brand"
-          style={{ width: 7, height: 7 }}
-          animate={{ y: [0, -8, 0], opacity: [0.4, 1, 0.4] }}
+          className="block rounded-full bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-amber-500/40"
+          style={{ width: 8, height: 8 }}
+          animate={{ y: [0, -9, 0], scale: [0.85, 1.15, 0.85], opacity: [0.5, 1, 0.5] }}
           transition={{ repeat: Infinity, duration: 0.9, delay, ease: 'easeInOut' }}
         />
       ))}
@@ -228,12 +292,12 @@ export function DabzzoLoading({ onDone }: { onDone?: boolean }) {
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
           >
             {/* Checkmark */}
-            <div className="w-24 h-24 rounded-full bg-brand/10 flex items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center shadow-lg shadow-amber-500/10">
               <motion.svg viewBox="0 0 48 48" width={48} height={48}>
                 <motion.polyline
                   points="8,26 20,38 40,14"
                   fill="none"
-                  stroke="#FF3B30"
+                  stroke="#E68A00"
                   strokeWidth="4"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -248,7 +312,7 @@ export function DabzzoLoading({ onDone }: { onDone?: boolean }) {
       </AnimatePresence>
 
       {/* Label */}
-      <div className="flex flex-col items-center gap-3">
+      <div className="flex flex-col items-center gap-3.5">
         <AnimatePresence mode="wait">
           <motion.p
             key={wiped ? 'done' : spoonFired ? 'served' : 'cooking'}
@@ -256,7 +320,7 @@ export function DabzzoLoading({ onDone }: { onDone?: boolean }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.3 }}
-            className="text-[11px] font-black text-slate-400 tracking-[0.18em] uppercase text-center"
+            className="text-[12px] font-bold text-amber-950/80 tracking-[0.22em] uppercase text-center drop-shadow-sm"
           >
             {wiped
               ? 'Ready to serve! 🎉'
@@ -278,7 +342,7 @@ export function DabzzoLoadingScreen() {
       className="min-h-screen flex items-center justify-center"
       style={{
         background:
-          'radial-gradient(ellipse 80% 60% at 50% 40%, rgba(255,59,48,0.06) 0%, transparent 70%), #FEFCE8',
+          'radial-gradient(ellipse 80% 60% at 50% 45%, rgba(230, 138, 0, 0.12) 0%, rgba(254, 243, 199, 0.35) 45%, #FAF8F5 100%)',
       }}
     >
       <DabzzoLoading />

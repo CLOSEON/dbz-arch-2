@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import { rateLimit } from '@/lib/server/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +65,20 @@ export async function POST(req: NextRequest) {
     const currency = typeof body?.currency === 'string' ? body.currency : 'INR';
     const receipt = typeof body?.receipt === 'string' ? body.receipt : undefined;
     const notes = getRazorpayNotes(body?.notes);
+
+    // ── Authentication Check ──────────────────────────────────────────────
+    const authHeader = req.headers.get('authorization') || '';
+    if (authHeader.startsWith('Bearer ')) {
+      try {
+        const idToken = authHeader.substring(7);
+        const decoded = await adminAuth.verifyIdToken(idToken);
+        if (decoded?.uid) {
+          notes.user_id = decoded.uid;
+        }
+      } catch (authErr) {
+        console.warn('[Razorpay create-order] Token verification warning:', authErr);
+      }
+    }
 
     // Validate amount — Razorpay requires minimum 100 paise (₹1)
     if (!amount || typeof amount !== 'number' || amount < 100 || amount > 50_000_000) {

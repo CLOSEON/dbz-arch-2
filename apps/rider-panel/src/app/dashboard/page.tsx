@@ -24,7 +24,7 @@ export default function RiderDashboard() {
   const agentOrders = useDeliveryStore((s) => s.agentOrders);
 
   const isRiderRole = user?.role === 'delivery' || user?.role === 'admin';
-  const isVerifiedRider = user?.is_approved === true && user?.verification_status === 'verified';
+  const isVerifiedRider = (user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
 
   if (user && (!isRiderRole || !isVerifiedRider)) {
     return <PendingVerificationScreen role="delivery" />;

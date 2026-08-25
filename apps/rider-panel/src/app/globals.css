@@ -2,22 +2,22 @@
 
 @theme {
   --color-brand: #431407;
-  --color-brand-50: #FFF7ED;
-  --color-brand-100: #FFEDD5;
+  --color-brand-50: #FFFBEB;
+  --color-brand-100: #FEF3C7;
   --color-brand-500: #431407;
-  --color-brand-600: #2A0B04;
-  --color-brand-700: #1C0702;
-  --color-brand-secondary: #EA580C;
+  --color-brand-600: #D97706;
+  --color-brand-700: #B45309;
+  --color-brand-secondary: #F59E0B;
   --color-ivory: #FFF7ED;
   --color-ivory-dark: #FFEDD5;
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
   --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-bg: rgba(,,,);
+  --glass-border: rgba(,,,);
   --glass-blur: blur(16px);
-  --shadow-soft: 0 8px 32px rgba(15, 23, 42, 0.08);
-  --shadow-glow: 0 0 24px rgba(255, 59, 48, 0.3);
+  --shadow-soft: 0 8px 32px rgba(,,,);
+  --shadow-glow: 0 0 24px rgba(,,,);
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -36,9 +36,9 @@
   }
 
   @keyframes pulseRing {
-    0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.22); }
-    70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(,,,); }
+    70% { box-shadow: 0 0 0 12px rgba(,,,); }
+    100% { box-shadow: 0 0 0 0 rgba(,,,); }
   }
 
   @keyframes slideUpSoft {
@@ -147,15 +147,15 @@
   }
 
   .card {
-    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] ring-1 ring-white/80;
+    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(,,,)] ring-1 ring-white/80;
   }
 
   .btn-primary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(255,59,48,0.22)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
   }
 
   .btn-secondary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
   }
 
   .btn-outline {
@@ -175,7 +175,7 @@
   }
 
   .pill.active {
-    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(255,59,48,0.18)];
+    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(,,,)];
   }
 
   .pill-container {
@@ -208,7 +208,7 @@
     position: absolute;
     inset: -30% auto -30% -55%;
     width: 42%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.52), transparent);
+    background: linear-gradient(90deg, transparent, rgba(,,,), transparent);
     transform: translateX(-140%) skewX(-18deg);
     pointer-events: none;
   }
@@ -244,7 +244,7 @@
 
 @layer utilities {
   .shadow-card {
-    @apply shadow-[0_18px_40px_rgba(15,23,42,0.06)];
+    @apply shadow-[0_18px_40px_rgba(,,,)];
   }
 
   .pb-safe {

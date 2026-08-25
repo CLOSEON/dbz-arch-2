@@ -373,7 +373,7 @@ export function LocationSheet({ isOpen, onClose, onSelect }: Props) {
                     className="flex flex-1 flex-col items-center gap-2 rounded-2xl border-2 py-4 transition-all duration-200 active:scale-95"
                     style={{
                       borderColor: active ? '#FF3B30' : '#E2E8F0',
-                      background:  active ? 'rgba(255,59,48,0.05)' : '#fff',
+                      background:  active ? 'rgba(230, 138, 0, 0.05)' : '#fff',
                     }}
                     aria-pressed={active}
                   >
@@ -399,7 +399,7 @@ export function LocationSheet({ isOpen, onClose, onSelect }: Props) {
               onClick={handleSave}
               disabled={saving}
               className="flex w-full items-center justify-center gap-2 rounded-2xl py-[15px] text-[14px] font-black text-white transition-all duration-200 active:scale-[0.98] disabled:opacity-60"
-              style={{ background: '#FF3B30', boxShadow: '0 6px 24px rgba(255,59,48,0.28)' }}
+              style={{ background: '#FF3B30', boxShadow: '0 6px 24px rgba(230, 138, 0, 0.28)' }}
             >
               {saving
                 ? <><Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} /> Saving…</>
@@ -437,7 +437,7 @@ export function LocationSheet({ isOpen, onClose, onSelect }: Props) {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search for area, street name…"
                   aria-label="Search for a location"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-10 text-[13.5px] font-medium text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-brand/40 focus:bg-white focus:shadow-[0_4px_16px_rgba(255,59,48,0.1)]"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-10 text-[13.5px] font-medium text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-brand/40 focus:bg-white focus:shadow-[0_4px_16px_rgba(230, 138, 0, 0.1)]"
                 />
                 {query_ && (
                   <button

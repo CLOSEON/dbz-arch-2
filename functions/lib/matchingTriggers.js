@@ -193,8 +193,9 @@ exports.assignRiderTrips = functions.https.onCall(async (data, context) => {
             throw new functions.https.HttpsError('permission-denied', 'Only admins can assign rider trips.');
         }
     }
-    const { vendorId, slot } = data || {};
-    return await (0, exports.coreAssignRiderTrips)(vendorId, slot, 99999);
+    const { vendorId, slot, radius } = data || {};
+    const maxRadius = typeof radius === 'number' && radius > 0 ? Math.min(radius, 5.0) : 2.0;
+    return await (0, exports.coreAssignRiderTrips)(vendorId, slot, maxRadius);
 });
 exports.computeDropRoute = functions.firestore
     .document('rider_trips/{tripId}')

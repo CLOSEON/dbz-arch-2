@@ -1,128 +1,126 @@
-# Dabzzo
+# Dabzzo 🍱
 
-Dabzzo is a comprehensive Smart Meal Subscription and Delivery platform designed to seamlessly connect home-style kitchens (Vendors) with hungry customers, facilitated by a dedicated delivery fleet (Riders).
+Dabzzo is a smart home-style meal subscription and delivery platform that connects local home-style kitchens (Vendors) with customers, facilitated by an intelligent batch dispatch system and dedicated rider fleet.
 
-The application is built on a modern serverless stack utilizing Next.js (App Router) and Firebase, ensuring real-time syncing, high performance, and rapid scalability.
-
----
-
-## 🏗 Architecture & Tech Stack
-
-### Frontend
-- **Framework:** Next.js (App Router)
-- **Language:** TypeScript
-- **Styling:** Tailwind CSS
-- **State Management:** Zustand
-- **Real-Time Data:** Firebase Firestore SDK (onSnapshot listeners)
-- **Maps & Tracking:** Google Maps API (via `@react-google-maps/api` / Leaflet)
-
-### Backend (Serverless)
-- **Database:** Firebase Firestore (NoSQL)
-- **Authentication:** Firebase Auth
-- **Storage:** Firebase Cloud Storage (Profile pictures, etc.)
-- **Compute:** Firebase Cloud Functions (Node.js/TypeScript)
-- **Cron Jobs:** Google Cloud Scheduler (via Firebase Functions)
+The platform is architected as a production-grade monorepo powered by Next.js 16 (Turbopack, App Router) and Firebase (Firestore, Cloud Functions, Authentication, Cloud Storage, and Multi-Site Hosting).
 
 ---
 
-## 👥 User Roles & Portals
+## 🏗️ Monorepo Architecture
 
-The application is divided into dedicated portals tailored for the four primary user roles:
+```
+DBZARCH2/
+├── apps/
+│   ├── web-main/       # Customer Portal (Meal subscriptions, daily tracking, swap planner)
+│   ├── vendor-panel/   # Kitchen Partner Portal (Batch prep, subscriptions, menu, OTP handoff)
+│   ├── rider-panel/    # Delivery Fleet App (Trip dispatch, OTP pickups/dropoffs, earnings)
+│   ├── admin-panel/    # Operations Command Console (Approvals, logistics, reconciliation)
+│   └── gig/            # Marketing & Partner Onboarding Landing Site
+├── packages/
+│   ├── shared-ui/      # Common UI primitives, loaders, tokens, and navigation shells
+│   ├── firestore-rules/# Production security rules and access control definitions
+│   └── functions/      # Shared serverless types and trigger interfaces
+├── functions/          # 29 Firebase Cloud Functions (TypeScript, Node.js runtime)
+└── scripts/            # Monorepo build and multi-app static export orchestrators
+```
+
+---
+
+## 🎨 Brand Identity & Design System
+
+- **Signature Palette:**
+  - **Dabzzo Primary:** `#E68A00` (Warm Heritage Orange)
+  - **Canvas & Neutral:** `#FAF8F5` / `#F8FAFC` (Clean Ivory & Slate)
+  - **Accent & Status:** Emerald (`#059669` / `#10B981`) for verified kitchens & fleet, Slate (`#0F172A`) for operations.
+- **Typography:** Custom Serif brand wordmark hierarchy paired with crisp, accessible sans-serif interfaces.
+- **2D Geometry:** Minimalist 2D concentric vector circles, arc accents, and subtle dot-matrix patterns for high-engagement interfaces without muddy gradients.
+- **Micro-Animations:** Hardware-accelerated 3-tier metallic tiffin loading animation with soft ambient glow rings and steam wisps.
+
+---
+
+## 👥 Portals & User Roles
 
 ### 1. Customer (`user` / `customer`)
-- **Subscription Management:** Subscribe to daily lunch and/or dinner plans.
-- **Order Tracking:** Real-time map tracking of their active meal delivery.
-- **Profile:** Manage delivery addresses, contact info, and preferences.
+- **Daily Meal Subscriptions:** Flexible Lunch, Dinner, and Full-Day meal plans.
+- **Weekly Planner & Swaps:** Swap between partner kitchens or pause deliveries with real-time allowance tracking.
+- **Live Tracking:** Real-time GPS rider and delivery state tracking with OTP-verified dropoffs.
+- **Payment & Credits:** Integrated Razorpay checkout with webhook-verified credit allocations and auto-renewals.
 
-### 2. Vendor (`vendor`)
-- **Kitchen Dashboard:** View upcoming prep schedules (Forecasted via subscriptions).
-- **Batch Management:** Grouped meal orders ("Batches") are sent to vendors. Vendors can mark batches as "Ready" when prep is complete.
-- **Handoffs:** Secure handoff to riders using Pickup OTPs.
+### 2. Kitchen Partner (`vendor`)
+- **Prep Schedules:** Automated subscription aggregation into morning & evening kitchen prep batches.
+- **Batch Handoffs:** Secure vendor-to-rider handoff with Pickup OTP verification and tiffin count confirmation.
+- **Menu & Capacity:** Real-time slot management, active subscriber counts, and daily dish customization.
 
-### 3. Rider (`delivery`)
-- **Delivery Dashboard:** Receive real-time dispatch assignments based on GPS proximity.
-- **Pickup Flow:** 
-  - Navigate to the kitchen.
-  - Provide a Pickup OTP to the vendor.
-  - **Count Confirmation:** Explicitly confirm the number of tiffins picked up. (Discrepancies automatically flag Ops).
-- **Drop-off Flow:** 
-  - Navigate to customers via optimized routing.
-  - Complete deliveries via Drop-off OTP.
-  - **Exception Handling:** If a customer is unavailable, a 10-minute timer can be initiated before marking the delivery as failed (Requires Admin/Ops review).
+### 3. Delivery Fleet (`delivery` / `rider`)
+- **Proximity Dispatch:** Smart dispatch restricted to a strict 2.0 km radius from the kitchen for freshness.
+- **Multi-Order Trips:** Grouped batch pickups with optimized dropoff sequencing.
+- **Secure Handoffs:** Dual OTP verification (Pickup OTP from vendor, Drop-off OTP from customer).
+- **Earnings Ledger:** Automatic distance and volume-based compensation calculations.
 
-### 4. Admin (`admin`)
-- **Global Dashboard:** Bird's-eye view of all operations, active deliveries, and system health.
-- **User Management:** Approve vendor registrations, manage rider fleets.
-- **Exception Monitoring:** Dedicated UI to resolve `pickup_discrepancies` and `failed_delivery_reviews`.
-- **Accounting:** Review automated rider payouts and vendor settlements.
+### 4. Admin Operations (`admin`)
+- **Command Center:** Live visibility over all active batches, rider locations, and subscriber health.
+- **Kitchen & Fleet Approvals:** Granular onboarding review for vendors and rider KYC.
+- **Exception Resolution:** Instant flags and resolution workflows for pickup count discrepancies or failed delivery reviews.
+- **Financial Reconciliation:** Vendor settlement monitoring, rider payout audits, and Razorpay webhook logs.
 
 ---
 
-## ⚙️ Core Business Logic & Workflows
+## ⚙️ Core Business Logic & Cloud Functions
 
-### 1. Automated Batching
-Instead of overwhelming vendors with individual orders, the system aggregates active subscriptions into **Batches** using scheduled Firebase Functions (Cron jobs). A batch represents the total count of meals a specific vendor needs to prepare for a given time slot (e.g., 11:00 AM Lunch).
-
-### 2. Smart Dispatch & Radius Expansion
-Once a vendor marks a batch as "Ready":
-1. **Initial Dispatch:** The system looks for available riders within a **2km radius** of the kitchen.
-2. **Expansion Protocol:** If no rider accepts the trip, a cron job (`dispatchRetryAndExpansion`) runs every 5 minutes, automatically expanding the search radius to **4km**, and eventually **6km**.
-3. **Failure:** If still unassigned, a `delivery_failed` ops event is raised.
-
-### 3. Rider Compensation Algorithm
-Rider payouts are calculated dynamically via Firestore Triggers (`riderPaymentTriggers.ts`):
-- **Base Pay:** Calculated based on the GPS distance of the optimized route.
-- **Volume Bonuses:** Riders are incentivized to carry more. For example, carrying more than 15 tiffins in a single trip yields an additional volume bonus (e.g., ₹7 per extra tiffin).
-
-### 4. Secure Handoffs & Discrepancies
-To prevent lost inventory:
-- **Pickup:** Riders must enter the Vendor's OTP. The rider then declares how many tiffins they physically received. If this number differs from the system's expected count, a `pickup_discrepancy` record is generated instantly for Admin review, while allowing the delivery to proceed.
-- **Drop-off:** Customers provide a Drop-off OTP to finalize the delivery. 
+- **Automated Batching (`cronTriggers.ts`):** Aggregates recurring subscriptions into synchronized preparation batches for vendors ahead of meal cut-off times.
+- **2.0 km Proximity Dispatch (`matchingTriggers.ts`, `cronTriggers.ts`):** Enforces a strict 2km rider dispatch radius to guarantee fast meal delivery from kitchen to customer.
+- **Swap Concurrency (`cronTriggers.ts`):** Resolves pending swap requests synchronously before batch generation to eliminate order collisions.
+- **Canonical Orders Consolidation (`deliveryTriggers.ts`):** Centralizes all meal instances under the canonical `orders` collection schema.
+- **Server-Side Payment Webhooks (`razorpay/webhook`):** Admin SDK authenticated webhook handler for idempotent payment verification, subscription activation, and credit ledger writes.
 
 ---
 
-## 🗄 Database Schema (Firestore)
+## 🔒 Security & Data Integrity
 
-Key collections that drive the application:
-
-- `users`: Core profile data, auth details, and role definition (`user`, `vendor`, `delivery`, `admin`).
-- `subscriptions`: Active recurring meal plans linked to customers.
-- `orders` / `delivery_orders`: Individual meal instances generated from subscriptions.
-- `batches`: Aggregated orders assigned to a specific vendor for a specific time slot.
-- `rider_trips`: Groupings of batches (Pickups) and Orders (Drop-offs) assigned to a specific Rider.
-- `driver_profiles`: Real-time GPS coordinates (`lat`/`lng`) and active status of riders.
-- `pickup_discrepancies`: Ops flags generated when rider count mismatches vendor batch count.
-- `failed_delivery_reviews`: Ops flags generated when a rider marks a drop-off as failed (e.g., customer unreachable).
-- `rider_payments`: Financial ledger recording calculated earnings for completed trips.
+- **Firestore Security Rules:** Role-Based Access Control (RBAC) enforcing admin-only writes on sensitive financial and logistics collections (`user_credits`, `payment_history`, `payment_subscriptions`, `subscription_swap_allowances`, `orders`).
+- **Serverless API Authentication:** All Razorpay order creation and verification routes authenticate requests using Firebase Admin SDK (`adminAuth.verifyIdToken`).
+- **Data Isolation:** Kitchens only access their assigned prep batches; riders only access assigned trips; customers only read their own orders.
 
 ---
 
-## 🔒 Security Rules
+## 🚀 Development & Deployment
 
-Firestore is secured using granular `firestore.rules`:
-- **Role-Based Access Control (RBAC):** Custom functions (`isAdmin()`, `isDriver()`, `isVendor()`) validate the user's role document to authorize reads/writes.
-- **Data Isolation:** Vendors can only read their assigned batches. Riders can only read/update their assigned trips. Customers can only read their specific orders.
-- **Static Analysis Bypass:** Complex `list` queries use `allow list: if request.auth != null;` while relying on frontend query constraints and single-document rules to ensure data privacy without breaking Firebase's rule compiler.
+### Prerequisites
+- Node.js >= 18.x
+- Firebase CLI (`firebase-tools`)
+
+### Local Development
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+### Building & Deploying Multi-App Hosting
+```bash
+# Build all 5 web apps with static export
+node scripts/build-web.mjs
+
+# Deploy Cloud Functions
+npx firebase deploy --only functions
+
+# Deploy Firestore Rules
+npx firebase deploy --only firestore:rules
+
+# Deploy all 5 Firebase Hosting targets
+npx firebase deploy --only hosting
+```
+
+### Production Hosting Targets
+- **Customer Web App:** [https://dabzo.web.app](https://dabzo.web.app) (`dabzzo.in`)
+- **Vendor Portal:** [https://dabzzo-vendor-panel.web.app](https://dabzzo-vendor-panel.web.app)
+- **Rider Portal:** [https://dabzzo-rider-panel.web.app](https://dabzzo-rider-panel.web.app)
+- **Admin Console:** [https://dabzzo-admin-panel.web.app](https://dabzzo-admin-panel.web.app)
+- **Gig / Landing:** [https://dabzzo-gig.web.app](https://dabzzo-gig.web.app)
 
 ---
 
-## 🚀 Running Locally
-
-1. **Install Dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Environment Variables:**
-   Ensure you have the required Firebase configuration in your `.env.local` or hardcoded in `src/lib/firebase.ts` (Safe for client-side keys).
-
-3. **Start Development Server:**
-   ```bash
-   npm run dev
-   ```
-
-4. **Deploying Firebase Rules & Functions:**
-   ```bash
-   npx firebase-tools deploy --only firestore:rules
-   npx firebase-tools deploy --only functions
-   ```
+## 📄 License
+Private & Proprietary © Dabzzo. All rights reserved.

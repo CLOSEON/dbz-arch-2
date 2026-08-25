@@ -97,7 +97,7 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
                 {item.label}
               </span>
               {active && (
-                <div className="absolute bottom-0 w-1.5 h-1.5 bg-brand rounded-full shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                <div className="absolute bottom-0 w-1.5 h-1.5 bg-brand rounded-full shadow-[0_0_8px_rgba(230, 138, 0, 0.6)]" />
               )}
             </Link>
           );

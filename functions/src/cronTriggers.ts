@@ -124,7 +124,7 @@ export const formBatches = onSchedule({
   
   // 0. Expire any pending swaps for this slot to ensure no race conditions with batch formation
   const pendingSwapsSnap = await db.collection('swap_requests').where('status', '==', 'broadcasted').get();
-  for (const swapDoc of pendingSwapsSnap.docs) {
+  const swapPromises = pendingSwapsSnap.docs.map(async (swapDoc) => {
     const swap = swapDoc.data();
     if (swap.order_id) {
       const orderDoc = await db.collection('orders').doc(swap.order_id).get();
@@ -144,7 +144,8 @@ export const formBatches = onSchedule({
         }
       }
     }
-  }
+  });
+  await Promise.all(swapPromises);
 
   // 1. Only lock orders that are strictly in 'created' status and already assigned to a vendor
   const ordersSnap = await db.collection('orders')
@@ -356,11 +357,9 @@ export const dispatchRetryAndExpansion = onSchedule({
     if (unassignedOrders.length === 0) continue; // All assigned or none ready
 
     let dispatch_attempts = batch.dispatch_attempts || 0;
-    let current_radius = batch.current_radius || 2.0;
+    const current_radius = 2.0; // Strict 2km hard limit per RIDER_LOGIC.md
 
     dispatch_attempts += 1;
-    if (dispatch_attempts === 2) current_radius = 4.0;
-    if (dispatch_attempts === 3) current_radius = 6.0;
 
     await doc.ref.update({
       dispatch_attempts,
