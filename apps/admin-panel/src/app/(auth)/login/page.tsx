@@ -62,7 +62,15 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm mx-auto flex flex-col">
 
         <div className="flex justify-center mb-10">
-          <Image src="/logo-main-text.png" alt="Dabzzo Admin" width={280} height={80} priority unoptimized className="h-14 sm:h-16 w-auto object-contain" />
+          <Image
+            src="/logo-main-text.png"
+            alt="Dabzzo Admin"
+            width={280}
+            height={80}
+            priority
+            unoptimized
+            className="h-14 sm:h-16 w-auto object-contain brightness-0 invert"
+          />
         </div>
 
         <div className="bg-[#13181F] border border-white/5 rounded-3xl p-8 shadow-2xl">
