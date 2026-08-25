@@ -1,40 +1,48 @@
-import { Capacitor } from '@capacitor/core';
 import {
-  signInWithPhoneNumber,
-  signInWithCredential,
-  PhoneAuthProvider,
   RecaptchaVerifier,
-  ConfirmationResult,
+  signInWithPhoneNumber,
+  PhoneAuthProvider,
+  signInWithCredential,
+  type ConfirmationResult,
   type User,
 } from 'firebase/auth';
 import { auth } from './firebase';
+import { Capacitor } from '@capacitor/core';
 
-export const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-export function isTestAccount(e164: string): boolean {
-  const TEST_NUMBERS = [
-    '+919000000001',
-    '+919000000002',
-    '+919000000003',
-    '+919000000004',
-    '+919930577000',
-    '+919900990011'
-  ];
-  if (TEST_NUMBERS.includes(e164)) return true;
-  if (e164.startsWith('+9190000') || e164.startsWith('+9100000')) return true;
-  return false;
+const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function isTestAccount(phone: string): boolean {
+  const clean = phone.replace(/\D/g, '');
+  return (
+    clean === '919000000001' ||
+    clean === '919000000002' ||
+    clean === '919000000003' ||
+    clean === '919000000004' ||
+    clean.endsWith('000000001')
+  );
 }
 
-export interface OtpSendResult {
+// ─── Return Types ────────────────────────────────────────────────────────────
+
+export interface WebOtpSentResult {
   success: true;
   verificationId: string;
-  autoVerified?: false;
 }
 
-export interface OtpAutoVerifyResult {
+export interface NativeAutoVerifiedResult {
   success: true;
   autoVerified: true;
   user: User;
+}
+
+export interface NativeCodeSentResult {
+  success: true;
+  autoVerified: false;
+  verificationId: string;
 }
 
 export interface OtpErrorResult {
@@ -43,7 +51,11 @@ export interface OtpErrorResult {
   code?: string;
 }
 
-export type SendOtpResult = OtpSendResult | OtpAutoVerifyResult | OtpErrorResult;
+export type SendOtpResult =
+  | WebOtpSentResult
+  | NativeAutoVerifiedResult
+  | NativeCodeSentResult
+  | OtpErrorResult;
 
 export interface VerifyOtpResult {
   success: boolean;
@@ -51,23 +63,20 @@ export interface VerifyOtpResult {
   error?: string;
 }
 
+// ─── Internal State ──────────────────────────────────────────────────────────
+
 let _recaptchaVerifier: RecaptchaVerifier | null = null;
 let _confirmationResult: ConfirmationResult | null = null;
 
+// ─── Platform Detection ──────────────────────────────────────────────────────
+
 const isNative = Capacitor.isNativePlatform();
 
-function initRecaptcha(): RecaptchaVerifier {
+// ─── reCAPTCHA Setup & Web Implementation (Stable Singleton) ──────────────────
+
+function getOrCreateRecaptcha(): RecaptchaVerifier {
   if (typeof window === 'undefined') {
     throw new Error('reCAPTCHA is only supported in browser environment.');
-  }
-
-  if (_recaptchaVerifier) {
-    try {
-      _recaptchaVerifier.clear();
-    } catch (e) {
-      console.warn('[Auth] Error clearing recaptcha verifier:', e);
-    }
-    _recaptchaVerifier = null;
   }
 
   let container = document.getElementById('firebase-recaptcha-container');
@@ -75,17 +84,21 @@ function initRecaptcha(): RecaptchaVerifier {
     container = document.createElement('div');
     container.id = 'firebase-recaptcha-container';
     document.body.appendChild(container);
-  } else {
-    container.innerHTML = '';
+  }
+
+  if (_recaptchaVerifier) {
+    return _recaptchaVerifier;
   }
 
   _recaptchaVerifier = new RecaptchaVerifier(auth, container, {
     size: 'invisible',
-    callback: () => console.log('[Auth] reCAPTCHA solved'),
+    callback: () => {
+      console.log('[Auth] reCAPTCHA solved');
+    },
     'expired-callback': () => {
       console.warn('[Auth] reCAPTCHA expired, resetting verifier');
       cleanupAuth();
-    }
+    },
   });
 
   return _recaptchaVerifier;
@@ -95,23 +108,8 @@ async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
   console.log('[Auth] Starting Web OTP flow for:', phoneNumber);
 
   try {
-    const verifier = initRecaptcha();
-
-    try {
-      _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-    } catch (err: any) {
-      if (
-        (err.code === 'auth/captcha-check-failed' || err.code === 'auth/invalid-app-credential') &&
-        (auth as any).settings?.appVerificationDisabledForTesting
-      ) {
-        console.warn('[Auth] Test mode verification rejected by Firebase backend. Retrying with real reCAPTCHA...');
-        (auth as any).settings.appVerificationDisabledForTesting = false;
-        const freshVerifier = initRecaptcha();
-        _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, freshVerifier);
-      } else {
-        throw err;
-      }
-    }
+    const verifier = getOrCreateRecaptcha();
+    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
 
     console.log('[Auth] Web: OTP sent successfully');
     return {
@@ -125,14 +123,14 @@ async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
     if (err.code === 'auth/too-many-requests') {
       return {
         success: false,
-        error: 'Too many OTP attempts for this number. Please wait a few minutes before trying again.',
+        error: 'Too many OTP attempts. Please wait a few minutes before trying again.',
         code: err.code,
       };
     }
     if (err.code === 'auth/invalid-app-credential' || err.code === 'auth/captcha-check-failed') {
       return {
         success: false,
-        error: 'App verification failed. On localhost, ensure reCAPTCHA is allowed or add test numbers to Firebase Console.',
+        error: 'Security verification failed for this domain. Please ensure domain is whitelisted or refresh the page.',
         code: err.code,
       };
     }
@@ -141,17 +139,25 @@ async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
   }
 }
 
+// ─── Cleanup ─────────────────────────────────────────────────────────────────
+
 export function cleanupAuth(): void {
   if (_recaptchaVerifier) {
-    _recaptchaVerifier.clear();
+    try {
+      _recaptchaVerifier.clear();
+    } catch {
+      // ignore clear error
+    }
     _recaptchaVerifier = null;
   }
   const oldContainer = document.getElementById('firebase-recaptcha-container');
   if (oldContainer) {
-    oldContainer.remove();
+    oldContainer.innerHTML = '';
   }
   _confirmationResult = null;
 }
+
+// ─── Error Mapping ───────────────────────────────────────────────────────────
 
 function mapFirebaseError(err: any): OtpErrorResult {
   const code = err?.code || '';
@@ -176,121 +182,99 @@ function mapFirebaseError(err: any): OtpErrorResult {
   };
 }
 
+// ─── Public API ──────────────────────────────────────────────────────────────
+
 export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
-  console.log(`[Auth] Sending OTP to ${phoneNumber} (platform: ${isNative ? 'native' : 'web'})`);
+  if (isTestAccount(phoneNumber)) {
+    console.log('[Auth] Test account detected. Skipping reCAPTCHA/SMS.');
+  }
+
+  if (isNative) {
+    return sendOtpNative(phoneNumber);
+  }
+  return sendOtpWeb(phoneNumber);
+}
+
+export async function verifyOtp(
+  verificationId: string,
+  otpCode: string
+): Promise<VerifyOtpResult> {
+  if (isNative) {
+    return verifyOtpNative(verificationId, otpCode);
+  }
+  return verifyOtpWeb(otpCode);
+}
+
+// ─── Web Verify ──────────────────────────────────────────────────────────────
+
+async function verifyOtpWeb(otpCode: string): Promise<VerifyOtpResult> {
+  if (!_confirmationResult) {
+    return {
+      success: false,
+      error: 'No active OTP request found. Please request a new OTP.',
+    };
+  }
 
   try {
-    if (typeof window !== 'undefined') {
-      if (isTestAccount(phoneNumber)) {
-        console.log('[Auth] Test account detected. Bypassing reCAPTCHA.');
-        (auth as any).settings.appVerificationDisabledForTesting = true;
-      } else {
-        (auth as any).settings.appVerificationDisabledForTesting = false;
-      }
-    }
-    if (isNative) {
-      return await sendOtpNative(phoneNumber);
-    }
-    return await sendOtpWeb(phoneNumber);
+    const result = await _confirmationResult.confirm(otpCode);
+    cleanupAuth();
+    return { success: true, user: result.user };
   } catch (err: any) {
-    console.error('[Auth] sendOtp error:', err);
+    console.error('[Auth] Web verify error:', err);
+    return {
+      success: false,
+      error:
+        err.code === 'auth/invalid-verification-code'
+          ? 'Invalid OTP. Please check the code and try again.'
+          : err.code === 'auth/code-expired'
+          ? 'OTP has expired. Please request a new one.'
+          : err.message || 'Verification failed.',
+    };
+  }
+}
+
+// ─── Native Implementation (Capacitor SMS Retriever) ──────────────────────────
+
+async function sendOtpNative(phoneNumber: string): Promise<SendOtpResult> {
+  console.log('[Auth] Starting Native OTP flow for:', phoneNumber);
+
+  try {
+    const verifier = getOrCreateRecaptcha();
+    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
+    return {
+      success: true,
+      autoVerified: false,
+      verificationId: '_native_confirmation',
+    };
+  } catch (err: any) {
+    console.error('[Auth] Native OTP Error:', err);
+    cleanupAuth();
     return mapFirebaseError(err);
   }
 }
 
-async function sendOtpNative(phoneNumber: string): Promise<SendOtpResult> {
-  const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
-
-  return new Promise(async (resolve) => {
-    let resolved = false;
-    let codeSentListener: any;
-    let completedListener: any;
-    let failedListener: any;
-
-    const cleanup = () => {
-      codeSentListener?.remove();
-      completedListener?.remove();
-      failedListener?.remove();
-    };
-
-    codeSentListener = await FirebaseAuthentication.addListener('phoneCodeSent', (event: any) => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      console.log('[Auth] Native: OTP sent, verificationId received', event.verificationId);
-      resolve({ success: true, verificationId: event.verificationId });
-    });
-
-    completedListener = await FirebaseAuthentication.addListener('phoneVerificationCompleted', async (event: any) => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      console.log('[Auth] Native: Phone verification auto-completed');
-      if (event.user) {
-        resolve({ success: true, autoVerified: true, user: event.user as any });
-      } else {
-        resolve({ success: false, error: 'Auto-verification failed to return user.' });
-      }
-    });
-
-    failedListener = await FirebaseAuthentication.addListener('phoneVerificationFailed', (event: any) => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      console.error('[Auth] Native: Phone verification failed', event.message);
-      resolve({ success: false, error: event.message });
-    });
-
-    try {
-      await FirebaseAuthentication.signInWithPhoneNumber({ phoneNumber });
-    } catch (err: any) {
-      if (!resolved) {
-        resolved = true;
-        cleanup();
-        resolve(mapFirebaseError(err));
-      }
-    }
-  });
+async function verifyOtpNative(
+  verificationId: string,
+  otpCode: string
+): Promise<VerifyOtpResult> {
+  return verifyOtpWeb(otpCode);
 }
 
-export async function verifyOtp(verificationId: string, code: string): Promise<VerifyOtpResult> {
-  console.log('[Auth] Verifying OTP...');
-
-  try {
-    if (_confirmationResult) {
-      const result = await _confirmationResult.confirm(code);
-      _confirmationResult = null;
-      cleanupAuth();
-      return { success: true, user: result.user };
-    }
-    
-    if (verificationId && verificationId !== '_web_confirmation') {
-      const credential = PhoneAuthProvider.credential(verificationId, code);
-      const result = await signInWithCredential(auth, credential);
-      cleanupAuth();
-      return { success: true, user: result.user };
-    }
-
-    return { success: false, error: 'Session expired. Request a new OTP.' };
-
-  } catch (err: any) {
-    console.error('[Auth] verifyOtp error:', err);
-    const mapped = mapFirebaseError(err);
-    return { success: false, error: mapped.error };
-  }
-}
+// ─── Sign Out ────────────────────────────────────────────────────────────────
 
 export async function signOut(): Promise<void> {
   cleanupAuth();
-  
+
   if (auth.currentUser) {
-    const token = typeof window !== 'undefined' ? localStorage.getItem(FCM_TOKEN_STORAGE_KEY) : null;
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem(FCM_TOKEN_STORAGE_KEY) : null;
     if (token) {
       try {
         const { doc, updateDoc, arrayRemove, deleteField } = await import('firebase/firestore');
-        await updateDoc(doc(auth.app ? (await import('./firebase')).db : (null as any), 'users', auth.currentUser.uid), {
+        const { db } = await import('./firebase');
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
           push_tokens: arrayRemove(token),
-          fcmToken: deleteField()
+          fcmToken: deleteField(),
         });
         localStorage.removeItem(FCM_TOKEN_STORAGE_KEY);
       } catch (e) {
@@ -304,6 +288,7 @@ export async function signOut(): Promise<void> {
       const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
       await FirebaseAuthentication.signOut();
     } catch {
+      // ignore
     }
   }
 
