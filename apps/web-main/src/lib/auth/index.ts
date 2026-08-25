@@ -11,6 +11,7 @@ export {
   signOut,
   cleanupAuth,
   SUPERADMIN_EMAIL,
+  isSuperadminEmail,
 } from './auth-service';
 
 export type { SignInResult, SendOtpResult, VerifyOtpResult } from './auth-service';

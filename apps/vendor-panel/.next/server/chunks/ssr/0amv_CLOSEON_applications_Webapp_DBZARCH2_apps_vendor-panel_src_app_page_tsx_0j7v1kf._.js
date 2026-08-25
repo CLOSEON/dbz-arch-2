@@ -1,3 +1,0 @@
-module.exports=[14280,a=>{"use strict";var b=a.i(31185),c=a.i(35517),d=a.i(38078),e=a.i(67373),f=a.i(38802);a.s(["default",0,function(){let a=(0,d.useRouter)(),g=(0,e.useAuthStore)(a=>a.user),h=(0,e.useAuthStore)(a=>a.isHydrated);return(0,c.useEffect)(()=>{h&&(g?a.replace("/dashboard"):a.replace("/login"))},[g,h,a]),(0,b.jsx)(f.DabzzoLoadingScreen,{})}])}];
-
-//# sourceMappingURL=0amv_CLOSEON_applications_Webapp_DBZARCH2_apps_vendor-panel_src_app_page_tsx_0j7v1kf._.js.map
