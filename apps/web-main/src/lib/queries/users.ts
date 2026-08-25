@@ -10,14 +10,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
+import { isSuperadminEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
 import type { AppUser, UserRole, Vendor } from '@/types';
-
-// ─── Superadmin Seed ─────────────────────────────────────────────────────────
-const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
-
-export function isSuperadminEmail(email: string | null | undefined): boolean {
-  return (email || '').toLowerCase().trim() === SUPERADMIN_EMAIL;
-}
 
 // ─── Module-level TTL cache ──────────────────────────────────────────────────
 // Prevents hammering Firestore with repeated full-collection reads on every
