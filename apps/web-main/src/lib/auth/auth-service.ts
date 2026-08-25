@@ -8,9 +8,12 @@ import {
 import { auth, db } from '@/lib/firebase';
 import { Capacitor } from '@capacitor/core';
 
-// ─── Superadmin Seed ─────────────────────────────────────────────────────────
-
 export const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
+
+export function isSuperadminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return email.toLowerCase().trim() === SUPERADMIN_EMAIL.toLowerCase().trim();
+}
 
 // ─── Return Types ─────────────────────────────────────────────────────────────
 

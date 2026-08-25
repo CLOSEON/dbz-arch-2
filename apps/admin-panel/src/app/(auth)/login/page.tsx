@@ -26,14 +26,36 @@ export default function AdminLoginPage() {
 
   const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
-      const { user: profile } = await resolveUserProfile(
-        firebaseUser.uid,
-        firebaseUser.email,
-        firebaseUser.displayName,
-        firebaseUser.photoURL,
-      );
+      const { isSuperadminEmail, SUPERADMIN_EMAIL } = await import('@/lib/auth');
+      const isSuper = isSuperadminEmail(firebaseUser.email);
 
-      if (profile.role !== 'admin') {
+      let profile: any;
+      try {
+        const { user } = await resolveUserProfile(
+          firebaseUser.uid,
+          firebaseUser.email,
+          firebaseUser.displayName,
+          firebaseUser.photoURL,
+        );
+        profile = user;
+      } catch (e) {
+        console.warn('resolveUserProfile fallback for superadmin:', e);
+      }
+
+      if (isSuper) {
+        profile = {
+          ...(profile || {}),
+          id: firebaseUser.uid,
+          email: firebaseUser.email || SUPERADMIN_EMAIL,
+          name: firebaseUser.displayName || profile?.name || 'Superadmin',
+          image: firebaseUser.photoURL || profile?.image,
+          role: 'admin',
+          is_superadmin: true,
+          is_approved: true,
+        };
+      }
+
+      if (!profile || (profile.role !== 'admin' && !isSuper)) {
         addToast('Access denied. Admin accounts only.', 'error');
         const { signOut } = await import('@/lib/auth');
         await signOut();
@@ -41,7 +63,7 @@ export default function AdminLoginPage() {
       }
 
       setUser(profile);
-      addToast(`Welcome back, ${profile.name || 'Admin'}`, 'success');
+      addToast(`Welcome back, ${profile.name || 'Admin'}! 🎉`, 'success');
       router.replace('/admin/dashboard');
     } catch (err: any) {
       addToast(err.message || 'Sign-in failed.', 'error');

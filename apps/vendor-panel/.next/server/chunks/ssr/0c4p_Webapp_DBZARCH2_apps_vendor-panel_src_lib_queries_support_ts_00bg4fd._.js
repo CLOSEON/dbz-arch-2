@@ -1,3 +1,0 @@
-module.exports=[84935,a=>{"use strict";a.i(31263);var b=a.i(22440),c=a.i(8621),d=a.i(28784),e=a.i(14570);async function f(a){await (0,c.addDoc)((0,b.collection)(e.db,"support_tickets"),{...a,status:"open",replies:[],created_at:d.Timestamp.now(),updated_at:d.Timestamp.now()})}a.s(["submitTicket",0,f])}];
-
-//# sourceMappingURL=0c4p_Webapp_DBZARCH2_apps_vendor-panel_src_lib_queries_support_ts_00bg4fd._.js.map
