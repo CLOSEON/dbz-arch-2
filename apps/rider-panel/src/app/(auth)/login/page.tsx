@@ -271,11 +271,11 @@ export default function RiderLoginPage() {
             <Image
               src="/logo-main-text.png"
               alt="Dabzzo"
-              width={260}
-              height={70}
+              width={340}
+              height={95}
               priority
               unoptimized
-              className="h-12 sm:h-14 w-auto object-contain"
+              className="h-16 sm:h-20 w-auto object-contain drop-shadow-xs"
             />
           </div>
         </div>
