@@ -172,7 +172,7 @@ export default function RiderLoginPage() {
         </div>
 
         <p className="mt-8 text-center text-[11px] text-slate-400 font-medium">
-          Dabzzo Rider Partners · <span className="underline decoration-slate-300 underline-offset-2 cursor-pointer hover:text-slate-600">Partner Terms</span>
+          Dabzzo Rider Partners
         </p>
       </div>
     </div>

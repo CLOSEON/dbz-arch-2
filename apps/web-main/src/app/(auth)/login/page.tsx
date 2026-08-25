@@ -191,8 +191,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-8 text-center text-[11px] text-slate-400 font-medium">
-          Dabzzo · Fresh Home Cooked Tiffins ·{' '}
-          <span className="underline decoration-slate-300 underline-offset-2 cursor-pointer hover:text-slate-600">Terms & Privacy</span>
+          Dabzzo · Fresh Home Cooked Tiffins
         </p>
 
       </div>
