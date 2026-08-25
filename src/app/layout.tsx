@@ -13,7 +13,7 @@ const sansFont = Plus_Jakarta_Sans({
 });
 
 export const viewport: Viewport = {
-  themeColor: '#FF3B30',
+  themeColor: '#E68A00',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

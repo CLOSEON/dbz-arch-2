@@ -112,7 +112,7 @@ exports.formBatches = (0, scheduler_1.onSchedule)({
     }
     console.log(`[formBatches] Forming batches for date: ${targetDateStr}, slot: ${targetSlot}`);
     const pendingSwapsSnap = await db.collection('swap_requests').where('status', '==', 'broadcasted').get();
-    for (const swapDoc of pendingSwapsSnap.docs) {
+    const swapPromises = pendingSwapsSnap.docs.map(async (swapDoc) => {
         const swap = swapDoc.data();
         if (swap.order_id) {
             const orderDoc = await db.collection('orders').doc(swap.order_id).get();
@@ -132,7 +132,8 @@ exports.formBatches = (0, scheduler_1.onSchedule)({
                 }
             }
         }
-    }
+    });
+    await Promise.all(swapPromises);
     const ordersSnap = await db.collection('orders')
         .where('date', '==', targetDateStr)
         .where('delivery_slot', '==', targetSlot)
@@ -271,12 +272,8 @@ exports.dispatchRetryAndExpansion = (0, scheduler_1.onSchedule)({
         if (unassignedOrders.length === 0)
             continue;
         let dispatch_attempts = batch.dispatch_attempts || 0;
-        let current_radius = batch.current_radius || 2.0;
+        const current_radius = 2.0;
         dispatch_attempts += 1;
-        if (dispatch_attempts === 2)
-            current_radius = 4.0;
-        if (dispatch_attempts === 3)
-            current_radius = 6.0;
         await doc.ref.update({
             dispatch_attempts,
             current_radius,

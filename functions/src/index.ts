@@ -125,3 +125,5 @@ export * from './matchingTriggers';
 export * from './riderPaymentTriggers';
 export * from './notificationTriggers';
 export * from './cronTriggers';
+export * from './adminManagementTriggers';
+export * from './razorpayFunctions';

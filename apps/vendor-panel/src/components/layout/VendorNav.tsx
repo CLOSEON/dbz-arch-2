@@ -1,0 +1,118 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { LayoutDashboard, UserCircle, ClipboardList } from 'lucide-react';
+import { triggerHapticSelection } from '@/lib/haptics';
+
+const NAV_ITEMS = [
+  {
+    href: '/dashboard',
+    label: 'Dashboard',
+    icon: (active: boolean) => <LayoutDashboard className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/menu',
+    label: 'Menu',
+    icon: (active: boolean) => <ClipboardList className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/profile',
+    label: 'Profile',
+    icon: (active: boolean) => <UserCircle className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+];
+
+interface VendorNavProps {
+  variant?: 'bottom' | 'sidebar';
+}
+
+export function VendorNav({ variant = 'bottom' }: VendorNavProps) {
+  const pathname = usePathname();
+
+    if (variant === 'sidebar') {
+    return (
+      <nav className="flex flex-col gap-1.5 px-4">
+        {NAV_ITEMS.map((item) => {
+          const isDash = item.href.includes('dashboard');
+          const active = isDash 
+            ? pathname === item.href || pathname === item.href + '/'
+            : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={triggerHapticSelection}
+              className={cn(
+                'group relative flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5',
+                active 
+                  ? 'bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70' 
+                  : 'text-slate-400 hover:bg-slate-50/80 hover:text-slate-600'
+              )}
+            >
+              {active && (
+                <div className="absolute left-0 w-1 h-6 bg-brand rounded-r-full pulse-ring" />
+              )}
+              <div className={cn(
+                "transition-transform duration-300",
+                active ? "scale-110 -translate-y-0.5" : "group-hover:scale-110 group-hover:-translate-y-0.5"
+              )}>
+                {item.icon(active)}
+              </div>
+              <span className="relative z-10">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  // Mobile Bottom Nav - Show 3 items
+  const MOBILE_NAV_ITEMS = NAV_ITEMS.filter(item => 
+    ['Dashboard', 'Menu', 'Profile'].includes(item.label)
+  );
+
+  return (
+    <nav 
+      className="fixed left-4 right-4 z-40 border border-slate-200/40 bg-white/95 px-3 py-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2rem] animate-fade-in"
+      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+    >
+      <div className="max-w-md mx-auto flex items-center justify-around">
+        {MOBILE_NAV_ITEMS.map((item) => {
+          const isDash = item.href.includes('dashboard');
+          const active = isDash 
+            ? pathname === item.href || pathname === item.href + '/'
+            : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={triggerHapticSelection}
+              className={cn(
+                'group flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-manipulation focus-visible:ring-4 focus-visible:ring-brand/10 relative',
+                active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
+              )}
+            >
+              <div className={cn(
+                "transition-transform duration-300",
+                active ? "scale-110 -translate-y-0.5" : "group-hover:scale-105"
+              )}>
+                {item.icon(active)}
+              </div>
+              <span className={cn(
+                'text-[9px] font-black uppercase tracking-[0.1em] transition-opacity duration-200',
+                active ? 'opacity-100' : 'opacity-65'
+              )}>
+                {item.label}
+              </span>
+              {active && (
+                <div className="absolute bottom-0 w-1.5 h-1.5 bg-brand rounded-full shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/vendor/layout,_N_T_/vendor/profile/layout,_N_T_/vendor/profile/page,_N_T_/vendor/profile"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/vendor/profile/__PAGE__",
+    "/vendor/profile",
+    "/vendor",
+    "/_index",
+    "/_head"
+  ]
+}

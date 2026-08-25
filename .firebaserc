@@ -5,8 +5,20 @@
   "targets": {
     "dabzofb": {
       "hosting": {
-        "dabzo-site": [
+        "web-main": [
           "dabzo"
+        ],
+        "vendor-panel": [
+          "dabzzo-vendor-panel"
+        ],
+        "rider-panel": [
+          "dabzzo-rider-panel"
+        ],
+        "admin-panel": [
+          "dabzzo-admin-panel"
+        ],
+        "gig": [
+          "dabzzo-gig"
         ]
       }
     }

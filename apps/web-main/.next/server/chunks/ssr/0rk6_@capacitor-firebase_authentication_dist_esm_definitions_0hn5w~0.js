@@ -1,0 +1,3 @@
+module.exports=[92766,a=>{"use strict";var b,c,d,e;(d=b||(b={})).IndexedDbLocal="INDEXED_DB_LOCAL",d.InMemory="IN_MEMORY",d.BrowserLocal="BROWSER_LOCAL",d.BrowserSession="BROWSER_SESSION",(e=c||(c={})).APPLE="apple.com",e.FACEBOOK="facebook.com",e.GAME_CENTER="gc.apple.com",e.GITHUB="github.com",e.GOOGLE="google.com",e.MICROSOFT="microsoft.com",e.PLAY_GAMES="playgames.google.com",e.TWITTER="twitter.com",e.YAHOO="yahoo.com",e.PASSWORD="password",e.PHONE="phone",a.s(["Persistence",0,b,"ProviderId",0,c])}];
+
+//# sourceMappingURL=0rk6_%40capacitor-firebase_authentication_dist_esm_definitions_0hn5w~0.js.map

@@ -128,4 +128,6 @@ __exportStar(require("./matchingTriggers"), exports);
 __exportStar(require("./riderPaymentTriggers"), exports);
 __exportStar(require("./notificationTriggers"), exports);
 __exportStar(require("./cronTriggers"), exports);
+__exportStar(require("./adminManagementTriggers"), exports);
+__exportStar(require("./razorpayFunctions"), exports);
 //# sourceMappingURL=index.js.map

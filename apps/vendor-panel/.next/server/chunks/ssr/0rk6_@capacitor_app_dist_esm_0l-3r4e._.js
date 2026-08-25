@@ -1,0 +1,3 @@
+module.exports=[58753,a=>{"use strict";let b=(0,a.i(38996).registerPlugin)("App",{web:()=>a.A(47875).then(a=>new a.AppWeb)});a.s(["App",0,b],96039),a.i(96039),a.s([],84382),a.i(84382),a.s(["App",0,b],58753)},47875,a=>{a.v(b=>Promise.all(["server/chunks/ssr/0rk6_@capacitor_app_dist_esm_web_0opfj9c.js"].map(b=>a.l(b))).then(()=>b(12078)))}];
+
+//# sourceMappingURL=0rk6_%40capacitor_app_dist_esm_0l-3r4e._.js.map

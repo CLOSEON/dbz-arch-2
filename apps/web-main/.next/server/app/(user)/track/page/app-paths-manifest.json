@@ -1,0 +1,3 @@
+{
+  "/(user)/track/page": "app/(user)/track/page.js"
+}

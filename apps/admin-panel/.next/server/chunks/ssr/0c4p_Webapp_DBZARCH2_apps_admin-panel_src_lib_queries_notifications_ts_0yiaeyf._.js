@@ -1,0 +1,3 @@
+module.exports=[24141,a=>{"use strict";a.i(43201);var b=a.i(19924),c=a.i(39719);async function d(a){console.log("[Notification] Triggering Firebase Cloud Function broadcast...",a);try{let d=(0,b.httpsCallable)(c.functions,"broadcastNotificationV1"),e=await d(a);return console.log("[Notification] Cloud Function Success:",e.data),e.data}catch(a){throw console.error("[Notification] Cloud Function Error:",a),Error(a.message||"Failed to send notification via Firebase")}}a.s(["sendNotification",0,d])}];
+
+//# sourceMappingURL=0c4p_Webapp_DBZARCH2_apps_admin-panel_src_lib_queries_notifications_ts_0yiaeyf._.js.map

@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(admin)/layout,_N_T_/(admin)/admin/layout,_N_T_/(admin)/admin/batches/layout,_N_T_/(admin)/admin/batches/page,_N_T_/admin/batches"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KGFkbWluKQ/admin/batches/__PAGE__",
+    "/!KGFkbWluKQ/admin/batches",
+    "/!KGFkbWluKQ/admin",
+    "/!KGFkbWluKQ",
+    "/_index",
+    "/_head"
+  ]
+}

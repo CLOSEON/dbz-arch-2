@@ -1,0 +1,3 @@
+module.exports=[56399,a=>{"use strict";var b=a.i(27739);a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"en",children:(0,b.jsx)("body",{children:a})})},"metadata",0,{title:"Gig Worker Portal - Dabzzo",description:"Gig Platform for Dabzzo Marketplace Workers"}])},27021,a=>{a.n(a.i(56399))}];
+
+//# sourceMappingURL=Desktop_CLOSEON_applications_Webapp_DBZARCH2_apps_gig_src_app_layout_tsx_094t.qa._.js.map

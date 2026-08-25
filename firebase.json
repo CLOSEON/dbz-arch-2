@@ -19,44 +19,164 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "target": "dabzo-site",
-    "source": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "cleanUrls": true,
-    "trailingSlash": true,
-    "headers": [
-      {
-        "source": "**/*.@(html)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
+  "hosting": [
+    {
+      "target": "web-main",
+      "public": "apps/web-main/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": true,
+      "rewrites": [
+        {
+          "source": "/api/razorpay/**",
+          "function": {
+            "functionId": "razorpayApi",
+            "region": "us-central1"
           }
-        ]
-      },
-      {
-        "source": "/",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(html)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/**/",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(js|css|woff2|png|jpg|jpeg|svg|ico)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=31536000, immutable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "vendor-panel",
+      "public": "apps/vendor-panel/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": true,
+      "rewrites": [
+        {
+          "source": "/api/razorpay/**",
+          "function": {
+            "functionId": "razorpayApi",
+            "region": "us-central1"
           }
-        ]
-      },
-      {
-        "source": "**/*.@(js|css|woff2|png|jpg|jpeg|svg|ico)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=31536000, immutable"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "rider-panel",
+      "public": "apps/rider-panel/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": true,
+      "rewrites": [
+        {
+          "source": "/api/razorpay/**",
+          "function": {
+            "functionId": "razorpayApi",
+            "region": "us-central1"
           }
-        ]
-      }
-    ]
-  }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "admin-panel",
+      "public": "apps/admin-panel/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": true,
+      "rewrites": [
+        {
+          "source": "/api/razorpay/**",
+          "function": {
+            "functionId": "razorpayApi",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "gig",
+      "public": "apps/gig/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": true,
+      "rewrites": [
+        {
+          "source": "/api/razorpay/**",
+          "function": {
+            "functionId": "razorpayApi",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
 }

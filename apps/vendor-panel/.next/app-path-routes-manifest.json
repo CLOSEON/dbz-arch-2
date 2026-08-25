@@ -1,0 +1,18 @@
+{
+  "/(auth)/admin-login/page": "/admin-login",
+  "/(auth)/login/page": "/login",
+  "/(auth)/register/page": "/register",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/dashboard/page": "/dashboard",
+  "/discounts/page": "/discounts",
+  "/icon.png/route": "/icon.png",
+  "/menu/page": "/menu",
+  "/page": "/",
+  "/profile/page": "/profile",
+  "/reviews/page": "/reviews",
+  "/support/page": "/support",
+  "/vendor/dashboard/page": "/vendor/dashboard",
+  "/vendor/menu/page": "/vendor/menu",
+  "/vendor/profile/page": "/vendor/profile"
+}

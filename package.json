@@ -2,9 +2,26 @@
   "name": "dabzzo-v2",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:web": "npm run dev --workspace=web-main",
+    "dev:admin": "npm run dev --workspace=admin-panel",
+    "dev:vendor": "npm run dev --workspace=vendor-panel",
+    "dev:rider": "npm run dev --workspace=rider-panel",
+    "dev:gig": "npm run dev --workspace=gig",
     "build": "next build",
+    "build:all": "npm run build --workspaces --if-present",
+    "build:web": "node scripts/build-web.mjs",
+    "deploy:all": "npm run build:all && npx firebase deploy --only hosting",
+    "deploy:web": "node scripts/build-web.mjs && npx firebase deploy --only hosting:web-main",
+    "deploy:vendor": "npm run build --workspace=vendor-panel && npx firebase deploy --only hosting:vendor-panel",
+    "deploy:rider": "npm run build --workspace=rider-panel && npx firebase deploy --only hosting:rider-panel",
+    "deploy:admin": "npm run build --workspace=admin-panel && npx firebase deploy --only hosting:admin-panel",
+    "deploy:gig": "npm run build --workspace=gig && npx firebase deploy --only hosting:gig",
     "start": "next start",
     "lint": "eslint"
   },
