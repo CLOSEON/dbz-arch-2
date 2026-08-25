@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
@@ -304,13 +305,17 @@ export default function LoginPage() {
         {/* ── Typographic Brand Header ── */}
         <div className="flex flex-col items-center mb-8 animate-fade-in text-center">
           
-          {/* Brand Serif Title */}
-          <div className="mb-3">
-            <h1
-              className="font-serif font-black text-5xl sm:text-[54px] tracking-[-0.03em] leading-none text-slate-900 drop-shadow-[0_2px_12px_rgba(16,185,129,0.12)]"
-            >
-              Dabzzo
-            </h1>
+          {/* Brand Logo Wordmark */}
+          <div className="mb-3 flex justify-center">
+            <Image
+              src="/logo-main-text.png"
+              alt="Dabzzo"
+              width={280}
+              height={80}
+              priority
+              unoptimized
+              className="h-14 sm:h-16 w-auto object-contain drop-shadow-xs"
+            />
           </div>
 
           {/* Sub-Brand Pill Badge */}
