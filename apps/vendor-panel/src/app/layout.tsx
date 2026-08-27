@@ -7,7 +7,7 @@ import { PageTransition } from '@/components/ui/PageTransition';
 import { VendorAppShell } from '@/components/VendorAppShell';
 
 export const viewport: Viewport = {
-  themeColor: '#DC2626',
+  themeColor: '#E68A00',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
@@ -16,8 +16,8 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   manifest: '/manifest.json',
-  title: 'Dabzzo Vendor | Kitchen Partner Panel',
-  description: 'Kitchen Partner Dashboard for Dabzzo Food Subscriptions',
+  title: 'Dabzzo Vendor | Kitchen Partner Command Center',
+  description: 'Kitchen Partner Operations & Menu Control for Dabzzo Food Subscriptions',
   icons: {
     icon: '/icon.png',
     shortcut: '/favicon.ico',
@@ -32,7 +32,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#FFF1F2] text-slate-900 antialiased font-sans">
+      <body className="bg-[#F8FAFC] text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />
         <AuthProvider>
