@@ -26,7 +26,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency } from '@/types';
 import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon } from '@/types';
 
 // ─── Deterministic document ID ────────────────────────────────────────────────

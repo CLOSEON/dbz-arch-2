@@ -2,6 +2,27 @@
 
 export type UserRole = 'user' | 'vendor' | 'delivery' | 'admin';
 
+export type DietaryCategory = 'veg' | 'non_veg';
+
+export interface VendorAddon {
+  id: string;
+  name: string;
+  monthly_price: number;
+  weekly_price?: number;
+  onetime_price?: number;
+  active: boolean;
+  description?: string;
+}
+
+export interface SelectedAddon {
+  id: string;
+  name: string;
+  monthly_price: number;
+  weekly_price?: number;
+  onetime_price?: number;
+  price_paid: number;
+}
+
 export interface AppUser {
   id: string;          // Firebase Auth UID
   name: string;
@@ -20,6 +41,8 @@ export interface AppUser {
   kitchen_name?: string;
   bio?: string;
   cuisine_type?: string;
+  // Dietary categories supported: ['veg'] | ['non_veg'] | ['veg', 'non_veg']
+  dietary_categories?: DietaryCategory[];
   // One-time: flat price per meal (no lunch/dinner distinction)
   rate_onetime?: number;
   // Weekly subscription rates per meal type
@@ -30,6 +53,28 @@ export interface AppUser {
   rate_lunch_monthly?: number;
   rate_dinner_monthly?: number;
   rate_both_monthly?: number;
+
+  // 🌿 Pure Veg Specific Rates
+  rate_veg_onetime?: number;
+  rate_veg_lunch_weekly?: number;
+  rate_veg_dinner_weekly?: number;
+  rate_veg_both_weekly?: number;
+  rate_veg_lunch_monthly?: number;
+  rate_veg_dinner_monthly?: number;
+  rate_veg_both_monthly?: number;
+
+  // 🍗 Non-Veg Specific Rates
+  rate_nonveg_onetime?: number;
+  rate_nonveg_lunch_weekly?: number;
+  rate_nonveg_dinner_weekly?: number;
+  rate_nonveg_both_weekly?: number;
+  rate_nonveg_lunch_monthly?: number;
+  rate_nonveg_dinner_monthly?: number;
+  rate_nonveg_both_monthly?: number;
+
+  // Vendor Add-Ons (Sweets, sides, extras)
+  addons?: VendorAddon[];
+
   // Legacy fields kept for backward compat
   rate_lunch?: number;
   rate_dinner?: number;
@@ -86,9 +131,19 @@ export interface Subscription {
   vendor_id: string;
   plan_id: string;
   meal_type: MealType;
+  category?: DietaryCategory;
   frequency?: SubscriptionFrequency;
   status: SubscriptionStatus;
   price?: number; // current rate in ₹ — set when vendor updates meal rates
+  selected_addons?: SelectedAddon[];
+  base_price?: number;
+  addons_price?: number;
+  total_price?: number;
+  paid_amount?: number;
+  payment_id?: string;
+  razorpay_order_id?: string;
+  discount_pct?: number;
+  promo_code?: string;
   created_at: FirestoreTimestamp;
   next_billing_date?: FirestoreTimestamp;
   cancelled_at?: FirestoreTimestamp;
@@ -101,6 +156,7 @@ export interface SubscriptionPlan {
   price: number;
   frequency: string;
   meal_type: MealType;
+  category?: DietaryCategory;
   vendor_id?: string;
 }
 
@@ -164,6 +220,10 @@ export interface DailyMenu {
   date: string; // YYYY-MM-DD
   items: MenuItem[];
   note?: string;
+  items_veg?: MenuItem[];
+  items_non_veg?: MenuItem[];
+  note_veg?: string;
+  note_non_veg?: string;
 }
 
 // ─── Discount Codes ──────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency } from '@/types';
+import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon } from '@/types';
 
 // ─── Deterministic document ID ────────────────────────────────────────────────
 // One document per (user × vendor × mealType). Always the same ID, always.
@@ -107,7 +107,12 @@ export async function createSubscription(data: {
   vendor_id: string;
   plan_id: string;
   meal_type: MealType;
+  category?: DietaryCategory;
   frequency?: SubscriptionFrequency;
+  selected_addons?: SelectedAddon[];
+  base_price?: number;
+  addons_price?: number;
+  total_price?: number;
   discount_pct?: number;
   promo_code?: string;
   /** Razorpay payment ID after successful payment (for audit trail) */
@@ -138,7 +143,12 @@ export async function createSubscription(data: {
   nextBilling.setDate(nextBilling.getDate() + daysToAdd);
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
 
+  if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;
+  if (data.selected_addons) payload.selected_addons = data.selected_addons;
+  if (data.base_price != null) payload.base_price = data.base_price;
+  if (data.addons_price != null) payload.addons_price = data.addons_price;
+  if (data.total_price != null) payload.total_price = data.total_price;
   if (data.discount_pct != null) payload.discount_pct = data.discount_pct;
   if (data.promo_code != null) payload.promo_code = data.promo_code;
   if (data.payment_id) payload.payment_id = data.payment_id;

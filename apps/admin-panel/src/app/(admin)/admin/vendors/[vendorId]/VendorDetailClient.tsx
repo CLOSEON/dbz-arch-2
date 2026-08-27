@@ -4,9 +4,9 @@ import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUserById, setVendorApproval } from '@/lib/queries/users';
 import { getVendorStats, getVendorOrderHistory, suspendVendor, unsuspendVendor, VendorPerformance } from '@/lib/queries/vendorAdmin';
-import { AppUser, Order } from '@/types';
+import { AppUser, Order, DietaryCategory, VendorAddon } from '@/types';
 import { useUiStore } from '@/store/uiStore';
-import { ArrowLeft, Check, X, ShieldAlert, Award, Star, DollarSign, Users, ShoppingBag, Clock, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, Settings } from 'lucide-react';
+import { ArrowLeft, Check, X, ShieldAlert, Award, Star, DollarSign, Users, ShoppingBag, Clock, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { SkeletonDetail } from '@/components/shared/Skeleton';
@@ -31,10 +31,50 @@ export default function VendorDetailClient(props: PageProps) {
   const [history, setHistory] = useState<Order[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // New Add-On state
+  const [newAddonName, setNewAddonName] = useState('');
+  const [newAddonMonthlyPrice, setNewAddonMonthlyPrice] = useState('');
+  const [newAddonDesc, setNewAddonDesc] = useState('');
+
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    kitchen_name: string;
+    name: string;
+    cuisine_type: string;
+    phone: string;
+    email: string;
+    address: string;
+    lat: string;
+    lng: string;
+    capacity: string;
+    capacityUnlimited: boolean;
+    dietary_categories: DietaryCategory[];
+    rate_onetime: string;
+    rate_lunch_weekly: string;
+    rate_lunch_monthly: string;
+    rate_dinner_weekly: string;
+    rate_dinner_monthly: string;
+    rate_both_weekly: string;
+    rate_both_monthly: string;
+    rate_veg_onetime: string;
+    rate_veg_lunch_weekly: string;
+    rate_veg_lunch_monthly: string;
+    rate_veg_dinner_weekly: string;
+    rate_veg_dinner_monthly: string;
+    rate_veg_both_weekly: string;
+    rate_veg_both_monthly: string;
+    rate_nonveg_onetime: string;
+    rate_nonveg_lunch_weekly: string;
+    rate_nonveg_lunch_monthly: string;
+    rate_nonveg_dinner_weekly: string;
+    rate_nonveg_dinner_monthly: string;
+    rate_nonveg_both_weekly: string;
+    rate_nonveg_both_monthly: string;
+    addons: VendorAddon[];
+    image: string;
+  }>({
     kitchen_name: '',
     name: '',
     cuisine_type: '',
@@ -45,6 +85,7 @@ export default function VendorDetailClient(props: PageProps) {
     lng: '',
     capacity: '',
     capacityUnlimited: false,
+    dietary_categories: ['veg'],
     rate_onetime: '',
     rate_lunch_weekly: '',
     rate_lunch_monthly: '',
@@ -52,6 +93,21 @@ export default function VendorDetailClient(props: PageProps) {
     rate_dinner_monthly: '',
     rate_both_weekly: '',
     rate_both_monthly: '',
+    rate_veg_onetime: '',
+    rate_veg_lunch_weekly: '',
+    rate_veg_lunch_monthly: '',
+    rate_veg_dinner_weekly: '',
+    rate_veg_dinner_monthly: '',
+    rate_veg_both_weekly: '',
+    rate_veg_both_monthly: '',
+    rate_nonveg_onetime: '',
+    rate_nonveg_lunch_weekly: '',
+    rate_nonveg_lunch_monthly: '',
+    rate_nonveg_dinner_weekly: '',
+    rate_nonveg_dinner_monthly: '',
+    rate_nonveg_both_weekly: '',
+    rate_nonveg_both_monthly: '',
+    addons: [],
     image: ''
   });
 
@@ -82,6 +138,7 @@ export default function VendorDetailClient(props: PageProps) {
         lng: vendorData.location?.lng ? String(vendorData.location.lng) : '',
         capacity: vendorData.capacity ? String(vendorData.capacity) : '50',
         capacityUnlimited: vendorData.capacityUnlimited || false,
+        dietary_categories: vendorData.dietary_categories || ['veg'],
         rate_onetime: vendorData.rate_onetime ? String(vendorData.rate_onetime) : '',
         rate_lunch_weekly: vendorData.rate_lunch_weekly ? String(vendorData.rate_lunch_weekly) : '',
         rate_lunch_monthly: vendorData.rate_lunch_monthly ? String(vendorData.rate_lunch_monthly) : '',
@@ -89,6 +146,21 @@ export default function VendorDetailClient(props: PageProps) {
         rate_dinner_monthly: vendorData.rate_dinner_monthly ? String(vendorData.rate_dinner_monthly) : '',
         rate_both_weekly: vendorData.rate_both_weekly ? String(vendorData.rate_both_weekly) : '',
         rate_both_monthly: vendorData.rate_both_monthly ? String(vendorData.rate_both_monthly) : '',
+        rate_veg_onetime: vendorData.rate_veg_onetime ? String(vendorData.rate_veg_onetime) : (vendorData.rate_onetime ? String(vendorData.rate_onetime) : ''),
+        rate_veg_lunch_weekly: vendorData.rate_veg_lunch_weekly ? String(vendorData.rate_veg_lunch_weekly) : (vendorData.rate_lunch_weekly ? String(vendorData.rate_lunch_weekly) : ''),
+        rate_veg_lunch_monthly: vendorData.rate_veg_lunch_monthly ? String(vendorData.rate_veg_lunch_monthly) : (vendorData.rate_lunch_monthly ? String(vendorData.rate_lunch_monthly) : ''),
+        rate_veg_dinner_weekly: vendorData.rate_veg_dinner_weekly ? String(vendorData.rate_veg_dinner_weekly) : (vendorData.rate_dinner_weekly ? String(vendorData.rate_dinner_weekly) : ''),
+        rate_veg_dinner_monthly: vendorData.rate_veg_dinner_monthly ? String(vendorData.rate_veg_dinner_monthly) : (vendorData.rate_dinner_monthly ? String(vendorData.rate_dinner_monthly) : ''),
+        rate_veg_both_weekly: vendorData.rate_veg_both_weekly ? String(vendorData.rate_veg_both_weekly) : (vendorData.rate_both_weekly ? String(vendorData.rate_both_weekly) : ''),
+        rate_veg_both_monthly: vendorData.rate_veg_both_monthly ? String(vendorData.rate_veg_both_monthly) : (vendorData.rate_both_monthly ? String(vendorData.rate_both_monthly) : ''),
+        rate_nonveg_onetime: vendorData.rate_nonveg_onetime ? String(vendorData.rate_nonveg_onetime) : '',
+        rate_nonveg_lunch_weekly: vendorData.rate_nonveg_lunch_weekly ? String(vendorData.rate_nonveg_lunch_weekly) : '',
+        rate_nonveg_lunch_monthly: vendorData.rate_nonveg_lunch_monthly ? String(vendorData.rate_nonveg_lunch_monthly) : '',
+        rate_nonveg_dinner_weekly: vendorData.rate_nonveg_dinner_weekly ? String(vendorData.rate_nonveg_dinner_weekly) : '',
+        rate_nonveg_dinner_monthly: vendorData.rate_nonveg_dinner_monthly ? String(vendorData.rate_nonveg_dinner_monthly) : '',
+        rate_nonveg_both_weekly: vendorData.rate_nonveg_both_weekly ? String(vendorData.rate_nonveg_both_weekly) : '',
+        rate_nonveg_both_monthly: vendorData.rate_nonveg_both_monthly ? String(vendorData.rate_nonveg_both_monthly) : '',
+        addons: vendorData.addons || [],
         image: vendorData.image || ''
       });
 
@@ -103,6 +175,45 @@ export default function VendorDetailClient(props: PageProps) {
       setLoading(false);
     }
   }
+
+  const handleAddAddon = () => {
+    if (!newAddonName.trim() || !newAddonMonthlyPrice) {
+      addToast('Please enter an add-on name and monthly price', 'error');
+      return;
+    }
+    const monthly = Number(newAddonMonthlyPrice);
+    const newAddon: VendorAddon = {
+      id: 'addon_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      name: newAddonName.trim(),
+      monthly_price: monthly,
+      weekly_price: Math.round(monthly / 4),
+      onetime_price: Math.round(monthly / 30),
+      active: true,
+      description: newAddonDesc.trim() || undefined,
+    };
+    setEditForm(prev => ({
+      ...prev,
+      addons: [...prev.addons, newAddon]
+    }));
+    setNewAddonName('');
+    setNewAddonMonthlyPrice('');
+    setNewAddonDesc('');
+    addToast('Add-on added to catalog', 'success');
+  };
+
+  const handleToggleAddonActive = (id: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      addons: prev.addons.map(a => a.id === id ? { ...a, active: !a.active } : a)
+    }));
+  };
+
+  const handleRemoveAddon = (id: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      addons: prev.addons.filter(a => a.id !== id)
+    }));
+  };
 
   async function handleApproval(approved: boolean) {
     if (!vendor) return;
@@ -147,7 +258,6 @@ export default function VendorDetailClient(props: PageProps) {
       const url = await uploadImage(file, `uploads/vendors/${vendor.id}`);
       if (url) {
         setEditForm(prev => ({ ...prev, image: url }));
-        // Instantly save to Firestore if not already editing, or update the local edit form
         await updateDoc(doc(db, 'users', vendor.id), { image: url });
         setVendor(prev => prev ? { ...prev, image: url } : null);
         addToast('Vendor picture updated! 📸', 'success');
@@ -176,13 +286,35 @@ export default function VendorDetailClient(props: PageProps) {
         address: editForm.address.trim(),
         capacityUnlimited: editForm.capacityUnlimited,
         capacity: editForm.capacityUnlimited ? null : Number(editForm.capacity || 50),
-        rate_onetime: Number(editForm.rate_onetime || 0),
-        rate_lunch_weekly: Number(editForm.rate_lunch_weekly || 0),
-        rate_lunch_monthly: Number(editForm.rate_lunch_monthly || 0),
-        rate_dinner_weekly: Number(editForm.rate_dinner_weekly || 0),
-        rate_dinner_monthly: Number(editForm.rate_dinner_monthly || 0),
-        rate_both_weekly: Number(editForm.rate_both_weekly || 0),
-        rate_both_monthly: Number(editForm.rate_both_monthly || 0),
+        dietary_categories: editForm.dietary_categories,
+        
+        // Base / Veg rates
+        rate_onetime: Number(editForm.rate_veg_onetime || editForm.rate_onetime || 0),
+        rate_lunch_weekly: Number(editForm.rate_veg_lunch_weekly || editForm.rate_lunch_weekly || 0),
+        rate_lunch_monthly: Number(editForm.rate_veg_lunch_monthly || editForm.rate_lunch_monthly || 0),
+        rate_dinner_weekly: Number(editForm.rate_veg_dinner_weekly || editForm.rate_dinner_weekly || 0),
+        rate_dinner_monthly: Number(editForm.rate_veg_dinner_monthly || editForm.rate_dinner_monthly || 0),
+        rate_both_weekly: Number(editForm.rate_veg_both_weekly || editForm.rate_both_weekly || 0),
+        rate_both_monthly: Number(editForm.rate_veg_both_monthly || editForm.rate_both_monthly || 0),
+
+        rate_veg_onetime: Number(editForm.rate_veg_onetime || 0),
+        rate_veg_lunch_weekly: Number(editForm.rate_veg_lunch_weekly || 0),
+        rate_veg_lunch_monthly: Number(editForm.rate_veg_lunch_monthly || 0),
+        rate_veg_dinner_weekly: Number(editForm.rate_veg_dinner_weekly || 0),
+        rate_veg_dinner_monthly: Number(editForm.rate_veg_dinner_monthly || 0),
+        rate_veg_both_weekly: Number(editForm.rate_veg_both_weekly || 0),
+        rate_veg_both_monthly: Number(editForm.rate_veg_both_monthly || 0),
+
+        // Non-veg rates
+        rate_nonveg_onetime: Number(editForm.rate_nonveg_onetime || 0),
+        rate_nonveg_lunch_weekly: Number(editForm.rate_nonveg_lunch_weekly || 0),
+        rate_nonveg_lunch_monthly: Number(editForm.rate_nonveg_lunch_monthly || 0),
+        rate_nonveg_dinner_weekly: Number(editForm.rate_nonveg_dinner_weekly || 0),
+        rate_nonveg_dinner_monthly: Number(editForm.rate_nonveg_dinner_monthly || 0),
+        rate_nonveg_both_weekly: Number(editForm.rate_nonveg_both_weekly || 0),
+        rate_nonveg_both_monthly: Number(editForm.rate_nonveg_both_monthly || 0),
+
+        addons: editForm.addons,
         image: editForm.image
       };
 
@@ -477,82 +609,321 @@ export default function VendorDetailClient(props: PageProps) {
               </div>
             </div>
 
-            {/* Right Side: Rate Cards */}
-            <div className="space-y-4">
-              <h4 className="text-xs font-black uppercase tracking-wider text-brand flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4" /> Subscription Rate Cards
-              </h4>
-              
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">One-Time Meal Price (₹)</label>
-                <input 
-                  type="number" 
-                  value={editForm.rate_onetime} 
-                  onChange={e => setEditForm({ ...editForm, rate_onetime: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Weekly Rate (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_lunch_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_lunch_weekly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Monthly Rate (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_lunch_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_lunch_monthly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Weekly Rate (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_dinner_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_dinner_weekly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Monthly Rate (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_dinner_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_dinner_monthly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                  />
+            {/* Right Side: Dietary, Rate Cards & Add-ons */}
+            <div className="space-y-6">
+              {/* Dietary Offerings Selector */}
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/60 space-y-3">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Dietary Offerings Mode
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, dietary_categories: ['veg'] })}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                      editForm.dietary_categories.length === 1 && editForm.dietary_categories.includes('veg')
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Leaf className="w-3.5 h-3.5" /> Pure Veg Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, dietary_categories: ['non_veg'] })}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                      editForm.dietary_categories.length === 1 && editForm.dietary_categories.includes('non_veg')
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Drumstick className="w-3.5 h-3.5" /> Non-Veg Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, dietary_categories: ['veg', 'non_veg'] })}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                      editForm.dietary_categories.includes('veg') && editForm.dietary_categories.includes('non_veg')
+                        ? 'bg-brand text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <UtensilsCrossed className="w-3.5 h-3.5" /> Both (Veg & Non-Veg)
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Weekly Rate (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_both_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_both_weekly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
-                  />
+              {/* 🌿 Vegetarian Rate Cards */}
+              {editForm.dietary_categories.includes('veg') && (
+                <div className="bg-emerald-50/40 rounded-2xl p-4 border border-emerald-200/50 space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                    <Leaf className="w-4 h-4 text-emerald-600" /> 🌿 Vegetarian Rates (Admin Set)
+                  </h4>
+                  
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Trial Meal Price (₹)</label>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_onetime} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_onetime: e.target.value })}
+                      placeholder="e.g. 100"
+                      className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Lunch Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_lunch_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_lunch_weekly: e.target.value })}
+                        placeholder="e.g. 700"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Lunch Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_lunch_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_lunch_monthly: e.target.value })}
+                        placeholder="e.g. 2600"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Dinner Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_dinner_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_dinner_weekly: e.target.value })}
+                        placeholder="e.g. 700"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Dinner Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_dinner_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_dinner_monthly: e.target.value })}
+                        placeholder="e.g. 2600"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Combo Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_both_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_both_weekly: e.target.value })}
+                        placeholder="e.g. 1350"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 mb-1">Veg Combo Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_veg_both_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_veg_both_monthly: e.target.value })}
+                        placeholder="e.g. 5000"
+                        className="w-full bg-white border border-emerald-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Monthly Rate (₹)</label>
+              )}
+
+              {/* 🍗 Non-Vegetarian Rate Cards */}
+              {editForm.dietary_categories.includes('non_veg') && (
+                <div className="bg-rose-50/40 rounded-2xl p-4 border border-rose-200/50 space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+                    <Drumstick className="w-4 h-4 text-rose-600" /> 🍗 Non-Vegetarian Rates (Admin Set)
+                  </h4>
+                  
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Trial Meal Price (₹)</label>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_onetime} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_onetime: e.target.value })}
+                      placeholder="e.g. 150"
+                      className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Lunch Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_lunch_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_weekly: e.target.value })}
+                        placeholder="e.g. 950"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Lunch Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_lunch_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_monthly: e.target.value })}
+                        placeholder="e.g. 3600"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Dinner Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_dinner_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_weekly: e.target.value })}
+                        placeholder="e.g. 950"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Dinner Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_dinner_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_monthly: e.target.value })}
+                        placeholder="e.g. 3600"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Combo Weekly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_both_weekly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_both_weekly: e.target.value })}
+                        placeholder="e.g. 1850"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-rose-900 mb-1">Non-Veg Combo Monthly (₹)</label>
+                      <input 
+                        type="number" 
+                        value={editForm.rate_nonveg_both_monthly} 
+                        onChange={e => setEditForm({ ...editForm, rate_nonveg_both_monthly: e.target.value })}
+                        placeholder="e.g. 6800"
+                        className="w-full bg-white border border-rose-200 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 🍰 Sub-Subscriptions / Add-Ons Catalog */}
+              <div className="bg-amber-50/40 rounded-2xl p-4 border border-amber-200/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <Tag className="w-4 h-4 text-amber-600" /> Vendor Add-Ons Catalog (Sweets/Sides)
+                  </h4>
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full">
+                    {editForm.addons.length} items
+                  </span>
+                </div>
+
+                {/* Current Add-ons list */}
+                {editForm.addons.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-medium italic">No add-ons configured for this kitchen yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {editForm.addons.map((addon) => (
+                      <div 
+                        key={addon.id} 
+                        className={`p-3 rounded-xl border flex items-center justify-between transition-colors ${
+                          addon.active ? 'bg-white border-amber-200' : 'bg-slate-100 border-slate-200 opacity-60'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-slate-900">{addon.name}</span>
+                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                              addon.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                              {addon.active ? 'Active' : 'Disabled'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            ₹{addon.monthly_price}/mo • ₹{addon.weekly_price || Math.round(addon.monthly_price / 4)}/wk • ₹{addon.onetime_price || Math.round(addon.monthly_price / 30)}/meal
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAddonActive(addon.id)}
+                            className="p-1.5 text-xs text-amber-700 hover:bg-amber-100 rounded-lg transition-colors"
+                            title={addon.active ? 'Disable' : 'Enable'}
+                          >
+                            {addon.active ? 'Pause' : 'Enable'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAddon(addon.id)}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Inline Add New Add-on Card */}
+                <div className="bg-white rounded-xl p-3 border border-amber-200/80 space-y-2">
+                  <span className="text-[10px] font-bold uppercase text-amber-800 tracking-wider block">Add New Offering</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input 
+                      type="text"
+                      placeholder="Name (e.g. Gulab Jamun)"
+                      value={newAddonName}
+                      onChange={e => setNewAddonName(e.target.value)}
+                      className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-400"
+                    />
+                    <input 
+                      type="number"
+                      placeholder="Monthly ₹"
+                      value={newAddonMonthlyPrice}
+                      onChange={e => setNewAddonMonthlyPrice(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
                   <input 
-                    type="number" 
-                    value={editForm.rate_both_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_both_monthly: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand/40 transition-colors"
+                    type="text"
+                    placeholder="Short description (optional)"
+                    value={newAddonDesc}
+                    onChange={e => setNewAddonDesc(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-700 focus:outline-none focus:border-amber-400"
                   />
+                  <button
+                    type="button"
+                    onClick={handleAddAddon}
+                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black uppercase tracking-wider rounded-xl transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add to Catalog
+                  </button>
                 </div>
               </div>
             </div>
