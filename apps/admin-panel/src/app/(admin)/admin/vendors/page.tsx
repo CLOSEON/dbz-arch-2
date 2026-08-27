@@ -7,7 +7,7 @@ import { AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { 
   Search, Check, X, Store, Eye, ShieldAlert, ShieldCheck, 
-  Settings, DollarSign, Leaf, Drumstick, Tag, Power, ArrowRight, 
+  Settings, DollarSign, Leaf, Drumstick, Tag, ArrowRight, 
   ExternalLink, Phone, MapPin, CheckCircle2, AlertCircle, Sliders
 } from 'lucide-react';
 import Image from 'next/image';
@@ -125,7 +125,7 @@ export default function AdminVendors() {
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Vendors & Kitchens</h1>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Manage menus, live pricing algorithms, sub-subscriptions, dispatch capacity, and payouts
+            Manage menus, monthly subscriptions, rate cards, capacity, and payouts
           </p>
         </div>
       </div>
@@ -255,19 +255,9 @@ export default function AdminVendors() {
                       {isSuspended ? (
                         <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">Suspended</span>
                       ) : v.is_approved ? (
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">Approved</span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">Approved & Active</span>
                       ) : (
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">Pending Review</span>
-                      )}
-
-                      {v.is_open !== false ? (
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open
-                        </span>
-                      ) : (
-                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Closed
-                        </span>
                       )}
                     </div>
 
