@@ -47,13 +47,16 @@ export function TodayMenuCard() {
       const data = await getDailyMenu(user.id, todayStr);
       setMenu(data);
       if (data) {
+        const toMenuItems = (list?: (MenuItem | string)[]): MenuItem[] => 
+          (list || []).map(i => typeof i === 'string' ? { name: i } : i);
+
         // Load Veg Items
-        const vItems = data.items_veg && data.items_veg.length > 0 ? data.items_veg : data.items || [];
+        const vItems = toMenuItems(data.items_veg && data.items_veg.length > 0 ? data.items_veg : data.items || []);
         setVegItems(vItems.length > 0 ? vItems : [{ name: '' }]);
         setVegNote(data.note_veg || data.note || '');
 
         // Load Non-Veg Items
-        const nvItems = data.items_non_veg || [];
+        const nvItems = toMenuItems(data.items_non_veg || []);
         setNonVegItems(nvItems.length > 0 ? nvItems : [{ name: '' }]);
         setNonVegNote(data.note_non_veg || '');
       } else {
@@ -308,7 +311,7 @@ export function TodayMenuCard() {
                 {displayItems.map((item, idx) => (
                   <div key={idx} className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full ${activeTab === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                    <span className="text-sm font-semibold text-slate-800">{typeof item === 'string' ? item : item.name}</span>
                   </div>
                 ))}
               </div>

@@ -85,6 +85,8 @@ export interface AppUser {
   subscriberCount?: number;
   capacity?: number;
   capacityUnlimited?: boolean;
+  is_open?: boolean;
+  upi_id?: string;
   // Razorpay Route (Settlements)
   rzp_account_id?: string;
   bank_details?: {
@@ -121,6 +123,7 @@ export interface Vendor extends AppUser {
 // ─── Subscriptions ───────────────────────────────────────────────────────────
 
 export type SubscriptionStatus = 'active' | 'cancelled';
+export type SubscriptionStatus = 'active' | 'paused' | 'cancelled';
 export type MealType = 'lunch' | 'dinner' | 'both';
 
 export type SubscriptionFrequency = 'one-time' | 'weekly' | 'monthly';
@@ -219,9 +222,12 @@ export interface DailyMenu {
   vendor_id: string;
   date: string; // YYYY-MM-DD
   items: MenuItem[];
+  items: (MenuItem | string)[];
   note?: string;
   items_veg?: MenuItem[];
   items_non_veg?: MenuItem[];
+  items_veg?: (MenuItem | string)[];
+  items_non_veg?: (MenuItem | string)[];
   note_veg?: string;
   note_non_veg?: string;
 }
@@ -254,6 +260,12 @@ export type OrderStatus =
   | 'swapped_in' 
   | 'failed' 
   | 'completed';
+  | 'completed'
+  | 'pending'
+  | 'cooking'
+  | 'ready'
+  | 'dispatched'
+  | 'cancelled';
 
 export interface Order {
   id: string;                  // format: ORD-{date}-{sequence}
@@ -265,6 +277,9 @@ export interface Order {
   batch_id?: string;           // Nullable until batch assignment, FK to Batch
   delivery_address: string;    // Snapshot at order creation
   status: OrderStatus;
+  total_amount?: number;
+  amount?: number;
+  price?: number;
   swap_ref?: string;           // Nullable, FK to SwapRequest
   skip_ref?: string;           // Nullable, FK to SkipRecord
   rider_trip_id?: string;      // Nullable, FK once assigned
