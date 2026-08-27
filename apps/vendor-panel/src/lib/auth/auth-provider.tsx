@@ -91,11 +91,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser({
               id: activeUser.uid,
               email: activeUser.email || undefined,
-              name: activeUser.displayName || (isSuper ? 'Superadmin' : ''),
+              name: activeUser.displayName || (isSuper ? 'Chef Sharma' : ''),
               phone: activeUser.phoneNumber || '',
-              role: isSuper ? 'admin' : 'user',
+              role: isSuper ? 'vendor' : 'user',
+              kitchen_name: isSuper ? 'Sharma Gourmet Kitchen' : undefined,
               is_superadmin: isSuper ? true : undefined,
               is_approved: isSuper ? true : undefined,
+              verification_status: isSuper ? 'verified' : undefined,
             });
           }
 
@@ -124,9 +126,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (userDoc && userDoc.exists() && mounted.current) {
             const data = userDoc.data();
             if (isSuper) {
-              data.role = 'admin';
-              data.is_superadmin = true;
+              data.role = 'vendor';
+              data.kitchen_name = data.kitchen_name || 'Sharma Gourmet Kitchen';
               data.is_approved = true;
+              data.is_superadmin = true;
+              data.verification_status = 'verified';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
@@ -135,24 +139,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
               initPushNotifications(activeUser!.uid);
             });
           } else if (isSuper && mounted.current) {
-            const superProfile: AppUser = {
+            const superVendorProfile: AppUser = {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
-              name: activeUser.displayName || 'Superadmin',
+              name: activeUser.displayName || 'Chef Sharma',
+              kitchen_name: 'Sharma Gourmet Kitchen',
               image: activeUser.photoURL || undefined,
-              phone: activeUser.phoneNumber || '',
-              role: 'admin',
+              phone: activeUser.phoneNumber || '+919876543210',
+              role: 'vendor',
               is_superadmin: true,
               is_approved: true,
               verification_status: 'verified',
+              capacity: 50,
+              rate_onetime: 120,
+              rate_lunch_weekly: 750,
+              rate_lunch_monthly: 2800,
+              rate_dinner_weekly: 750,
+              rate_dinner_monthly: 2800,
+              rate_both_weekly: 1400,
+              rate_both_monthly: 5200,
+              cuisine_type: 'North Indian & Homestyle',
+              address: 'Sector 62, Noida, UP',
             };
             try {
               const { setDoc: setFirestoreDoc } = await import('firebase/firestore');
-              await setFirestoreDoc(doc(db, 'users', activeUser.uid), superProfile, { merge: true });
+              await setFirestoreDoc(doc(db, 'users', activeUser.uid), superVendorProfile, { merge: true });
             } catch (e) {
-              console.warn('[AuthProvider] setDoc superProfile fallback:', e);
+              console.warn('[AuthProvider] setDoc superVendorProfile fallback:', e);
             }
-            setUser(superProfile);
+            setUser(superVendorProfile);
           }
         } else {
           logout();
