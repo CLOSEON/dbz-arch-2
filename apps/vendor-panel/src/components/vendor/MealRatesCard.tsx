@@ -1,57 +1,35 @@
 'use client';
 
-import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { useUiStore } from '@/store/uiStore';
-import { updateUser } from '@/lib/queries/users';
-import { IndianRupee, TrendingUp, Clock, RotateCcw, Calendar, Loader2, Sparkles } from 'lucide-react';
+import { IndianRupee, Clock, RotateCcw, Calendar, Leaf, Drumstick, Tag, ShieldCheck, PhoneCall } from 'lucide-react';
 
 export function MealRatesCard() {
-  const user     = useAuthStore((s) => s.user);
-  const setUser  = useAuthStore((s) => s.setUser);
-  const addToast = useUiStore((s) => s.addToast);
+  const user = useAuthStore((s) => s.user);
 
-  const [rates, setRates] = useState({
-    // One-time: single flat price per meal — no meal-type distinction
-    onetime:        user?.rate_onetime        ?? 0,
-    // Weekly: per meal type
-    lunch_weekly:   user?.rate_lunch_weekly   ?? 0,
-    dinner_weekly:  user?.rate_dinner_weekly  ?? 0,
-    both_weekly:    user?.rate_both_weekly     ?? 0,
-    // Monthly: per meal type
-    lunch_monthly:  user?.rate_lunch_monthly  ?? 0,
-    dinner_monthly: user?.rate_dinner_monthly ?? 0,
-    both_monthly:   user?.rate_both_monthly   ?? 0,
-  });
+  const hasVeg = !user?.dietary_categories || user.dietary_categories.includes('veg');
+  const hasNonVeg = user?.dietary_categories?.includes('non_veg');
 
-  const [loading, setLoading] = useState(false);
+  const vegRates = {
+    onetime: user?.rate_veg_onetime || user?.rate_onetime || 0,
+    lunch_weekly: user?.rate_veg_lunch_weekly || user?.rate_lunch_weekly || 0,
+    lunch_monthly: user?.rate_veg_lunch_monthly || user?.rate_lunch_monthly || 0,
+    dinner_weekly: user?.rate_veg_dinner_weekly || user?.rate_dinner_weekly || 0,
+    dinner_monthly: user?.rate_veg_dinner_monthly || user?.rate_dinner_monthly || 0,
+    both_weekly: user?.rate_veg_both_weekly || user?.rate_both_weekly || 0,
+    both_monthly: user?.rate_veg_both_monthly || user?.rate_both_monthly || 0,
+  };
 
-  function set(field: keyof typeof rates, value: string) {
-    setRates((prev) => ({ ...prev, [field]: Number(value) }));
-  }
+  const nonVegRates = {
+    onetime: user?.rate_nonveg_onetime || 0,
+    lunch_weekly: user?.rate_nonveg_lunch_weekly || 0,
+    lunch_monthly: user?.rate_nonveg_lunch_monthly || 0,
+    dinner_weekly: user?.rate_nonveg_dinner_weekly || 0,
+    dinner_monthly: user?.rate_nonveg_dinner_monthly || 0,
+    both_weekly: user?.rate_nonveg_both_weekly || 0,
+    both_monthly: user?.rate_nonveg_both_monthly || 0,
+  };
 
-  async function handleSave() {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const update = {
-        rate_onetime:        rates.onetime,
-        rate_lunch_weekly:   rates.lunch_weekly,
-        rate_dinner_weekly:  rates.dinner_weekly,
-        rate_both_weekly:    rates.both_weekly,
-        rate_lunch_monthly:  rates.lunch_monthly,
-        rate_dinner_monthly: rates.dinner_monthly,
-        rate_both_monthly:   rates.both_monthly,
-      };
-      await updateUser(user.id, update as any);
-      setUser({ ...user, ...update });
-      addToast('Pricing plans saved! 💰', 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Failed to update rates', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const activeAddons = (user?.addons || []).filter(a => a.active);
 
   const subRows = [
     { label: '☀️ Lunch Plan',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
@@ -62,88 +40,135 @@ export function MealRatesCard() {
   return (
     <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-card space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-        <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-          <IndianRupee className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="text-lg font-black text-slate-900 leading-none">Subscription Pricing Plans</h3>
-          <p className="text-xs font-semibold text-slate-400 mt-1.5">Set meal rates for single and repeat subscriptions</p>
-        </div>
-      </div>
-
-      {/* ── One-time ── */}
-      <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100/50">
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="w-4 h-4 text-slate-400" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Trial Meal Rate</span>
-          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-slate-100">One-Time Trial</span>
-        </div>
-        <div className="relative max-w-[200px]">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm pointer-events-none">₹</span>
-          <input
-            type="number" min="0"
-            className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-8 pr-4 text-center text-lg font-extrabold text-slate-900 focus:outline-none focus:border-brand/40"
-            placeholder="0"
-            value={rates.onetime || ''}
-            onChange={(e) => set('onetime', e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* ── Subscription Plans ── */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-slate-400" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Subscription Rate Cards</span>
-        </div>
-
-        {/* Column headers */}
-        <div className="grid grid-cols-[1.1fr_0.9fr_0.9fr] gap-3 mb-1 px-1">
-          <div />
-          <div className="flex items-center justify-center gap-1">
-            <RotateCcw className="w-3 h-3 text-slate-400" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Weekly (₹)</span>
+      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <IndianRupee className="w-5 h-5" />
           </div>
-          <div className="flex items-center justify-center gap-1">
-            <Calendar className="w-3 h-3 text-slate-400" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Monthly (₹)</span>
+          <div>
+            <h3 className="text-lg font-black text-slate-900 leading-none">Subscription Rate Cards</h3>
+            <p className="text-xs font-semibold text-slate-400 mt-1.5">Approved customer pricing & add-on offerings</p>
           </div>
         </div>
 
-        <div className="space-y-3">
-          {subRows.map(({ label, weekly, monthly }) => (
-            <div key={weekly} className="grid grid-cols-[1.1fr_0.9fr_0.9fr] gap-3 items-center bg-slate-50/20 hover:bg-slate-50/50 p-2 rounded-2xl border border-slate-100 transition-colors">
-              <span className="text-xs font-black text-slate-800 leading-tight pl-1">{label}</span>
-              {[weekly, monthly].map((field) => (
-                <div key={field} className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-black pointer-events-none">₹</span>
-                  <input
-                    type="number" min="0"
-                    className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-6 pr-2 text-center text-xs font-extrabold text-slate-900 focus:outline-none focus:border-brand/40 focus:shadow-sm"
-                    placeholder="0"
-                    value={rates[field as keyof typeof rates] || ''}
-                    onChange={(e) => set(field as keyof typeof rates, e.target.value)}
-                  />
-                </div>
-              ))}
+        <div className="flex items-center gap-1.5 bg-slate-50 text-slate-600 px-3 py-1.5 rounded-full border border-slate-100 text-[10px] font-black uppercase tracking-wider">
+          <ShieldCheck className="w-3.5 h-3.5 text-brand" /> Admin Managed
+        </div>
+      </div>
+
+      {/* Admin Controlled Disclaimer */}
+      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/60 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
+          <PhoneCall className="w-4 h-4" />
+        </div>
+        <div className="text-xs">
+          <p className="font-extrabold text-slate-900">Pricing is managed by Dabzzo Operations</p>
+          <p className="text-slate-500 font-medium mt-0.5 leading-relaxed">
+            Subscription prices and margin algorithms are calculated and updated directly by our operations team. If you wish to propose revised base prices, please get in touch with your partner manager.
+          </p>
+        </div>
+      </div>
+
+      {/* 🌿 Vegetarian Rates */}
+      {hasVeg && (
+        <div className="bg-emerald-50/30 rounded-2xl p-4 border border-emerald-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Leaf className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-900">🌿 Vegetarian Plan Rates</span>
             </div>
-          ))}
-        </div>
-      </div>
+            <span className="text-[10px] font-bold bg-white text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100 shadow-sm">
+              Trial: ₹{vegRates.onetime}
+            </span>
+          </div>
 
-      <button
-        onClick={handleSave}
-        disabled={loading}
-        className="w-full py-4 bg-brand text-white text-xs font-black uppercase tracking-widest rounded-2xl transition-colors active:scale-95 shadow-lg shadow-brand/20 disabled:opacity-50 flex items-center justify-center gap-2"
-      >
-        {loading ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr] gap-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 px-1">
+            <div className="text-left">Plan</div>
+            <div className="flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" /> Weekly</div>
+            <div className="flex items-center justify-center gap-1"><Calendar className="w-3 h-3" /> Monthly</div>
+          </div>
+
+          <div className="space-y-2">
+            {subRows.map(({ label, weekly, monthly }) => (
+              <div key={weekly} className="grid grid-cols-[1.2fr_0.9fr_0.9fr] gap-2 items-center bg-white p-2.5 rounded-xl border border-emerald-100/60 shadow-sm">
+                <span className="text-xs font-black text-slate-800 text-left pl-1">{label}</span>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-50/50 py-1.5 rounded-lg border border-emerald-100/50 text-center">
+                  ₹{vegRates[weekly as keyof typeof vegRates]}
+                </span>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-50/50 py-1.5 rounded-lg border border-emerald-100/50 text-center">
+                  ₹{vegRates[monthly as keyof typeof vegRates]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🍗 Non-Vegetarian Rates */}
+      {hasNonVeg && (
+        <div className="bg-rose-50/30 rounded-2xl p-4 border border-rose-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Drumstick className="w-4 h-4 text-rose-600" />
+              <span className="text-xs font-black uppercase tracking-wider text-rose-900">🍗 Non-Vegetarian Plan Rates</span>
+            </div>
+            <span className="text-[10px] font-bold bg-white text-rose-700 px-2 py-0.5 rounded-lg border border-rose-100 shadow-sm">
+              Trial: ₹{nonVegRates.onetime}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr] gap-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 px-1">
+            <div className="text-left">Plan</div>
+            <div className="flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" /> Weekly</div>
+            <div className="flex items-center justify-center gap-1"><Calendar className="w-3 h-3" /> Monthly</div>
+          </div>
+
+          <div className="space-y-2">
+            {subRows.map(({ label, weekly, monthly }) => (
+              <div key={weekly} className="grid grid-cols-[1.2fr_0.9fr_0.9fr] gap-2 items-center bg-white p-2.5 rounded-xl border border-rose-100/60 shadow-sm">
+                <span className="text-xs font-black text-slate-800 text-left pl-1">{label}</span>
+                <span className="text-xs font-black text-rose-700 bg-rose-50/50 py-1.5 rounded-lg border border-rose-100/50 text-center">
+                  ₹{nonVegRates[weekly as keyof typeof nonVegRates]}
+                </span>
+                <span className="text-xs font-black text-rose-700 bg-rose-50/50 py-1.5 rounded-lg border border-rose-100/50 text-center">
+                  ₹{nonVegRates[monthly as keyof typeof nonVegRates]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🍰 Sub-Subscriptions / Add-Ons */}
+      <div className="bg-amber-50/30 rounded-2xl p-4 border border-amber-100 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Tag className="w-4 h-4 text-amber-600" />
+            <span className="text-xs font-black uppercase tracking-wider text-amber-900">Active Add-Ons Offerings</span>
+          </div>
+          <span className="text-[10px] font-bold bg-white text-amber-800 px-2 py-0.5 rounded-lg border border-amber-100">
+            {activeAddons.length} Enabled
+          </span>
+        </div>
+
+        {activeAddons.length === 0 ? (
+          <p className="text-xs text-slate-400 font-medium italic">No add-ons currently active for your kitchen.</p>
         ) : (
-          <TrendingUp className="w-3.5 h-3.5" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            {activeAddons.map(addon => (
+              <div key={addon.id} className="bg-white p-3 rounded-xl border border-amber-100/80 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">{addon.name}</span>
+                  <span className="text-xs font-black text-amber-700">₹{addon.monthly_price}/mo</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  ₹{addon.weekly_price || Math.round(addon.monthly_price / 4)}/wk • ₹{addon.onetime_price || Math.round(addon.monthly_price / 30)}/meal
+                </p>
+              </div>
+            ))}
+          </div>
         )}
-        {loading ? 'Saving rates...' : 'Save Pricing Plans'}
-      </button>
+      </div>
     </div>
   );
 }

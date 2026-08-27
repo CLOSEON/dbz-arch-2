@@ -12,6 +12,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -25,7 +26,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency } from '@/types';
+import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon } from '@/types';
 
 // ─── Deterministic document ID ────────────────────────────────────────────────
 // One document per (user × vendor × mealType). Always the same ID, always.
@@ -106,7 +107,12 @@ export async function createSubscription(data: {
   vendor_id: string;
   plan_id: string;
   meal_type: MealType;
+  category?: DietaryCategory;
   frequency?: SubscriptionFrequency;
+  selected_addons?: SelectedAddon[];
+  base_price?: number;
+  addons_price?: number;
+  total_price?: number;
   discount_pct?: number;
   promo_code?: string;
   /** Razorpay payment ID after successful payment (for audit trail) */
@@ -137,7 +143,12 @@ export async function createSubscription(data: {
   nextBilling.setDate(nextBilling.getDate() + daysToAdd);
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
 
+  if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;
+  if (data.selected_addons) payload.selected_addons = data.selected_addons;
+  if (data.base_price != null) payload.base_price = data.base_price;
+  if (data.addons_price != null) payload.addons_price = data.addons_price;
+  if (data.total_price != null) payload.total_price = data.total_price;
   if (data.discount_pct != null) payload.discount_pct = data.discount_pct;
   if (data.promo_code != null) payload.promo_code = data.promo_code;
   if (data.payment_id) payload.payment_id = data.payment_id;
@@ -168,13 +179,25 @@ export async function createSubscription(data: {
   if (data.meal_type === 'both') {
     const lunchDocId = subDocId(data.user_id, data.vendor_id, 'lunch');
     const dinnerDocId = subDocId(data.user_id, data.vendor_id, 'dinner');
-    await updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel lunch during upgrade:', err));
-    await updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel dinner during upgrade:', err));
+    getDoc(doc(db, 'subscriptions', lunchDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', lunchDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
+    getDoc(doc(db, 'subscriptions', dinnerDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', dinnerDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_upgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
   }
   // If user subscribes to 'lunch' or 'dinner', cancel any existing 'both' for this vendor
   else if (data.meal_type === 'lunch' || data.meal_type === 'dinner') {
     const bothDocId = subDocId(data.user_id, data.vendor_id, 'both');
-    await updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(err => console.warn('[Subscriptions] Failed to cancel both during downgrade:', err));
+    getDoc(doc(db, 'subscriptions', bothDocId)).then(d => {
+      if (d.exists() && d.data()?.status === 'active') {
+        updateDoc(doc(db, 'subscriptions', bothDocId), { status: 'cancelled', cancelled_at: Timestamp.now(), cancelled_by: 'system_downgrade' }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   invalidateSubsCache(data.user_id);
