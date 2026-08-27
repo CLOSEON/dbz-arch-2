@@ -112,6 +112,12 @@ export default function VendorDetailClient(props: PageProps) {
   });
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') === 'true') {
+        setIsEditing(true);
+      }
+    }
     loadVendorData();
   }, [vendorId]);
 

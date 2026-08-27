@@ -5,7 +5,7 @@ import { getAllUsers, setVendorApproval } from '@/lib/queries/users';
 import { suspendVendor, unsuspendVendor } from '@/lib/queries/vendorAdmin';
 import { AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
-import { Search, Check, X, Store, Eye, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Search, Check, X, Store, Eye, ShieldAlert, ShieldCheck, Edit3, Leaf, Drumstick, Tag } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getImageUrl } from '@/lib/storage';
@@ -17,7 +17,7 @@ export default function AdminVendors() {
 
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [filter, setFilter] = useState<'pending' | 'approved' | 'suspended' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'suspended' | 'all'>('approved');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchActionLoading, setBatchActionLoading] = useState(false);
@@ -64,6 +64,7 @@ export default function AdminVendors() {
     }
   }
 
+  // Batch action handler
   async function handleBatchApproval(approve: boolean) {
     if (selectedIds.length === 0) return;
     setBatchActionLoading(true);
@@ -79,12 +80,14 @@ export default function AdminVendors() {
     }
   }
 
+  // Toggle single selection
   function toggleSelect(id: string) {
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   }
 
+  // Select all visible filtered vendors
   function toggleSelectAll(visibleIds: string[]) {
     if (selectedIds.length === visibleIds.length) {
       setSelectedIds([]);
@@ -118,20 +121,21 @@ export default function AdminVendors() {
   const visibleIds = useMemo(() => filtered.map(v => v.id), [filtered]);
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 px-4 md:px-6 overflow-hidden">
+    <div className="space-y-6 animate-fade-in pb-10 pr-4 pl-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Vendors</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage kitchen approvals, suspensions, and configurations</p>
+          <h1 className="text-2xl font-extrabold text-slate-900">Vendors & Kitchens</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Manage kitchen pricing, dual rate cards, and add-on configurations</p>
         </div>
         
+        {/* Batch Actions Bar */}
         {selectedIds.length > 0 && (
-          <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-200 animate-slide-in">
+          <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-100 animate-slide-in">
             <span className="text-xs font-bold text-slate-500 px-2">{selectedIds.length} selected</span>
             <button
               onClick={() => handleBatchApproval(true)}
               disabled={batchActionLoading}
-              className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-600 transition-all flex items-center gap-1 shadow-xs"
+              className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-600 transition-all flex items-center gap-1 shadow-sm"
             >
               <Check className="w-3.5 h-3.5" /> Approve
             </button>
@@ -151,7 +155,7 @@ export default function AdminVendors() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
-            className="input pl-9 w-full"
+            className="input pl-9"
             placeholder="Search by kitchen name, phone number, cuisine..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -159,64 +163,26 @@ export default function AdminVendors() {
         </div>
 
         {/* Tabs */}
-        <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl">
-          {(['pending', 'approved', 'suspended', 'all'] as const).map((t) => {
-            const count = t === 'pending' 
-              ? users.filter(u => !u.is_approved && !(u as any).is_suspended).length
-              : t === 'approved'
-              ? users.filter(u => u.is_approved && !(u as any).is_suspended).length
-              : t === 'suspended'
-              ? users.filter(u => (u as any).is_suspended === true).length
-              : users.length;
-
-            return (
-              <button
-                key={t}
-                onClick={() => {
-                  setFilter(t);
-                  setSelectedIds([]);
-                }}
-                className={`flex-1 min-w-[100px] py-2 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  filter === t ? 'bg-white text-brand shadow-xs' : 'text-slate-500'
-                }`}
-              >
-                <span>{t}</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${
-                  filter === t ? 'bg-brand/10 text-brand' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+        <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+          {(['pending', 'approved', 'suspended', 'all'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setFilter(t);
+                setSelectedIds([]);
+              }}
+              className={`flex-1 py-2 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all ${
+                filter === t ? 'bg-white text-brand shadow-sm' : 'text-slate-500'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
       </div>
 
       {loading ? (
         <SkeletonList count={5} />
-      ) : users.length === 0 ? (
-        <div className="bg-white rounded-3xl p-10 shadow-sm border border-slate-200 text-center space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center text-3xl mx-auto font-black">
-            🏪
-          </div>
-          <div>
-            <h3 className="text-lg font-black text-slate-900">No Vendors in Database</h3>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
-              Click below to seed test accounts (+919000000002 Vendor) or register a new kitchen.
-            </p>
-          </div>
-          <button
-            onClick={async () => {
-              const { seedTestAccounts } = await import('@/lib/queries/users');
-              await seedTestAccounts();
-              addToast('Seeded test vendor +919000000002! 🎉', 'success');
-              loadVendors();
-            }}
-            className="px-6 py-3 bg-brand text-white rounded-2xl font-black text-xs hover:bg-brand-600 shadow-md shadow-brand/20 transition-all"
-          >
-            Seed 4 Test Accounts ⚡
-          </button>
-        </div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="🏪"
@@ -225,7 +191,8 @@ export default function AdminVendors() {
         />
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-4 px-2 text-xs font-bold text-slate-400">
+          {/* Header Row for Select All */}
+          <div className="flex items-center gap-4 px-5 text-xs font-bold text-slate-400">
             <input 
               type="checkbox" 
               checked={selectedIds.length > 0 && selectedIds.length === visibleIds.length}
@@ -237,18 +204,23 @@ export default function AdminVendors() {
 
           {filtered.map((v) => {
             const isSuspended = (v as any).is_suspended === true;
-            return (
-              <div key={v.id} className="bg-white rounded-3xl p-4 md:p-5 shadow-xs border border-slate-200/80 flex items-center gap-3.5 hover:border-slate-300 transition-all min-w-0 overflow-hidden">
-                <input 
-                  type="checkbox" 
-                  checked={selectedIds.includes(v.id)}
-                  onChange={() => toggleSelect(v.id)}
-                  className="w-4 h-4 rounded text-brand border-slate-300 focus:ring-brand cursor-pointer shrink-0"
-                />
+            const vegPrice = v.rate_veg_lunch_monthly || v.rate_lunch_monthly || v.rate_veg_lunch_weekly || v.rate_lunch_weekly || 0;
+            const nonVegPrice = v.rate_nonveg_lunch_monthly || v.rate_nonveg_lunch_weekly || 0;
+            const addonsCount = (v.addons || []).length;
 
-                <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-xl overflow-hidden relative border border-slate-100 shrink-0">
+            return (
+              <div key={v.id} className="bg-white rounded-3xl p-5 shadow-card border border-slate-100 flex flex-col md:flex-row items-start md:items-center gap-4 hover:border-brand/30 transition-all">
+                <div className="flex items-center gap-4 flex-1 w-full">
+                  {/* Selection Checkbox */}
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.includes(v.id)}
+                    onChange={() => toggleSelect(v.id)}
+                    className="w-4 h-4 rounded text-brand border-slate-300 focus:ring-brand cursor-pointer"
+                  />
+
+                  <Link href={`/admin/vendors/${v.id}`} className="flex items-center gap-3 flex-1 group">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-xl overflow-hidden relative border border-slate-100 flex-shrink-0 group-hover:scale-105 transition-transform">
                       {v.image ? (
                         <Image 
                           src={v.image.startsWith('http') ? v.image : getImageUrl(v.image)} 
@@ -260,93 +232,95 @@ export default function AdminVendors() {
                         <Store className="w-6 h-6 text-slate-300" />
                       )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-slate-900 truncate">{v.kitchen_name || `${v.name}'s Kitchen`}</h4>
-                      <p className="text-xs text-slate-500 font-medium truncate">{v.cuisine_type || 'General Cuisine'}</p>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900 group-hover:text-brand transition-colors">{v.kitchen_name || `${v.name}'s Kitchen`}</h4>
+                        {/* Status Badge */}
+                        {isSuspended ? (
+                          <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100">Suspended</span>
+                        ) : v.is_approved ? (
+                          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">Approved</span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100">Pending</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium">{v.cuisine_type || 'General Cuisine'}</p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
                         <span>📞 {v.phone}</span>
-                        <span>•</span>
-                        <span className="truncate">{v.email || 'No email'}</span>
+                        {v.email && (
+                          <>
+                            <span>•</span>
+                            <span>{v.email}</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Pricing pills directly on list row */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100/80 flex items-center gap-1">
+                          <Leaf className="w-3 h-3 text-emerald-600" /> Veg: {vegPrice ? `₹${vegPrice}/mo` : 'Not set'}
+                        </span>
+                        {v.dietary_categories?.includes('non_veg') ? (
+                          <span className="text-[10px] font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-lg border border-rose-100/80 flex items-center gap-1">
+                            <Drumstick className="w-3 h-3 text-rose-600" /> Non-Veg: {nonVegPrice ? `₹${nonVegPrice}/mo` : 'Not set'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold bg-slate-50 text-slate-400 px-2 py-0.5 rounded-lg border border-slate-100">
+                            Veg Only
+                          </span>
+                        )}
+                        {addonsCount > 0 && (
+                          <span className="text-[10px] font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-100/80 flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-amber-600" /> {addonsCount} Add-on{addonsCount > 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  </Link>
+                </div>
 
-                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                    {isSuspended ? (
-                      <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-100 whitespace-nowrap">Suspended</span>
-                    ) : v.is_approved ? (
-                      <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100 whitespace-nowrap">Approved</span>
-                    ) : (
-                      <span className="text-[10px] font-bold text-amber-500 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-100 whitespace-nowrap">Pending</span>
-                    )}
+                {/* Actions */}
+                <div className="flex items-center gap-2 w-full md:w-auto justify-end pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                  <Link 
+                    href={`/admin/vendors/${v.id}?edit=true`}
+                    className="px-3.5 py-2 bg-brand text-white hover:bg-brand/90 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm shadow-brand/20 shrink-0"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> Edit Rates
+                  </Link>
 
-                    <div className="flex items-center gap-1.5 ml-1">
-                      <Link 
-                        href={`/admin/vendors/${v.id}`}
-                        className="w-8 h-8 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition-colors"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Link>
+                  <Link 
+                    href={`/admin/vendors/${v.id}`}
+                    className="w-9 h-9 rounded-2xl bg-slate-50 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors shrink-0 border border-slate-100"
+                    title="View Analytics"
+                  >
+                    <Eye className="w-4.5 h-4.5" />
+                  </Link>
 
-                      {!v.is_approved && (
-                        <button
-                          onClick={() => {
-                            const note = prompt(`Enter details required for ${v.kitchen_name || v.name}:`, 'Please upload valid FSSAI certificate & complete kitchen address.');
-                            if (note) {
-                              import('@/lib/queries/users').then(({ requestRoleDetails }) => {
-                                requestRoleDetails(v.id, v.phone, ['fssai_license', 'address'], note)
-                                  .then(() => {
-                                    addToast('Requested details from vendor! Notification & SMS sent. 📩', 'success');
-                                    loadVendors();
-                                  })
-                                  .catch(err => addToast(err.message, 'error'));
-                              });
-                            }
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-700 font-bold text-xs hover:bg-amber-100 transition-colors whitespace-nowrap"
-                          title="Request Details"
-                        >
-                          Request Info
-                        </button>
-                      )}
-
-                      {isSuspended ? (
-                        <button
-                          onClick={() => handleSuspension(v.id, false)}
-                          className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors"
-                          title="Unsuspend Vendor"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                        </button>
-                      ) : !v.is_approved ? (
-                        <button
-                          onClick={() => {
-                            import('@/lib/queries/users').then(({ approveUserRole }) => {
-                              approveUserRole(v.id, v.phone, v.name, 'vendor')
-                                .then(() => {
-                                  addToast('Vendor approved & live! SMS sent. 🎉', 'success');
-                                  loadVendors();
-                                })
-                                .catch(err => addToast(err.message, 'error'));
-                            });
-                          }}
-                          className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors"
-                          title="Approve Vendor"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleSuspension(v.id, true)}
-                          className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100 transition-colors"
-                          title="Suspend Vendor"
-                        >
-                          <ShieldAlert className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  {isSuspended ? (
+                    <button
+                      onClick={() => handleSuspension(v.id, false)}
+                      className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors shrink-0"
+                      title="Unsuspend Vendor"
+                    >
+                      <ShieldCheck className="w-4.5 h-4.5" />
+                    </button>
+                  ) : !v.is_approved ? (
+                    <button
+                      onClick={() => handleApproval(v.id, true)}
+                      className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors shrink-0"
+                      title="Approve"
+                    >
+                      <Check className="w-4.5 h-4.5" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleSuspension(v.id, true)}
+                      className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100 transition-colors shrink-0"
+                      title="Suspend Vendor"
+                    >
+                      <ShieldAlert className="w-4.5 h-4.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
