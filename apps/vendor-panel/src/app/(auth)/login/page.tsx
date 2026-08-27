@@ -52,45 +52,45 @@ export default function VendorLoginPage() {
       const email = extractUserEmail(firebaseUser);
       const isSuper = isSuperadminEmail(email);
 
-      // Superadmin auto-link to full verified test vendor account
+      // Superadmin auto-link to the exact Test Vendor account (+919900990022)
       if (isSuper) {
-        const vendorProfile: AppUser = {
+        const testVendorProfile: AppUser = {
           id: firebaseUser.uid,
           email: email,
-          name: firebaseUser.displayName || 'Chef Sharma (Superadmin)',
-          phone: firebaseUser.phoneNumber || '+919876543210',
+          name: 'Test Vendor',
+          kitchen_name: 'Test Vendor',
+          phone: '+919900990022',
           image: firebaseUser.photoURL || undefined,
           role: 'vendor' as UserRole,
-          kitchen_name: 'Sharma Gourmet Kitchen',
           is_approved: true,
           is_superadmin: true,
           verification_status: 'verified',
-          capacity: 50,
+          capacity: 10,
+          subscriberCount: 2,
           fssai_license: 'FSSAI-12345678901234',
-          address: 'Sector 62, Noida, UP',
-          rate_onetime: 120,
-          rate_lunch_weekly: 750,
-          rate_lunch_monthly: 2800,
-          rate_dinner_weekly: 750,
-          rate_dinner_monthly: 2800,
-          rate_both_weekly: 1400,
-          rate_both_monthly: 5200,
-          cuisine_type: 'North Indian & Homestyle',
-          bio: 'Authentic pure vegetarian ghar ka khana prepared with love and hygiene.',
-          rating: 4.8,
-          rating_avg: 4.8,
-          review_count: 24,
-          subscriberCount: 12,
+          address: 'Sector 62, Noida, Uttar Pradesh',
+          rate_onetime: 150,
+          rate_lunch_weekly: 900,
+          rate_lunch_monthly: 3600,
+          rate_dinner_weekly: 900,
+          rate_dinner_monthly: 3600,
+          rate_both_weekly: 1750,
+          rate_both_monthly: 6800,
+          cuisine_type: 'Home Style',
+          bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
+          rating: 4.5,
+          rating_avg: 4.5,
+          review_count: 14,
         };
 
         try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), vendorProfile, { merge: true });
+          await setDoc(doc(db, 'users', firebaseUser.uid), testVendorProfile, { merge: true });
         } catch (e) {
-          console.warn('[VendorLogin] Syncing superadmin vendor profile:', e);
+          console.warn('[VendorLogin] Syncing test vendor profile:', e);
         }
 
-        setUser(vendorProfile);
-        addToast('Welcome to your Kitchen Dashboard, Chef! 🎉', 'success');
+        setUser(testVendorProfile);
+        addToast('Connected to Test Vendor! 🎉', 'success');
         router.replace('/dashboard');
         return;
       }

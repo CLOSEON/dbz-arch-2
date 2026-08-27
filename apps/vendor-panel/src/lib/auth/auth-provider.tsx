@@ -91,10 +91,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser({
               id: activeUser.uid,
               email: activeUser.email || undefined,
-              name: activeUser.displayName || (isSuper ? 'Chef Sharma' : ''),
-              phone: activeUser.phoneNumber || '',
+              name: activeUser.displayName || (isSuper ? 'Test Vendor' : ''),
+              phone: activeUser.phoneNumber || (isSuper ? '+919900990022' : ''),
               role: isSuper ? 'vendor' : 'user',
-              kitchen_name: isSuper ? 'Sharma Gourmet Kitchen' : undefined,
+              kitchen_name: isSuper ? 'Test Vendor' : undefined,
               is_superadmin: isSuper ? true : undefined,
               is_approved: isSuper ? true : undefined,
               verification_status: isSuper ? 'verified' : undefined,
@@ -127,10 +127,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const data = userDoc.data();
             if (isSuper) {
               data.role = 'vendor';
-              data.kitchen_name = data.kitchen_name || 'Sharma Gourmet Kitchen';
+              data.name = data.name || 'Test Vendor';
+              data.kitchen_name = data.kitchen_name || 'Test Vendor';
+              data.phone = data.phone || '+919900990022';
               data.is_approved = true;
               data.is_superadmin = true;
               data.verification_status = 'verified';
+              data.capacity = data.capacity || 10;
+              data.subscriberCount = data.subscriberCount || 2;
+              data.rate_onetime = data.rate_onetime || 150;
+              data.cuisine_type = data.cuisine_type || 'Home Style';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
@@ -139,35 +145,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
               initPushNotifications(activeUser!.uid);
             });
           } else if (isSuper && mounted.current) {
-            const superVendorProfile: AppUser = {
+            const testVendorProfile: AppUser = {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
-              name: activeUser.displayName || 'Chef Sharma',
-              kitchen_name: 'Sharma Gourmet Kitchen',
+              name: 'Test Vendor',
+              kitchen_name: 'Test Vendor',
               image: activeUser.photoURL || undefined,
-              phone: activeUser.phoneNumber || '+919876543210',
+              phone: '+919900990022',
               role: 'vendor',
               is_superadmin: true,
               is_approved: true,
               verification_status: 'verified',
-              capacity: 50,
-              rate_onetime: 120,
-              rate_lunch_weekly: 750,
-              rate_lunch_monthly: 2800,
-              rate_dinner_weekly: 750,
-              rate_dinner_monthly: 2800,
-              rate_both_weekly: 1400,
-              rate_both_monthly: 5200,
-              cuisine_type: 'North Indian & Homestyle',
-              address: 'Sector 62, Noida, UP',
+              capacity: 10,
+              subscriberCount: 2,
+              fssai_license: 'FSSAI-12345678901234',
+              address: 'Sector 62, Noida, Uttar Pradesh',
+              rate_onetime: 150,
+              rate_lunch_weekly: 900,
+              rate_lunch_monthly: 3600,
+              rate_dinner_weekly: 900,
+              rate_dinner_monthly: 3600,
+              rate_both_weekly: 1750,
+              rate_both_monthly: 6800,
+              cuisine_type: 'Home Style',
+              bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
+              rating: 4.5,
+              rating_avg: 4.5,
+              review_count: 14,
             };
             try {
               const { setDoc: setFirestoreDoc } = await import('firebase/firestore');
-              await setFirestoreDoc(doc(db, 'users', activeUser.uid), superVendorProfile, { merge: true });
+              await setFirestoreDoc(doc(db, 'users', activeUser.uid), testVendorProfile, { merge: true });
             } catch (e) {
-              console.warn('[AuthProvider] setDoc superVendorProfile fallback:', e);
+              console.warn('[AuthProvider] setDoc testVendorProfile fallback:', e);
             }
-            setUser(superVendorProfile);
+            setUser(testVendorProfile);
           }
         } else {
           logout();
