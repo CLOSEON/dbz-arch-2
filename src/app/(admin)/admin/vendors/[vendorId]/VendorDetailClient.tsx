@@ -9,12 +9,12 @@ import { getDailyMenu, saveDailyMenu, getTodayStr } from '@/lib/queries/menu';
 import { AppUser, Order, DietaryCategory, VendorAddon, Subscription, MenuItem } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { 
-  ArrowLeft, Check, X, ShieldAlert, Award, DollarSign, Users, 
+  ArrowLeft, Check, X, ShieldAlert, Award, IndianRupee, Users, 
   ShoppingBag, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, 
   Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed,
   ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
-  Package, Sliders, CheckCircle2, AlertCircle, Building2, Store,
-  ChevronRight, Sparkles, IndianRupee
+  Package, Sliders, CheckCircle, AlertOctagon,
+  ChevronRight, Sparkles
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -531,7 +531,7 @@ export default function VendorDetailClient(props: PageProps) {
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Overview', icon: BarChart3 },
     { key: 'menu', label: 'Daily Menu', icon: UtensilsCrossed },
-    { key: 'pricing', label: 'Rates & Add-Ons', icon: DollarSign },
+    { key: 'pricing', label: 'Rates & Add-Ons', icon: IndianRupee },
     { key: 'subscribers', label: `Subscribers (${subscriptions.length})`, icon: Users },
     { key: 'orders', label: `Orders (${history.length})`, icon: Package },
     { key: 'settings', label: 'Kitchen Settings & Payouts', icon: Sliders },
@@ -672,7 +672,7 @@ export default function VendorDetailClient(props: PageProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Revenue
+                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue
               </div>
               <div className="text-xl font-bold text-slate-900">₹{stats.totalRevenue.toLocaleString('en-IN')}</div>
               <div className="text-[10px] text-slate-400 mt-0.5">Processed total</div>
