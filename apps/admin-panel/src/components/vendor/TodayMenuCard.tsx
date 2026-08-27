@@ -139,7 +139,7 @@ export function TodayMenuCard() {
         items: cleanVeg.length > 0 ? cleanVeg : cleanNonVeg,
         note: (vegNote.trim() || nonVegNote.trim()),
       });
-      addToast('Daily menu saved successfully! 🍱', 'success');
+      addToast('Daily menu saved successfully', 'success');
       setEditing(false);
       loadMenu();
     } catch (err) {
@@ -199,7 +199,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Leaf className="w-4 h-4 text-emerald-600" /> 🌿 Pure Veg Menu
+            <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Menu
           </button>
           <button
             type="button"
@@ -210,7 +210,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Drumstick className="w-4 h-4 text-rose-600" /> 🍗 Non-Veg Menu
+            <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Menu
           </button>
         </div>
       )}
@@ -219,7 +219,7 @@ export function TodayMenuCard() {
         <div className="space-y-4">
           <div className="flex items-center justify-between pb-1">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              {activeTab === 'veg' ? '🌿 Vegetarian Items' : '🍗 Non-Vegetarian Items'}
+              {activeTab === 'veg' ? 'Vegetarian Items' : 'Non-Vegetarian Items'}
             </span>
             <span className="text-[10px] font-bold text-slate-400">
               {currentItems.filter(i => i.name.trim()).length} added

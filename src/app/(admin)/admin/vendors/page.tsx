@@ -7,7 +7,8 @@ import { AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { 
   Search, Check, X, Store, Eye, ShieldAlert, ShieldCheck, 
-  Settings, DollarSign, Leaf, Drumstick, Tag, Power, ArrowRight, ExternalLink
+  Settings, DollarSign, Leaf, Drumstick, Tag, Power, ArrowRight, 
+  ExternalLink, Phone, MapPin, CheckCircle2, AlertCircle, Sliders
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -44,7 +45,7 @@ export default function AdminVendors() {
   async function handleApproval(id: string, approved: boolean) {
     try {
       await setVendorApproval(id, approved);
-      addToast(approved ? 'Vendor approved! ✅' : 'Vendor status updated', 'info');
+      addToast(approved ? 'Vendor approved successfully' : 'Vendor status updated', 'info');
       setUsers(users.map(u => u.id === id ? { ...u, is_approved: approved } : u));
     } catch (err) {
       addToast('Failed to update status', 'error');
@@ -55,11 +56,11 @@ export default function AdminVendors() {
     try {
       if (suspend) {
         await suspendVendor(id);
-        addToast('Vendor account suspended ⚠️', 'warning');
+        addToast('Vendor account suspended', 'warning');
         setUsers(users.map(u => u.id === id ? { ...u, is_approved: false, is_suspended: true } as any : u));
       } else {
         await unsuspendVendor(id);
-        addToast('Vendor account unsuspended ✅', 'success');
+        addToast('Vendor account unsuspended', 'success');
         setUsers(users.map(u => u.id === id ? { ...u, is_approved: true, is_suspended: false } as any : u));
       }
     } catch (err) {
@@ -73,7 +74,7 @@ export default function AdminVendors() {
     setBatchActionLoading(true);
     try {
       await Promise.all(selectedIds.map(id => setVendorApproval(id, approve)));
-      addToast(`Batch ${approve ? 'approved' : 'rejected'} successfully!`, 'success');
+      addToast(`Batch ${approve ? 'approved' : 'rejected'} successfully`, 'success');
       setUsers(users.map(u => selectedIds.includes(u.id) ? { ...u, is_approved: approve } : u));
       setSelectedIds([]);
     } catch (err) {
@@ -174,7 +175,7 @@ export default function AdminVendors() {
         <SkeletonList count={5} />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon="🏪"
+          icon={<Store className="w-10 h-10 text-slate-300 mx-auto" />}
           title="No vendors found"
           description={`No ${filter} vendors matching your search.`}
         />
@@ -260,18 +261,22 @@ export default function AdminVendors() {
                       )}
 
                       {v.is_open !== false ? (
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">● Open</span>
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open
+                        </span>
                       ) : (
-                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">○ Closed</span>
+                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Closed
+                        </span>
                       )}
                     </div>
 
                     <p className="text-xs text-slate-500 font-medium">{v.cuisine_type || 'North & South Indian Homestyle Meals'}</p>
                     
                     <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap pt-0.5">
-                      <span>📞 {v.phone}</span>
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400" /> {v.phone}</span>
                       {v.email && <span>• {v.email}</span>}
-                      {v.address && <span>• 📍 {v.address}</span>}
+                      {v.address && <span className="flex items-center gap-1">• <MapPin className="w-3 h-3 text-slate-400" /> {v.address}</span>}
                     </div>
 
                     {/* Rate & Offering Badges */}

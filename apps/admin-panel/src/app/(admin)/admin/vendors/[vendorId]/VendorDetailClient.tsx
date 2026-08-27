@@ -12,7 +12,8 @@ import {
   ArrowLeft, Check, X, ShieldAlert, Award, DollarSign, Users, 
   ShoppingBag, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, 
   Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed,
-  Power, ExternalLink, Phone, Mail, CreditCard, Clock
+  Power, ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
+  Package, Sliders, CheckCircle2, AlertCircle, Building2, Store
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -33,6 +34,7 @@ export default function VendorDetailClient(props: PageProps) {
   const vendorId = (rawParams?.vendorId && rawParams.vendorId !== 'placeholder')
     ? rawParams.vendorId
     : (searchParams.get('vendorId') || searchParams.get('id') || '');
+
   const router = useRouter();
   const addToast = useUiStore((s) => s.addToast);
 
@@ -154,7 +156,7 @@ export default function VendorDetailClient(props: PageProps) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('edit') === 'true') {
+      if (urlParams.get('edit') === 'true' || urlParams.get('tab') === 'pricing') {
         setActiveTab('pricing');
       } else if (urlParams.get('tab')) {
         const tab = urlParams.get('tab') as ActiveTab;
@@ -163,7 +165,9 @@ export default function VendorDetailClient(props: PageProps) {
         }
       }
     }
-    loadVendorData();
+    if (vendorId) {
+      loadVendorData();
+    }
   }, [vendorId]);
 
   useEffect(() => {
@@ -173,11 +177,12 @@ export default function VendorDetailClient(props: PageProps) {
   }, [vendorId, menuDate]);
 
   async function loadVendorData() {
+    if (!vendorId) return;
     setLoading(true);
     try {
       const vendorData = await getUserById(vendorId);
       if (!vendorData || vendorData.role !== 'vendor') {
-        addToast('Vendor not found', 'error');
+        addToast('Vendor profile not found', 'error');
         router.push('/admin/vendors');
         return;
       }
@@ -280,7 +285,7 @@ export default function VendorDetailClient(props: PageProps) {
         note_non_veg: nonVegNote,
         note: vegNote,
       });
-      addToast(`Menu for ${menuDate} published successfully! 🍲`, 'success');
+      addToast(`Menu for ${menuDate} published successfully`, 'success');
     } catch (err) {
       addToast('Failed to save menu', 'error');
     } finally {
@@ -355,7 +360,7 @@ export default function VendorDetailClient(props: PageProps) {
       await updateDoc(doc(db, 'users', vendor.id), { is_open: newOpenState });
       setEditForm(prev => ({ ...prev, is_open: newOpenState }));
       setVendor(prev => prev ? { ...prev, is_open: newOpenState } : null);
-      addToast(newOpenState ? 'Kitchen is now OPEN for orders 🟢' : 'Kitchen is now CLOSED 🔴', 'info');
+      addToast(newOpenState ? 'Kitchen is now OPEN for orders' : 'Kitchen is now CLOSED', 'info');
     } catch (err) {
       addToast('Failed to update kitchen open status', 'error');
     } finally {
@@ -369,7 +374,7 @@ export default function VendorDetailClient(props: PageProps) {
     try {
       await setVendorApproval(vendor.id, approved);
       setVendor({ ...vendor, is_approved: approved });
-      addToast(approved ? 'Vendor approved! ✅' : 'Vendor rejected', 'info');
+      addToast(approved ? 'Vendor approved successfully' : 'Vendor status updated', 'info');
     } catch (err) {
       addToast('Failed to update status', 'error');
     } finally {
@@ -384,11 +389,11 @@ export default function VendorDetailClient(props: PageProps) {
       if (suspend) {
         await suspendVendor(vendor.id);
         setVendor({ ...vendor, is_approved: false, is_suspended: true } as any);
-        addToast('Vendor account suspended ⚠️', 'warning');
+        addToast('Vendor account suspended', 'warning');
       } else {
         await unsuspendVendor(vendor.id);
         setVendor({ ...vendor, is_approved: true, is_suspended: false } as any);
-        addToast('Vendor account unsuspended ✅', 'success');
+        addToast('Vendor account unsuspended', 'success');
       }
     } catch (err) {
       addToast('Failed to toggle suspension', 'error');
@@ -440,9 +445,9 @@ export default function VendorDetailClient(props: PageProps) {
         setEditForm(prev => ({ ...prev, image: url }));
         await updateDoc(doc(db, 'users', vendor.id), { image: url });
         setVendor(prev => prev ? { ...prev, image: url } : null);
-        addToast('Vendor picture updated! 📸', 'success');
+        addToast('Vendor picture updated', 'success');
       } else {
-        addToast('Failed to upload image. Check permissions/formats.', 'error');
+        addToast('Failed to upload image', 'error');
       }
     } catch (err) {
       addToast('Error uploading picture', 'error');
@@ -476,7 +481,6 @@ export default function VendorDetailClient(props: PageProps) {
         platform_fee_pct: Number(editForm.platform_fee_pct || 10),
         dietary_categories: editForm.dietary_categories,
         
-        // Base / Veg rates
         rate_onetime: Number(editForm.rate_veg_onetime || editForm.rate_onetime || 0),
         rate_lunch_weekly: Number(editForm.rate_veg_lunch_weekly || editForm.rate_lunch_weekly || 0),
         rate_lunch_monthly: Number(editForm.rate_veg_lunch_monthly || editForm.rate_lunch_monthly || 0),
@@ -515,7 +519,7 @@ export default function VendorDetailClient(props: PageProps) {
 
       await updateDoc(doc(db, 'users', vendor.id), updatedFields);
       setVendor(prev => prev ? ({ ...prev, ...updatedFields }) : null);
-      addToast('Kitchen settings & rates saved successfully! 🎉', 'success');
+      addToast('Kitchen settings & rates saved successfully', 'success');
     } catch (err) {
       console.error(err);
       addToast('Failed to save kitchen settings', 'error');
@@ -531,7 +535,7 @@ export default function VendorDetailClient(props: PageProps) {
   if (!vendor || !stats) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-500">
-        <X className="w-12 h-12 text-rose-400 mb-2" />
+        <AlertCircle className="w-12 h-12 text-rose-400 mb-2" />
         <h3 className="font-bold text-lg">Vendor Profile Unavailable</h3>
         <button onClick={() => router.push('/admin/vendors')} className="btn btn-secondary mt-4">
           Back to list
@@ -541,6 +545,15 @@ export default function VendorDetailClient(props: PageProps) {
   }
 
   const isSuspended = (vendor as any).is_suspended === true;
+
+  const TABS: { key: ActiveTab; label: string; icon: any }[] = [
+    { key: 'overview', label: 'Overview & Stats', icon: BarChart3 },
+    { key: 'menu', label: 'Live Menu Manager', icon: UtensilsCrossed },
+    { key: 'pricing', label: 'Rates & Add-Ons', icon: DollarSign },
+    { key: 'subscribers', label: `Active Subscribers (${subscriptions.length})`, icon: Users },
+    { key: 'orders', label: `Orders (${history.length})`, icon: Package },
+    { key: 'settings', label: 'Settings & Payouts', icon: Sliders },
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in pb-16 pr-4 pl-4 max-w-7xl mx-auto">
@@ -567,7 +580,7 @@ export default function VendorDetailClient(props: PageProps) {
             title="Toggle kitchen accepting orders"
           >
             <Power className="w-3.5 h-3.5" />
-            {editForm.is_open ? 'Kitchen: OPEN' : 'Kitchen: CLOSED'}
+            {editForm.is_open ? 'Kitchen: Open' : 'Kitchen: Closed'}
           </button>
 
           {/* Customer View Preview Link */}
@@ -625,7 +638,7 @@ export default function VendorDetailClient(props: PageProps) {
               unoptimized
             />
           ) : (
-            <span className="text-4xl">🏪</span>
+            <Store className="w-10 h-10 text-slate-300" />
           )}
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
             <UploadCloud className="w-5 h-5 mb-0.5" />
@@ -659,9 +672,13 @@ export default function VendorDetailClient(props: PageProps) {
             )}
 
             {editForm.is_open ? (
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">● Accepting Orders</span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Accepting Orders
+              </span>
             ) : (
-              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-xl">○ Kitchen Offline</span>
+              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-xl flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Kitchen Offline
+              </span>
             )}
           </div>
 
@@ -675,28 +692,25 @@ export default function VendorDetailClient(props: PageProps) {
         </div>
       </div>
 
-      {/* Comprehensive Kitchen Control Tabs */}
+      {/* Clean Vector Tab Navigation */}
       <div className="flex gap-1.5 p-1.5 bg-slate-100/80 rounded-2xl overflow-x-auto">
-        {[
-          { key: 'overview', label: '📊 Overview & Stats' },
-          { key: 'menu', label: '🍲 Live Menu Manager' },
-          { key: 'pricing', label: '💰 Rates & Add-Ons' },
-          { key: 'subscribers', label: `👥 Active Subscribers (${subscriptions.length})` },
-          { key: 'orders', label: `📦 Orders (${history.length})` },
-          { key: 'settings', label: '⚙️ Kitchen Settings & Payouts' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as ActiveTab)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-              activeTab === tab.key
-                ? 'bg-white text-brand shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === tab.key
+                  ? 'bg-white text-brand shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* TAB 1: OVERVIEW & STATS */}
@@ -724,7 +738,9 @@ export default function VendorDetailClient(props: PageProps) {
                 <ShoppingBag className="w-4 h-4 text-blue-500" /> Total Orders
               </div>
               <div className="text-2xl font-black text-slate-900">{stats.totalOrders}</div>
-              <div className="text-[10px] text-emerald-600 font-bold mt-1">✓ {stats.deliveredOrders} delivered</div>
+              <div className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> {stats.deliveredOrders} delivered
+              </div>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card">
@@ -738,7 +754,9 @@ export default function VendorDetailClient(props: PageProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Dietary & Menu Offering</h3>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400" /> Dietary & Menu Offering
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {vendor.dietary_categories?.includes('veg') && (
                   <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 flex items-center gap-1.5">
@@ -758,14 +776,16 @@ export default function VendorDetailClient(props: PageProps) {
                 onClick={() => setActiveTab('pricing')}
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors"
               >
-                Modify Rates & Offerings →
+                Modify Rates & Offerings
               </button>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Prep Capacity & Dispatch</h3>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-slate-400" /> Prep Capacity & Dispatch
+              </h3>
               <div className="text-sm font-bold text-slate-900">
-                {vendor.capacityUnlimited ? '♾️ Unlimited Tiffins / Day' : `🍱 ${vendor.capacity || 50} Tiffins / Day Maximum`}
+                {vendor.capacityUnlimited ? 'Unlimited Tiffins / Day' : `${vendor.capacity || 50} Tiffins / Day Maximum`}
               </div>
               <div className="text-xs text-slate-500">
                 Current Active Subscribers: <strong className="text-slate-900 font-bold">{stats.activeSubscribers}</strong>
@@ -774,14 +794,16 @@ export default function VendorDetailClient(props: PageProps) {
                 onClick={() => setActiveTab('settings')}
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors"
               >
-                Adjust Capacity & Address →
+                Adjust Capacity & Address
               </button>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Today's Menu Status</h3>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400" /> Daily Menu Status
+              </h3>
               <div className="text-sm font-bold text-slate-900">
-                {vegItems.length > 0 ? `🍲 ${vegItems.length} Veg dishes published` : '⚠️ No menu set for today'}
+                {vegItems.length > 0 ? `${vegItems.length} Veg dishes published` : 'No menu published for selected date'}
               </div>
               <div className="text-xs text-slate-500">
                 Target Date: <strong className="text-slate-900 font-bold">{menuDate}</strong>
@@ -790,7 +812,7 @@ export default function VendorDetailClient(props: PageProps) {
                 onClick={() => setActiveTab('menu')}
                 className="w-full py-2 bg-brand/10 hover:bg-brand/20 text-brand rounded-xl text-xs font-bold transition-colors"
               >
-                Open Menu Editor →
+                Open Menu Editor
               </button>
             </div>
           </div>
@@ -978,8 +1000,8 @@ export default function VendorDetailClient(props: PageProps) {
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Admin-managed pricing for Pure Veg, Non-Veg, and monthly add-ons</p>
             </div>
-            <span className="text-[10px] font-black text-brand bg-brand/10 px-3 py-1 rounded-xl">
-              🔒 Admin Algorithm Managed
+            <span className="text-[10px] font-black text-brand bg-brand/10 px-3 py-1 rounded-xl flex items-center gap-1">
+              <Sliders className="w-3 h-3 text-brand" /> Admin Algorithm Managed
             </span>
           </div>
 
@@ -1000,7 +1022,9 @@ export default function VendorDetailClient(props: PageProps) {
                   }}
                   className="w-4 h-4 rounded text-brand focus:ring-brand"
                 />
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">🌿 Pure Veg</span>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                  <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg
+                </span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer">
@@ -1015,7 +1039,9 @@ export default function VendorDetailClient(props: PageProps) {
                   }}
                   className="w-4 h-4 rounded text-brand focus:ring-brand"
                 />
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">🍗 Non-Veg</span>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                  <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg
+                </span>
               </label>
             </div>
           </div>
@@ -1346,8 +1372,8 @@ export default function VendorDetailClient(props: PageProps) {
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block font-bold">CATEGORY</span>
-                      <span className="font-bold text-slate-900 uppercase">
-                        {sub.category === 'non_veg' ? '🍗 Non-Veg' : '🌿 Veg'}
+                      <span className="font-bold text-slate-900 uppercase flex items-center gap-1">
+                        {sub.category === 'non_veg' ? <><Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg</> : <><Leaf className="w-3.5 h-3.5 text-emerald-600" /> Veg</>}
                       </span>
                     </div>
                   </div>
@@ -1409,7 +1435,7 @@ export default function VendorDetailClient(props: PageProps) {
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-brand" /> Live & Past Orders
+                <Package className="w-5 h-5 text-brand" /> Live & Past Orders
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Track prep batches, dispatches, and delivery statuses</p>
             </div>
@@ -1475,7 +1501,7 @@ export default function VendorDetailClient(props: PageProps) {
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-brand" /> Kitchen Profile, Coordinates & Bank Payouts
+                <Sliders className="w-5 h-5 text-brand" /> Kitchen Profile, Coordinates & Bank Payouts
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Manage operational identity, GPS routing coords, and settlement bank accounts</p>
             </div>
@@ -1485,7 +1511,7 @@ export default function VendorDetailClient(props: PageProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <h4 className="text-xs font-black uppercase tracking-wider text-brand flex items-center gap-1.5">
-                <Edit3 className="w-4 h-4" /> Operational Identity
+                <Building2 className="w-4 h-4" /> Operational Identity
               </h4>
 
               <div>
@@ -1579,7 +1605,7 @@ export default function VendorDetailClient(props: PageProps) {
 
             <div className="space-y-4">
               <h4 className="text-xs font-black uppercase tracking-wider text-brand flex items-center gap-1.5">
-                <MapPin className="w-4 h-4" /> Address & GPS Dispatch Coords
+                <MapPin className="w-4 h-4" /> Address & GPS Dispatch Coordinates
               </h4>
 
               <div>

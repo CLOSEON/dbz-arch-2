@@ -32,9 +32,9 @@ export function MealRatesCard() {
   const activeAddons = (user?.addons || []).filter(a => a.active);
 
   const subRows = [
-    { label: '☀️ Lunch Plan',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
-    { label: '🌙 Dinner Plan',        weekly: 'dinner_weekly', monthly: 'dinner_monthly' },
-    { label: '🍱 Combo Plan (Both)',  weekly: 'both_weekly',  monthly: 'both_monthly'   },
+    { label: 'Lunch Plan',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
+    { label: 'Dinner Plan',        weekly: 'dinner_weekly', monthly: 'dinner_monthly' },
+    { label: 'Combo Plan (Both)',  weekly: 'both_weekly',  monthly: 'both_monthly'   },
   ] as const;
 
   return (
@@ -75,7 +75,7 @@ export function MealRatesCard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Leaf className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-black uppercase tracking-wider text-emerald-900">🌿 Vegetarian Plan Rates</span>
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-900">Vegetarian Plan Rates</span>
             </div>
             <span className="text-[10px] font-bold bg-white text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100 shadow-sm">
               Trial: ₹{vegRates.onetime}
@@ -110,7 +110,7 @@ export function MealRatesCard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Drumstick className="w-4 h-4 text-rose-600" />
-              <span className="text-xs font-black uppercase tracking-wider text-rose-900">🍗 Non-Vegetarian Plan Rates</span>
+              <span className="text-xs font-black uppercase tracking-wider text-rose-900">Non-Vegetarian Plan Rates</span>
             </div>
             <span className="text-[10px] font-bold bg-white text-rose-700 px-2 py-0.5 rounded-lg border border-rose-100 shadow-sm">
               Trial: ₹{nonVegRates.onetime}
@@ -139,7 +139,7 @@ export function MealRatesCard() {
         </div>
       )}
 
-      {/* 🍰 Sub-Subscriptions / Add-Ons */}
+      {/* Sub-Subscriptions / Add-Ons */}
       <div className="bg-amber-50/30 rounded-2xl p-4 border border-amber-100 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
