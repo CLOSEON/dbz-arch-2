@@ -11,6 +11,7 @@
   "/(admin)/admin/swaps/page": "/admin/swaps",
   "/(admin)/admin/users/page": "/admin/users",
   "/(admin)/admin/vendors/[vendorId]/page": "/admin/vendors/[vendorId]",
+  "/(admin)/admin/vendors/detail/page": "/admin/vendors/detail",
   "/(admin)/admin/vendors/page": "/admin/vendors",
   "/(auth)/admin-login/page": "/admin-login",
   "/(auth)/login/page": "/login",
