@@ -13,7 +13,8 @@ import {
   ShoppingBag, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, 
   Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed,
   ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
-  Package, Sliders, CheckCircle2, AlertCircle, Building2, Store
+  Package, Sliders, CheckCircle2, AlertCircle, Building2, Store,
+  ChevronRight, Sparkles, IndianRupee
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -515,10 +516,10 @@ export default function VendorDetailClient(props: PageProps) {
 
   if (!vendor || !stats) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-500">
-        <AlertCircle className="w-12 h-12 text-rose-400 mb-2" />
-        <h3 className="font-bold text-lg">Vendor Profile Unavailable</h3>
-        <button onClick={() => router.push('/admin/vendors')} className="btn btn-secondary mt-4">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-500">
+        <AlertCircle className="w-10 h-10 text-rose-400 mb-2" />
+        <h3 className="font-bold text-base">Vendor Profile Unavailable</h3>
+        <button onClick={() => router.push('/admin/vendors')} className="btn btn-secondary mt-3 text-xs">
           Back to list
         </button>
       </div>
@@ -528,43 +529,39 @@ export default function VendorDetailClient(props: PageProps) {
   const isSuspended = (vendor as any).is_suspended === true;
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
-    { key: 'overview', label: 'Overview & Stats', icon: BarChart3 },
-    { key: 'menu', label: 'Live Menu Manager', icon: UtensilsCrossed },
+    { key: 'overview', label: 'Overview', icon: BarChart3 },
+    { key: 'menu', label: 'Daily Menu', icon: UtensilsCrossed },
     { key: 'pricing', label: 'Rates & Add-Ons', icon: DollarSign },
-    { key: 'subscribers', label: `Active Subscribers (${subscriptions.length})`, icon: Users },
+    { key: 'subscribers', label: `Subscribers (${subscriptions.length})`, icon: Users },
     { key: 'orders', label: `Orders (${history.length})`, icon: Package },
-    { key: 'settings', label: 'Settings & Payouts', icon: Sliders },
+    { key: 'settings', label: 'Kitchen Settings & Payouts', icon: Sliders },
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16 pr-4 pl-4 max-w-7xl mx-auto">
+    <div className="space-y-5 animate-fade-in">
       {/* Top Header Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <button 
           onClick={() => router.push('/admin/vendors')}
-          className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors self-start"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Vendors List
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to Kitchens
         </button>
         
-        {/* Quick Operations Actions */}
-        <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
-          {/* Customer View Preview Link */}
+        <div className="flex items-center gap-2">
           <Link
             href={`/vendor/detail?vendorId=${vendor.id}`}
             target="_blank"
-            className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-wider shadow-sm transition-colors flex items-center gap-1.5"
-            title="Preview kitchen on customer app"
+            className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
           >
-            <ExternalLink className="w-3.5 h-3.5" /> Customer View
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" /> Customer View
           </Link>
 
-          {/* Suspend / Approve */}
           {isSuspended ? (
             <button
               onClick={() => handleSuspension(false)}
               disabled={actionLoading}
-              className="px-3.5 py-2 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-sm hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 shadow-xs"
             >
               <ShieldCheck className="w-3.5 h-3.5" /> Unsuspend
             </button>
@@ -572,7 +569,7 @@ export default function VendorDetailClient(props: PageProps) {
             <button
               onClick={() => handleApproval(true)}
               disabled={actionLoading}
-              className="px-3.5 py-2 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-sm hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 shadow-xs"
             >
               <Check className="w-3.5 h-3.5" /> Approve
             </button>
@@ -580,7 +577,7 @@ export default function VendorDetailClient(props: PageProps) {
             <button
               onClick={() => handleSuspension(true)}
               disabled={actionLoading}
-              className="px-3.5 py-2 bg-rose-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-sm hover:bg-rose-600 transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
             >
               <ShieldAlert className="w-3.5 h-3.5" /> Suspend
             </button>
@@ -589,30 +586,29 @@ export default function VendorDetailClient(props: PageProps) {
       </div>
 
       {/* Kitchen Identity Banner */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card flex flex-col md:flex-row gap-6 items-start md:items-center">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-4 items-start sm:items-center">
         <div 
           onClick={() => fileInputRef.current?.click()}
-          className="w-24 h-24 rounded-3xl bg-slate-50 relative overflow-hidden flex-shrink-0 shadow-inner flex items-center justify-center border border-slate-100 cursor-pointer group"
-          title="Click to change kitchen image"
+          className="w-16 h-16 rounded-xl bg-slate-100 relative overflow-hidden shrink-0 flex items-center justify-center border border-slate-200 cursor-pointer group"
+          title="Change image"
         >
           {editForm.image ? (
             <Image 
               src={getImageUrl(editForm.image)} 
               alt={vendor.kitchen_name || vendor.name} 
               fill 
-              className="object-cover animate-fade-in" 
+              className="object-cover" 
               unoptimized
             />
           ) : (
-            <Store className="w-10 h-10 text-slate-300" />
+            <Store className="w-8 h-8 text-slate-400" />
           )}
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-            <UploadCloud className="w-5 h-5 mb-0.5" />
-            <span className="text-[8px] font-black uppercase tracking-widest text-center">Change</span>
+            <UploadCloud className="w-4 h-4" />
           </div>
           {uploadingImage && (
-            <div className="absolute inset-0 bg-white/85 backdrop-blur-sm flex items-center justify-center">
-              <Loader2 className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center">
+              <Loader2 className="w-4 h-4 text-slate-800 animate-spin" />
             </div>
           )}
         </div>
@@ -624,41 +620,42 @@ export default function VendorDetailClient(props: PageProps) {
           onChange={handleImageUpload} 
         />
 
-        <div className="flex-1 space-y-1.5">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-extrabold text-slate-900">{vendor.kitchen_name || `${vendor.name}'s Kitchen`}</h1>
+        <div className="space-y-1 min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-black text-slate-900 truncate">
+              {vendor.kitchen_name || `${vendor.name}'s Kitchen`}
+            </h1>
             
-            {/* Status Badges */}
             {isSuspended ? (
-              <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200">Suspended</span>
+              <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">Suspended</span>
             ) : vendor.is_approved ? (
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 flex items-center gap-0.5">Approved & Verified</span>
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">Verified</span>
             ) : (
-              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200">Pending Review</span>
+              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">Pending Review</span>
             )}
           </div>
 
-          <p className="text-sm text-slate-500 font-medium">{vendor.cuisine_type || 'North & South Indian Homestyle Meals'}</p>
+          <p className="text-xs text-slate-500">{vendor.cuisine_type || 'Homestyle Meals'}</p>
 
-          <div className="flex items-center gap-4 text-xs text-slate-500 mt-2 flex-wrap">
-            <span className="flex items-center gap-1 font-semibold"><Phone className="w-3.5 h-3.5 text-slate-400" /> {vendor.phone}</span>
-            {vendor.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5 text-slate-400" /> {vendor.email}</span>}
-            {vendor.address && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {vendor.address}</span>}
+          <div className="flex items-center gap-3 text-[11px] text-slate-500 pt-0.5 flex-wrap">
+            <span className="flex items-center gap-1 font-medium"><Phone className="w-3 h-3 text-slate-400" /> {vendor.phone}</span>
+            {vendor.email && <span className="flex items-center gap-1">• <Mail className="w-3 h-3 text-slate-400" /> {vendor.email}</span>}
+            {vendor.address && <span className="flex items-center gap-1">• <MapPin className="w-3 h-3 text-slate-400" /> {vendor.address}</span>}
           </div>
         </div>
       </div>
 
-      {/* Clean Vector Tab Navigation */}
-      <div className="flex gap-1.5 p-1.5 bg-slate-100/80 rounded-2xl overflow-x-auto">
+      {/* Clean Segmented Navigation */}
+      <div className="flex gap-1 p-1 bg-slate-200/60 rounded-xl overflow-x-auto">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-2 ${
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === tab.key
-                  ? 'bg-white text-brand shadow-sm'
+                  ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -671,104 +668,83 @@ export default function VendorDetailClient(props: PageProps) {
 
       {/* TAB 1: OVERVIEW & STATS */}
       {activeTab === 'overview' && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card">
-              <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-                <DollarSign className="w-4 h-4 text-emerald-500" /> Total Revenue
+        <div className="space-y-4 animate-fade-in">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Revenue
               </div>
-              <div className="text-2xl font-black text-slate-900">₹{stats.totalRevenue.toLocaleString('en-IN')}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Processed payments</div>
+              <div className="text-xl font-bold text-slate-900">₹{stats.totalRevenue.toLocaleString('en-IN')}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Processed total</div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card">
-              <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-                <Users className="w-4 h-4 text-brand" /> Active Subscribers
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
+                <Users className="w-3.5 h-3.5 text-brand" /> Active Subscribers
               </div>
-              <div className="text-2xl font-black text-slate-900">{stats.activeSubscribers}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Ongoing monthly & weekly</div>
+              <div className="text-xl font-bold text-slate-900">{stats.activeSubscribers}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Recurring subscribers</div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card">
-              <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-                <ShoppingBag className="w-4 h-4 text-blue-500" /> Total Orders
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
+                <ShoppingBag className="w-3.5 h-3.5 text-blue-600" /> Total Orders
               </div>
-              <div className="text-2xl font-black text-slate-900">{stats.totalOrders}</div>
-              <div className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+              <div className="text-xl font-bold text-slate-900">{stats.totalOrders}</div>
+              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-0.5">
                 <CheckCircle2 className="w-3 h-3" /> {stats.deliveredOrders} delivered
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card">
-              <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-                <Award className="w-4 h-4 text-amber-500" /> Success Rate
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
+                <Award className="w-3.5 h-3.5 text-amber-600" /> Punctuality
               </div>
-              <div className="text-2xl font-black text-slate-900">{stats.deliverySuccessRate}%</div>
-              <div className="text-[10px] text-slate-400 mt-1">Punctual fulfilment</div>
+              <div className="text-xl font-bold text-slate-900">{stats.deliverySuccessRate}%</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">On-time fulfillment</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400" /> Dietary & Menu Offering
-              </h3>
-              <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dietary Offerings</h3>
+              <div className="flex flex-wrap gap-1.5">
                 {vendor.dietary_categories?.includes('veg') && (
-                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 flex items-center gap-1.5">
-                    <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg Meals
+                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-lg text-xs font-medium border border-emerald-100 flex items-center gap-1">
+                    <Leaf className="w-3 h-3 text-emerald-600" /> Pure Veg
                   </span>
                 )}
                 {vendor.dietary_categories?.includes('non_veg') && (
-                  <span className="px-3 py-1 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-100 flex items-center gap-1.5">
-                    <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg Meals
+                  <span className="px-2.5 py-1 bg-rose-50 text-rose-800 rounded-lg text-xs font-medium border border-rose-100 flex items-center gap-1">
+                    <Drumstick className="w-3 h-3 text-rose-600" /> Non-Veg
                   </span>
                 )}
               </div>
-              <div className="text-xs text-slate-500">
-                Active Sweets & Add-ons in catalog: <strong className="text-slate-900 font-bold">{editForm.addons.length} items</strong>
-              </div>
-              <button 
-                onClick={() => setActiveTab('pricing')}
-                className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-              >
-                Modify Rates & Offerings
-              </button>
+              <p className="text-xs text-slate-500 pt-1">
+                Add-ons in catalog: <strong className="text-slate-800">{editForm.addons.length} items</strong>
+              </p>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-slate-400" /> Prep Capacity & Dispatch
-              </h3>
-              <div className="text-sm font-bold text-slate-900">
-                {vendor.capacityUnlimited ? 'Unlimited Tiffins / Day' : `${vendor.capacity || 50} Tiffins / Day Maximum`}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Prep Capacity</h3>
+              <div className="text-sm font-semibold text-slate-900">
+                {vendor.capacityUnlimited ? 'Unlimited Tiffins / Day' : `${vendor.capacity || 50} Tiffins / Day`}
               </div>
-              <div className="text-xs text-slate-500">
-                Current Active Subscribers: <strong className="text-slate-900 font-bold">{stats.activeSubscribers}</strong>
-              </div>
-              <button 
-                onClick={() => setActiveTab('settings')}
-                className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-              >
-                Adjust Capacity & Address
-              </button>
+              <p className="text-xs text-slate-500">
+                Active Subscribers: <strong className="text-slate-800">{stats.activeSubscribers}</strong>
+              </p>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-card space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400" /> Daily Menu Status
-              </h3>
-              <div className="text-sm font-bold text-slate-900">
-                {vegItems.length > 0 ? `${vegItems.length} Veg dishes published` : 'No menu published for selected date'}
-              </div>
-              <div className="text-xs text-slate-500">
-                Target Date: <strong className="text-slate-900 font-bold">{menuDate}</strong>
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Today's Menu</h3>
+              <div className="text-sm font-semibold text-slate-900">
+                {vegItems.length > 0 ? `${vegItems.length} dishes published` : 'No menu published'}
               </div>
               <button 
                 onClick={() => setActiveTab('menu')}
-                className="w-full py-2 bg-brand/10 hover:bg-brand/20 text-brand rounded-xl text-xs font-bold transition-colors"
+                className="text-xs font-bold text-brand hover:underline flex items-center gap-1"
               >
-                Open Menu Editor
+                Manage Menu <ChevronRight className="w-3 h-3" />
               </button>
             </div>
           </div>
@@ -777,20 +753,18 @@ export default function VendorDetailClient(props: PageProps) {
 
       {/* TAB 2: LIVE MENU MANAGER */}
       {activeTab === 'menu' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-6 animate-fade-in">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-5 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <UtensilsCrossed className="w-5 h-5 text-brand" /> Live Daily Menu Manager
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Publish and update today's Pure Veg and Non-Veg menu for this kitchen</p>
+              <h3 className="text-sm font-bold text-slate-900">Daily Menu Manager</h3>
+              <p className="text-xs text-slate-500">Publish and update Vegetarian and Non-Vegetarian daily tiffin menus</p>
             </div>
 
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setMenuDate(getTodayStr())}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                  menuDate === getTodayStr() ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600'
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                  menuDate === getTodayStr() ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Today
@@ -799,482 +773,515 @@ export default function VendorDetailClient(props: PageProps) {
                 type="date" 
                 value={menuDate} 
                 onChange={(e) => setMenuDate(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
               />
             </div>
           </div>
 
           {menuLoading ? (
-            <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-              <Loader2 className="w-6 h-6 animate-spin text-brand" />
-              <span className="text-xs font-bold">Loading menu for {menuDate}...</span>
+            <div className="py-8 flex flex-col items-center justify-center text-slate-400 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-800" />
+              <span className="text-xs">Loading menu for {menuDate}...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Pure Veg Menu Editor */}
-              <div className="p-5 bg-emerald-50/40 rounded-3xl border border-emerald-100/80 space-y-4">
+              <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                    <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Menu ({menuDate})
+                  <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                    <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg Menu
                   </h4>
-                  <span className="text-[10px] font-bold text-emerald-600">{vegItems.length} items</span>
+                  <span className="text-[11px] font-semibold text-slate-400">{vegItems.length} items</span>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Included Dishes / Items</label>
-                  <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-white rounded-2xl border border-emerald-100">
+                  <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white rounded-lg border border-slate-200">
                     {vegItems.map((item, idx) => (
-                      <span key={idx} className="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-emerald-100">
+                      <span key={idx} className="px-2 py-0.5 bg-emerald-50 text-emerald-900 rounded-md text-xs font-medium flex items-center gap-1 border border-emerald-100">
                         {item}
                         <button 
                           type="button" 
                           onClick={() => handleRemoveVegItem(idx)}
-                          className="text-emerald-400 hover:text-rose-500 transition-colors"
+                          className="text-slate-400 hover:text-rose-600"
                         >
                           <X className="w-3 h-3" />
                         </button>
                       </span>
                     ))}
                     {vegItems.length === 0 && (
-                      <span className="text-xs text-slate-400 italic py-1">No items added yet.</span>
+                      <span className="text-xs text-slate-400 italic py-0.5">No items added yet.</span>
                     )}
                   </div>
 
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex gap-1.5">
                     <input 
                       type="text" 
                       placeholder="Add dish (e.g. Paneer Butter Masala)..." 
                       value={newVegItemInput} 
                       onChange={(e) => setNewVegItemInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddVegItem(); }}}
-                      className="flex-1 px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                      className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:border-slate-800"
                     />
                     <button 
                       type="button" 
                       onClick={handleAddVegItem}
-                      className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700"
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Veg Chef Note / Special</label>
+                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Chef Note</label>
                   <input 
                     type="text" 
                     value={vegNote} 
                     onChange={(e) => setVegNote(e.target.value)}
-                    placeholder="e.g. Served with hot fluffy rotis and pickle"
-                    className="w-full px-3 py-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-medium text-slate-900"
+                    placeholder="e.g. Served with 4 rotis, jeera rice & pickle"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
                   />
                 </div>
               </div>
 
               {/* Non-Veg Menu Editor */}
-              <div className="p-5 bg-rose-50/40 rounded-3xl border border-rose-100/80 space-y-4">
+              <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-                    <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Menu ({menuDate})
+                  <h4 className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+                    <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg Menu
                   </h4>
-                  <span className="text-[10px] font-bold text-rose-600">{nonVegItems.length} items</span>
+                  <span className="text-[11px] font-semibold text-slate-400">{nonVegItems.length} items</span>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Included Dishes / Items</label>
-                  <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-white rounded-2xl border border-rose-100">
+                  <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white rounded-lg border border-slate-200">
                     {nonVegItems.map((item, idx) => (
-                      <span key={idx} className="px-2.5 py-1 bg-rose-50 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-rose-100">
+                      <span key={idx} className="px-2 py-0.5 bg-rose-50 text-rose-900 rounded-md text-xs font-medium flex items-center gap-1 border border-rose-100">
                         {item}
                         <button 
                           type="button" 
                           onClick={() => handleRemoveNonVegItem(idx)}
-                          className="text-rose-400 hover:text-rose-600 transition-colors"
+                          className="text-slate-400 hover:text-rose-600"
                         >
                           <X className="w-3 h-3" />
                         </button>
                       </span>
                     ))}
                     {nonVegItems.length === 0 && (
-                      <span className="text-xs text-slate-400 italic py-1">No non-veg items added yet.</span>
+                      <span className="text-xs text-slate-400 italic py-0.5">No non-veg items added yet.</span>
                     )}
                   </div>
 
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex gap-1.5">
                     <input 
                       type="text" 
                       placeholder="Add dish (e.g. Chicken Curry)..." 
                       value={newNonVegItemInput} 
                       onChange={(e) => setNewNonVegItemInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNonVegItem(); }}}
-                      className="flex-1 px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                      className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:border-slate-800"
                     />
                     <button 
                       type="button" 
                       onClick={handleAddNonVegItem}
-                      className="px-3 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700"
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Non-Veg Chef Note / Special</label>
+                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Chef Note</label>
                   <input 
                     type="text" 
                     value={nonVegNote} 
                     onChange={(e) => setNonVegNote(e.target.value)}
-                    placeholder="e.g. Made with fresh chicken and aromatic spices"
-                    className="w-full px-3 py-2.5 bg-white border border-rose-200 rounded-xl text-xs font-medium text-slate-900"
+                    placeholder="e.g. Made fresh with homestyle spices"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
+          <div className="flex justify-end pt-2">
             <button
               onClick={handleSaveMenu}
               disabled={savingMenu}
-              className="px-6 py-3 bg-brand text-white font-black text-xs uppercase tracking-wider rounded-2xl hover:bg-brand/90 transition-all flex items-center gap-2 shadow-lg shadow-brand/20"
+              className="px-5 py-2.5 bg-slate-900 text-white font-semibold text-xs rounded-xl hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-xs"
             >
-              {savingMenu ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Publish Menu for {menuDate}
+              {savingMenu ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Publish Menu ({menuDate})
             </button>
           </div>
         </div>
       )}
 
-      {/* TAB 3: RATES & ADD-ONS */}
+      {/* TAB 3: RATES & ADD-ONS (COMPACT & ERGONOMIC) */}
       {activeTab === 'pricing' && (
-        <form onSubmit={handleSaveProfile} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-8 animate-fade-in">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+        <form onSubmit={handleSaveProfile} className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-brand" /> Rate Cards & Sub-Subscriptions Catalog
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Admin-managed pricing for Pure Veg, Non-Veg, and monthly add-ons</p>
+              <h3 className="text-sm font-bold text-slate-900">Subscription Rate Cards & Add-Ons</h3>
+              <p className="text-xs text-slate-500">Admin-managed pricing for Pure Veg, Non-Veg, and sub-subscription add-ons</p>
             </div>
-            <span className="text-[10px] font-black text-brand bg-brand/10 px-3 py-1 rounded-xl flex items-center gap-1">
-              <Sliders className="w-3 h-3 text-brand" /> Admin Algorithm Managed
+            <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
+              Admin Managed
             </span>
           </div>
 
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
-            <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
-              Dietary Modes Offered by this Kitchen
+          {/* Dietary selection */}
+          <div className="flex items-center gap-6 p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+            <span className="text-xs font-semibold text-slate-700">Kitchen Categories:</span>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-800">
+              <input 
+                type="checkbox" 
+                checked={editForm.dietary_categories.includes('veg')}
+                onChange={(e) => {
+                  const next = e.target.checked
+                    ? [...editForm.dietary_categories, 'veg' as DietaryCategory]
+                    : editForm.dietary_categories.filter(c => c !== 'veg');
+                  if (next.length > 0) setEditForm({ ...editForm, dietary_categories: next });
+                }}
+                className="w-4 h-4 rounded text-slate-900 border-slate-300 focus:ring-slate-900"
+              />
+              <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg
             </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={editForm.dietary_categories.includes('veg')}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...editForm.dietary_categories, 'veg' as DietaryCategory]
-                      : editForm.dietary_categories.filter(c => c !== 'veg');
-                    if (next.length > 0) setEditForm({ ...editForm, dietary_categories: next });
-                  }}
-                  className="w-4 h-4 rounded text-brand focus:ring-brand"
-                />
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                  <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg
-                </span>
-              </label>
 
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={editForm.dietary_categories.includes('non_veg')}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...editForm.dietary_categories, 'non_veg' as DietaryCategory]
-                      : editForm.dietary_categories.filter(c => c !== 'non_veg');
-                    if (next.length > 0) setEditForm({ ...editForm, dietary_categories: next });
-                  }}
-                  className="w-4 h-4 rounded text-brand focus:ring-brand"
-                />
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                  <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg
-                </span>
-              </label>
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-800">
+              <input 
+                type="checkbox" 
+                checked={editForm.dietary_categories.includes('non_veg')}
+                onChange={(e) => {
+                  const next = e.target.checked
+                    ? [...editForm.dietary_categories, 'non_veg' as DietaryCategory]
+                    : editForm.dietary_categories.filter(c => c !== 'non_veg');
+                  if (next.length > 0) setEditForm({ ...editForm, dietary_categories: next });
+                }}
+                className="w-4 h-4 rounded text-slate-900 border-slate-300 focus:ring-slate-900"
+              />
+              <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg
+            </label>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Pure Veg Rate Card */}
-            <div className="p-5 bg-emerald-50/40 rounded-3xl border border-emerald-100 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Pure Veg Rate Card Table */}
+            <div className="p-4 bg-slate-50/60 rounded-xl border border-slate-200/70 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                  <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Rate Card
+                <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                  <Leaf className="w-3.5 h-3.5 text-emerald-600" /> Pure Veg Rate Card
                 </h4>
-                <span className="text-[10px] font-bold text-emerald-600">INR (₹)</span>
+                <span className="text-[10px] font-semibold text-slate-400">INR (₹)</span>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Trial Single Meal Rate (₹)</label>
-                <input 
-                  type="number" 
-                  value={editForm.rate_veg_onetime} 
-                  onChange={e => setEditForm({ ...editForm, rate_veg_onetime: e.target.value })}
-                  placeholder="e.g. 120"
-                  className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Weekly (₹)</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Trial Single Meal</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
                   <input 
                     type="number" 
-                    value={editForm.rate_veg_lunch_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_lunch_weekly: e.target.value })}
-                    placeholder="e.g. 700"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_veg_lunch_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_lunch_monthly: e.target.value })}
-                    placeholder="e.g. 2600"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                    value={editForm.rate_veg_onetime} 
+                    onChange={e => setEditForm({ ...editForm, rate_veg_onetime: e.target.value })}
+                    placeholder="120"
+                    className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Weekly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_veg_dinner_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_dinner_weekly: e.target.value })}
-                    placeholder="e.g. 700"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Lunch Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_lunch_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_lunch_weekly: e.target.value })}
+                      placeholder="700"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_veg_dinner_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_dinner_monthly: e.target.value })}
-                    placeholder="e.g. 2600"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Lunch Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_lunch_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_lunch_monthly: e.target.value })}
+                      placeholder="2600"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Weekly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_veg_both_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_both_weekly: e.target.value })}
-                    placeholder="e.g. 1350"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Dinner Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_dinner_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_dinner_weekly: e.target.value })}
+                      placeholder="700"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_veg_both_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_veg_both_monthly: e.target.value })}
-                    placeholder="e.g. 5000"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Dinner Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_dinner_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_dinner_monthly: e.target.value })}
+                      placeholder="2600"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Combo Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_both_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_both_weekly: e.target.value })}
+                      placeholder="1350"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Combo Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_veg_both_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_veg_both_monthly: e.target.value })}
+                      placeholder="5000"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Non-Veg Rate Card */}
-            <div className={`p-5 bg-rose-50/40 rounded-3xl border border-rose-100 space-y-4 ${
-              !editForm.dietary_categories.includes('non_veg') ? 'opacity-50 pointer-events-none' : ''
+            {/* Non-Veg Rate Card Table */}
+            <div className={`p-4 bg-slate-50/60 rounded-xl border border-slate-200/70 space-y-3 ${
+              !editForm.dietary_categories.includes('non_veg') ? 'opacity-40 pointer-events-none' : ''
             }`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-                  <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Rate Card
+                <h4 className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+                  <Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg Rate Card
                 </h4>
-                <span className="text-[10px] font-bold text-rose-600">INR (₹)</span>
+                <span className="text-[10px] font-semibold text-slate-400">INR (₹)</span>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Trial Single Meal Rate (₹)</label>
-                <input 
-                  type="number" 
-                  value={editForm.rate_nonveg_onetime} 
-                  onChange={e => setEditForm({ ...editForm, rate_nonveg_onetime: e.target.value })}
-                  placeholder="e.g. 150"
-                  className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Weekly (₹)</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Trial Single Meal</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
                   <input 
                     type="number" 
-                    value={editForm.rate_nonveg_lunch_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_weekly: e.target.value })}
-                    placeholder="e.g. 950"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Lunch Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_nonveg_lunch_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_monthly: e.target.value })}
-                    placeholder="e.g. 3600"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                    value={editForm.rate_nonveg_onetime} 
+                    onChange={e => setEditForm({ ...editForm, rate_nonveg_onetime: e.target.value })}
+                    placeholder="150"
+                    className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Weekly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_nonveg_dinner_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_weekly: e.target.value })}
-                    placeholder="e.g. 950"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Lunch Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_lunch_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_weekly: e.target.value })}
+                      placeholder="950"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Dinner Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_nonveg_dinner_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_monthly: e.target.value })}
-                    placeholder="e.g. 3600"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Lunch Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_lunch_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_lunch_monthly: e.target.value })}
+                      placeholder="3600"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Weekly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_nonveg_both_weekly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_both_weekly: e.target.value })}
-                    placeholder="e.g. 1850"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Dinner Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_dinner_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_weekly: e.target.value })}
+                      placeholder="950"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Combo Monthly (₹)</label>
-                  <input 
-                    type="number" 
-                    value={editForm.rate_nonveg_both_monthly} 
-                    onChange={e => setEditForm({ ...editForm, rate_nonveg_both_monthly: e.target.value })}
-                    placeholder="e.g. 6800"
-                    className="w-full bg-white border border-rose-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
-                  />
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Dinner Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_dinner_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_dinner_monthly: e.target.value })}
+                      placeholder="3600"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Combo Weekly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_both_weekly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_both_weekly: e.target.value })}
+                      placeholder="1850"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Combo Monthly</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={editForm.rate_nonveg_both_monthly} 
+                      onChange={e => setEditForm({ ...editForm, rate_nonveg_both_monthly: e.target.value })}
+                      placeholder="6800"
+                      className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="space-y-4 border-t border-slate-100 pt-6">
+          {/* Sub-Subscriptions Catalog */}
+          <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                  <Tag className="w-4 h-4 text-amber-500" /> Sub-Subscription Add-Ons Catalog
-                </h4>
-                <p className="text-xs text-slate-500">Sweets, curd, extra chapatis, or special sides offered as monthly add-ons</p>
+                <h4 className="text-xs font-bold text-slate-900">Sub-Subscription Add-Ons Catalog</h4>
+                <p className="text-[11px] text-slate-500">Sweets, curd, sides, or extras offered on monthly plans</p>
               </div>
-              <span className="text-xs font-bold text-slate-400">{editForm.addons.length} items</span>
+              <span className="text-xs text-slate-400">{editForm.addons.length} items</span>
             </div>
 
             {editForm.addons.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {editForm.addons.map((addon) => (
-                  <div key={addon.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-slate-900">{addon.name}</span>
+                  <div key={addon.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-xs text-slate-900 truncate">{addon.name}</span>
                         {addon.active ? (
-                          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Active</span>
+                          <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Active</span>
                         ) : (
-                          <span className="text-[9px] font-bold text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">Paused</span>
+                          <span className="text-[9px] font-semibold text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">Paused</span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
-                        ₹{addon.monthly_price}/mo <span className="text-slate-400 font-normal">(Weekly ~₹{addon.weekly_price})</span>
+                        ₹{addon.monthly_price}/mo <span className="text-slate-400">(Weekly ~₹{addon.weekly_price})</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleToggleAddonActive(addon.id)}
-                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 hover:bg-slate-100"
                       >
                         {addon.active ? 'Pause' : 'Activate'}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveAddon(addon.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors"
+                        className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-slate-400">
-                No add-ons created yet. Add sweets, curd, or extras below.
+              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                No add-ons created yet. Add sweets or sides below.
               </div>
             )}
 
-            <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-100 space-y-3">
-              <span className="text-[10px] font-black uppercase tracking-wider text-amber-900">Add New Sub-Subscription / Add-On</span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
+              <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Add New Add-On</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input 
                   type="text" 
-                  placeholder="Add-on Name (e.g. Gulab Jamun (2 pcs))" 
+                  placeholder="Add-on Name (e.g. Gulab Jamun)" 
                   value={newAddonName} 
                   onChange={e => setNewAddonName(e.target.value)}
-                  className="px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-900"
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
                 />
-                <input 
-                  type="number" 
-                  placeholder="Monthly Price in ₹ (e.g. 300)" 
-                  value={newAddonMonthlyPrice} 
-                  onChange={e => setNewAddonMonthlyPrice(e.target.value)}
-                  className="px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-900"
-                />
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">₹</span>
+                  <input 
+                    type="number" 
+                    placeholder="Monthly (e.g. 300)" 
+                    value={newAddonMonthlyPrice} 
+                    onChange={e => setNewAddonMonthlyPrice(e.target.value)}
+                    className="w-full pl-6 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
+                  />
+                </div>
                 <button 
                   type="button" 
                   onClick={handleAddAddon}
-                  className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-amber-700 flex items-center justify-center gap-1.5"
+                  className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 flex items-center justify-center gap-1"
                 >
-                  <Plus className="w-4 h-4" /> Add to Catalog
+                  <Plus className="w-3.5 h-3.5" /> Add to Catalog
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
+          <div className="flex justify-end pt-3 border-t border-slate-100">
             <button
               type="submit"
               disabled={actionLoading}
-              className="px-8 py-3.5 bg-brand text-white font-black text-xs uppercase tracking-wider rounded-2xl hover:bg-brand/90 transition-all flex items-center gap-2 shadow-lg shadow-brand/25"
+              className="px-5 py-2.5 bg-slate-900 text-white font-semibold text-xs rounded-xl hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-xs"
             >
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               Save Rates & Add-Ons Catalog
             </button>
           </div>
@@ -1283,34 +1290,32 @@ export default function VendorDetailClient(props: PageProps) {
 
       {/* TAB 4: SUBSCRIBERS */}
       {activeTab === 'subscribers' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-brand" /> Active Kitchen Subscribers
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Manage meal schedules, pause, or cancel subscriptions</p>
+              <h3 className="text-sm font-bold text-slate-900">Active Subscribers</h3>
+              <p className="text-xs text-slate-500">Manage meal subscriptions, pause, or cancel schedules</p>
             </div>
-            <span className="text-xs font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
+            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
               Total: {subscriptions.length}
             </span>
           </div>
 
           {subscriptions.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 space-y-2">
-              <Users className="w-10 h-10 mx-auto text-slate-300" />
-              <p className="text-sm font-bold">No active subscriptions for this kitchen yet.</p>
+            <div className="py-8 text-center text-slate-400 space-y-1">
+              <Users className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="text-xs font-medium">No active subscribers for this kitchen yet.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {subscriptions.map((sub) => (
-                <div key={sub.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                <div key={sub.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">User ID</span>
-                      <div className="text-xs font-mono font-bold text-slate-800">{sub.user_id.slice(0, 12)}...</div>
+                      <span className="text-[10px] font-medium text-slate-400 uppercase">Customer ID</span>
+                      <div className="text-xs font-mono font-semibold text-slate-800">{sub.user_id.slice(0, 10)}...</div>
                     </div>
-                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg border ${
+                    <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
                       sub.status === 'active' 
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                         : sub.status === 'paused'
@@ -1323,23 +1328,23 @@ export default function VendorDetailClient(props: PageProps) {
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-bold">MEAL TYPE</span>
-                      <span className="font-bold text-slate-900 uppercase">{sub.meal_type}</span>
+                      <span className="text-[10px] text-slate-400 block font-medium">PLAN</span>
+                      <span className="font-semibold text-slate-800 uppercase">{sub.meal_type}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-bold">CATEGORY</span>
-                      <span className="font-bold text-slate-900 uppercase flex items-center gap-1">
-                        {sub.category === 'non_veg' ? <><Drumstick className="w-3.5 h-3.5 text-rose-600" /> Non-Veg</> : <><Leaf className="w-3.5 h-3.5 text-emerald-600" /> Veg</>}
+                      <span className="text-[10px] text-slate-400 block font-medium">CATEGORY</span>
+                      <span className="font-semibold text-slate-800 uppercase flex items-center gap-1">
+                        {sub.category === 'non_veg' ? <><Drumstick className="w-3 h-3 text-rose-600" /> Non-Veg</> : <><Leaf className="w-3 h-3 text-emerald-600" /> Veg</>}
                       </span>
                     </div>
                   </div>
 
                   {sub.selected_addons && sub.selected_addons.length > 0 && (
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-bold mb-1">ADD-ONS</span>
+                      <span className="text-[10px] text-slate-400 block font-medium mb-0.5">ADD-ONS</span>
                       <div className="flex flex-wrap gap-1">
                         {sub.selected_addons.map((a, i) => (
-                          <span key={i} className="text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 font-semibold text-slate-700">
+                          <span key={i} className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">
                             + {a.name} (₹{a.price_paid})
                           </span>
                         ))}
@@ -1348,15 +1353,15 @@ export default function VendorDetailClient(props: PageProps) {
                   )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                    <span className="text-xs font-black text-slate-900">
+                    <span className="text-xs font-bold text-slate-900">
                       Total: ₹{sub.total_price || sub.price || 0}
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       {sub.status === 'active' ? (
                         <button
                           onClick={() => handleUpdateSubscriptionStatus(sub.id, 'paused')}
                           disabled={actionLoading}
-                          className="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-bold border border-amber-200"
+                          className="px-2 py-0.5 bg-white text-slate-700 hover:bg-slate-100 rounded text-[10px] font-semibold border border-slate-200"
                         >
                           Pause
                         </button>
@@ -1364,7 +1369,7 @@ export default function VendorDetailClient(props: PageProps) {
                         <button
                           onClick={() => handleUpdateSubscriptionStatus(sub.id, 'active')}
                           disabled={actionLoading}
-                          className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[10px] font-bold border border-emerald-200"
+                          className="px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[10px] font-semibold border border-emerald-200"
                         >
                           Resume
                         </button>
@@ -1372,7 +1377,7 @@ export default function VendorDetailClient(props: PageProps) {
                       <button
                         onClick={() => handleUpdateSubscriptionStatus(sub.id, 'cancelled')}
                         disabled={actionLoading}
-                        className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-[10px] font-bold border border-rose-200"
+                        className="px-2 py-0.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-[10px] font-semibold border border-rose-200"
                       >
                         Cancel
                       </button>
@@ -1387,54 +1392,50 @@ export default function VendorDetailClient(props: PageProps) {
 
       {/* TAB 5: ORDERS */}
       {activeTab === 'orders' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Package className="w-5 h-5 text-brand" /> Live & Past Orders
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Track prep batches, dispatches, and delivery statuses</p>
+              <h3 className="text-sm font-bold text-slate-900">Kitchen Orders</h3>
+              <p className="text-xs text-slate-500">Track meal batches, dispatch, and delivery statuses</p>
             </div>
-            <span className="text-xs font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
+            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
               {history.length} Orders
             </span>
           </div>
 
           {history.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 space-y-2">
-              <ShoppingBag className="w-10 h-10 mx-auto text-slate-300" />
-              <p className="text-sm font-bold">No orders recorded for this kitchen yet.</p>
+            <div className="py-8 text-center text-slate-400 space-y-1">
+              <ShoppingBag className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="text-xs font-medium">No orders recorded for this kitchen yet.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {history.map((order) => (
-                <div key={order.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg border ${
+                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
                         order.status === 'delivered' || order.status === 'completed'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : order.status === 'dispatched'
                           ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : order.status === 'ready'
-                          ? 'bg-purple-50 text-purple-700 border-purple-200'
                           : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}>
                         {order.status}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
+                    <div className="text-xs text-slate-500 mt-0.5">
                       {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-400">STATUS:</span>
+                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
                     <select
                       value={order.status}
                       onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
                     >
                       <option value="pending">Pending</option>
                       <option value="cooking">Cooking</option>
@@ -1453,98 +1454,96 @@ export default function VendorDetailClient(props: PageProps) {
 
       {/* TAB 6: KITCHEN SETTINGS & PAYOUTS */}
       {activeTab === 'settings' && (
-        <form onSubmit={handleSaveProfile} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-card space-y-8 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <form onSubmit={handleSaveProfile} className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-brand" /> Kitchen Profile, Coordinates & Bank Payouts
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Manage operational identity, GPS routing coords, and settlement bank accounts</p>
+              <h3 className="text-sm font-bold text-slate-900">Kitchen Settings & Bank Payouts</h3>
+              <p className="text-xs text-slate-500">Manage identity, prep limits, dispatch GPS coordinates, and bank accounts</p>
             </div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Vendor ID: {vendor.id.slice(0, 8)}</span>
+            <span className="text-[11px] text-slate-400 font-mono">ID: {vendor.id.slice(0, 8)}</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <h4 className="text-xs font-black uppercase tracking-wider text-brand flex items-center gap-1.5">
-                <Building2 className="w-4 h-4" /> Operational Identity
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-slate-500" /> Operational Details
               </h4>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Kitchen / Brand Name</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Kitchen / Brand Name</label>
                 <input 
                   type="text" 
                   value={editForm.kitchen_name} 
                   onChange={e => setEditForm({ ...editForm, kitchen_name: e.target.value })}
                   placeholder="e.g. Vicky Mass Homestyle Tiffins"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Contact Person Name</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Contact Person Name</label>
                 <input 
                   type="text" 
                   value={editForm.name} 
                   onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Phone Number</label>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Phone</label>
                   <input 
                     type="text" 
                     value={editForm.phone} 
                     onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Notification Email</label>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Email</label>
                   <input 
                     type="email" 
                     value={editForm.email} 
                     onChange={e => setEditForm({ ...editForm, email: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Cuisine / Food Tags</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Cuisine / Food Tags</label>
                 <input 
                   type="text" 
                   value={editForm.cuisine_type} 
                   onChange={e => setEditForm({ ...editForm, cuisine_type: e.target.value })}
-                  placeholder="e.g. North Indian, Maharashtrian, Jain Friendly"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900"
+                  placeholder="e.g. North Indian, Maharashtrian"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">FSSAI License Number</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">FSSAI License</label>
                 <input 
                   type="text" 
                   value={editForm.fssai_license} 
                   onChange={e => setEditForm({ ...editForm, fssai_license: e.target.value })}
                   placeholder="e.g. 11521019000123"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 font-mono"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono"
                 />
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/60 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-700">Daily Prep Capacity Limit</label>
+                  <label className="text-[11px] font-semibold text-slate-700">Daily Prep Limit</label>
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input 
                       type="checkbox" 
                       checked={editForm.capacityUnlimited}
                       onChange={(e) => setEditForm({ ...editForm, capacityUnlimited: e.target.checked })}
-                      className="w-3.5 h-3.5 rounded text-brand focus:ring-brand"
+                      className="w-3.5 h-3.5 rounded text-slate-900"
                     />
-                    <span className="text-[11px] font-bold text-slate-600">Unlimited</span>
+                    <span className="text-[11px] text-slate-600">Unlimited</span>
                   </label>
                 </div>
                 {!editForm.capacityUnlimited && (
@@ -1552,111 +1551,111 @@ export default function VendorDetailClient(props: PageProps) {
                     type="number" 
                     value={editForm.capacity} 
                     onChange={e => setEditForm({ ...editForm, capacity: e.target.value })}
-                    placeholder="e.g. 50 tiffins/day"
-                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-900"
+                    placeholder="50 tiffins/day"
+                    className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900"
                   />
                 )}
               </div>
             </div>
 
-            <div className="space-y-4">
-              <h4 className="text-xs font-black uppercase tracking-wider text-brand flex items-center gap-1.5">
-                <MapPin className="w-4 h-4" /> Address & GPS Dispatch Coordinates
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-slate-500" /> Dispatch Location & Payouts
               </h4>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Physical Kitchen Address</label>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">Kitchen Address</label>
                 <textarea 
                   value={editForm.address} 
                   onChange={e => setEditForm({ ...editForm, address: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-medium text-slate-900 resize-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-900 resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Latitude</label>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Latitude</label>
                   <input 
                     type="number" 
                     step="any"
                     value={editForm.lat} 
                     onChange={e => setEditForm({ ...editForm, lat: e.target.value })}
-                    placeholder="e.g. 18.5204"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 font-mono"
+                    placeholder="18.5204"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Longitude</label>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">Longitude</label>
                   <input 
                     type="number" 
                     step="any"
                     value={editForm.lng} 
                     onChange={e => setEditForm({ ...editForm, lng: e.target.value })}
-                    placeholder="e.g. 73.8567"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-bold text-slate-900 font-mono"
+                    placeholder="73.8567"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100 space-y-3 mt-4">
-                <h5 className="text-xs font-black uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-emerald-600" /> Settlement & Payout Details
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5 mt-2">
+                <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-slate-500" /> Settlement Bank Details
                 </h5>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">UPI ID for Direct Payouts</label>
+                  <label className="block text-[10px] text-slate-500 font-medium mb-0.5">UPI ID for Direct Settlements</label>
                   <input 
                     type="text" 
                     value={editForm.upi_id} 
                     onChange={e => setEditForm({ ...editForm, upi_id: e.target.value })}
-                    placeholder="e.g. vickymass@okhdfcbank"
-                    className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 font-mono"
+                    placeholder="vickymass@okhdfcbank"
+                    className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900 font-mono"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Bank Account Number</label>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5">Bank Account Number</label>
                     <input 
                       type="text" 
                       value={editForm.bank_account_number} 
                       onChange={e => setEditForm({ ...editForm, bank_account_number: e.target.value })}
-                      placeholder="e.g. 5010049281928"
-                      className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 font-mono"
+                      placeholder="5010049281928"
+                      className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900 font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">IFSC Code</label>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5">IFSC Code</label>
                     <input 
                       type="text" 
                       value={editForm.bank_ifsc} 
                       onChange={e => setEditForm({ ...editForm, bank_ifsc: e.target.value.toUpperCase() })}
-                      placeholder="e.g. HDFC0001234"
-                      className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 font-mono uppercase"
+                      placeholder="HDFC0001234"
+                      className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900 font-mono uppercase"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Beneficiary Account Name</label>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5">Beneficiary Name</label>
                     <input 
                       type="text" 
                       value={editForm.bank_beneficiary} 
                       onChange={e => setEditForm({ ...editForm, bank_beneficiary: e.target.value })}
-                      placeholder="e.g. Vicky Mass Kitchens Pvt Ltd"
-                      className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 text-xs font-bold text-slate-900"
+                      placeholder="Vicky Mass Kitchens"
+                      className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">Platform Fee %</label>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5">Platform Fee %</label>
                     <input 
                       type="number" 
                       value={editForm.platform_fee_pct} 
                       onChange={e => setEditForm({ ...editForm, platform_fee_pct: e.target.value })}
                       placeholder="10"
-                      className="w-full bg-white border border-emerald-200 rounded-xl p-2.5 text-xs font-bold text-slate-900"
+                      className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1 text-xs text-slate-900"
                     />
                   </div>
                 </div>
@@ -1664,13 +1663,13 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
+          <div className="flex justify-end pt-3 border-t border-slate-100">
             <button
               type="submit"
               disabled={actionLoading}
-              className="px-8 py-3.5 bg-brand text-white font-black text-xs uppercase tracking-wider rounded-2xl hover:bg-brand/90 transition-all flex items-center gap-2 shadow-lg shadow-brand/25"
+              className="px-5 py-2.5 bg-slate-900 text-white font-semibold text-xs rounded-xl hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-xs"
             >
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               Save All Kitchen Settings
             </button>
           </div>

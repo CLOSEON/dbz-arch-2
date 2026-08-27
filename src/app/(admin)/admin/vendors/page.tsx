@@ -6,9 +6,9 @@ import { suspendVendor, unsuspendVendor } from '@/lib/queries/vendorAdmin';
 import { AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { 
-  Search, Check, X, Store, Eye, ShieldAlert, ShieldCheck, 
-  Settings, DollarSign, Leaf, Drumstick, Tag, ArrowRight, 
-  ExternalLink, Phone, MapPin, CheckCircle2, AlertCircle, Sliders
+  Search, Check, X, Store, ShieldAlert, ShieldCheck, 
+  Settings, Leaf, Drumstick, Tag, ArrowRight, 
+  ExternalLink, Phone, MapPin, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -68,7 +68,6 @@ export default function AdminVendors() {
     }
   }
 
-  // Batch action handler
   async function handleBatchApproval(approve: boolean) {
     if (selectedIds.length === 0) return;
     setBatchActionLoading(true);
@@ -119,32 +118,31 @@ export default function AdminVendors() {
   const visibleIds = useMemo(() => filtered.map(v => v.id), [filtered]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in pb-12">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Vendors & Kitchens</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Kitchens & Vendors</h1>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Manage menus, monthly subscriptions, rate cards, capacity, and payouts
+            Manage menus, monthly subscription rates, kitchen details, and settlements
           </p>
         </div>
       </div>
 
-      {/* Search & Tabs */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center">
-        <div className="relative flex-1 max-w-md">
+      {/* Filter & Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by kitchen name, phone, cuisine..."
+            placeholder="Search kitchen, phone, cuisine..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand"
+            className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-800 transition-colors shadow-xs"
           />
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-2xl">
+        <div className="flex items-center gap-1 p-1 bg-slate-200/60 rounded-xl">
           {(['pending', 'approved', 'suspended', 'all'] as const).map((t) => {
             const count = users.filter(u => {
               if (t === 'pending') return !u.is_approved && !(u as any).is_suspended;
@@ -160,8 +158,10 @@ export default function AdminVendors() {
                   setFilter(t);
                   setSelectedIds([]);
                 }}
-                className={`px-4 py-2 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all ${
-                  filter === t ? 'bg-white text-brand shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                className={`px-3 py-1.5 text-xs font-bold capitalize rounded-lg transition-all ${
+                  filter === t 
+                    ? 'bg-white text-slate-900 shadow-xs' 
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {t} <span className="opacity-60 text-[10px]">({count})</span>
@@ -172,37 +172,35 @@ export default function AdminVendors() {
       </div>
 
       {loading ? (
-        <SkeletonList count={5} />
+        <SkeletonList count={4} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Store className="w-10 h-10 text-slate-300 mx-auto" />}
-          title="No vendors found"
-          description={`No ${filter} vendors matching your search.`}
+          title="No kitchens found"
+          description={`No ${filter} kitchens match your search query.`}
         />
       ) : (
-        <div className="space-y-4">
-          {/* Header Row for Select All & Batch */}
-          <div className="flex items-center justify-between px-4 text-xs font-bold text-slate-400">
+        <div className="space-y-3">
+          {/* Select all & batch actions */}
+          <div className="flex items-center justify-between px-2 text-xs font-medium text-slate-500">
             <label className="flex items-center gap-2 cursor-pointer">
               <input 
                 type="checkbox" 
                 checked={selectedIds.length > 0 && selectedIds.length === visibleIds.length}
                 onChange={() => toggleSelectAll(visibleIds)}
-                className="w-4 h-4 rounded text-brand border-slate-300 focus:ring-brand cursor-pointer"
+                className="w-3.5 h-3.5 rounded text-slate-900 border-slate-300 focus:ring-slate-900 cursor-pointer"
               />
-              <span>Select All Visible ({filtered.length})</span>
+              <span>Select all ({filtered.length})</span>
             </label>
 
             {selectedIds.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleBatchApproval(true)}
-                  disabled={batchActionLoading}
-                  className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-600 shadow-sm"
-                >
-                  Approve Selected ({selectedIds.length})
-                </button>
-              </div>
+              <button
+                onClick={() => handleBatchApproval(true)}
+                disabled={batchActionLoading}
+                className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 shadow-xs"
+              >
+                Approve selected ({selectedIds.length})
+              </button>
             )}
           </div>
 
@@ -215,20 +213,20 @@ export default function AdminVendors() {
             return (
               <div 
                 key={v.id} 
-                className="bg-white rounded-3xl p-5 shadow-card border border-slate-100 hover:border-slate-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-5"
+                className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
               >
                 {/* Kitchen Info */}
-                <div className="flex items-start gap-4 flex-1">
+                <div className="flex items-start gap-3.5 flex-1 min-w-0">
                   <input 
                     type="checkbox" 
                     checked={selectedIds.includes(v.id)}
                     onChange={() => toggleSelect(v.id)}
-                    className="w-4 h-4 mt-2 rounded text-brand border-slate-300 focus:ring-brand cursor-pointer flex-shrink-0"
+                    className="w-3.5 h-3.5 mt-2 rounded text-slate-900 border-slate-300 focus:ring-slate-900 cursor-pointer shrink-0"
                   />
 
                   <Link 
                     href={`/admin/vendors/detail?vendorId=${v.id}`}
-                    className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl overflow-hidden relative border border-slate-100 flex-shrink-0 hover:opacity-90 transition-opacity"
+                    className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden relative border border-slate-200/60 shrink-0 hover:opacity-90 transition-opacity"
                   >
                     {v.image ? (
                       <Image 
@@ -238,93 +236,80 @@ export default function AdminVendors() {
                         className="object-cover" 
                       />
                     ) : (
-                      <Store className="w-7 h-7 text-slate-300" />
+                      <Store className="w-6 h-6 text-slate-400" />
                     )}
                   </Link>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link 
                         href={`/admin/vendors/detail?vendorId=${v.id}`}
-                        className="font-extrabold text-base text-slate-900 hover:text-brand transition-colors"
+                        className="font-bold text-sm text-slate-900 hover:text-brand transition-colors truncate"
                       >
                         {v.kitchen_name || `${v.name}'s Kitchen`}
                       </Link>
 
-                      {/* Status Badges */}
                       {isSuspended ? (
-                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">Suspended</span>
+                        <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">Suspended</span>
                       ) : v.is_approved ? (
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">Approved & Active</span>
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">Verified</span>
                       ) : (
-                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">Pending Review</span>
+                        <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">Pending Review</span>
                       )}
                     </div>
 
-                    <p className="text-xs text-slate-500 font-medium">{v.cuisine_type || 'North & South Indian Homestyle Meals'}</p>
+                    <p className="text-xs text-slate-500 truncate">{v.cuisine_type || 'Homestyle Meals'}</p>
                     
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap pt-0.5">
-                      <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400" /> {v.phone}</span>
-                      {v.email && <span>• {v.email}</span>}
-                      {v.address && <span className="flex items-center gap-1">• <MapPin className="w-3 h-3 text-slate-400" /> {v.address}</span>}
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+                      <span className="flex items-center gap-1 font-medium text-slate-600"><Phone className="w-3 h-3 text-slate-400" /> {v.phone}</span>
+                      {v.address && <span className="flex items-center gap-1 text-slate-500">• <MapPin className="w-3 h-3 text-slate-400" /> {v.address}</span>}
                     </div>
 
-                    {/* Rate & Offering Badges */}
-                    <div className="flex items-center gap-2 pt-2 flex-wrap">
+                    {/* Rates Pills */}
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
                       {vegMonthly ? (
-                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100 flex items-center gap-1">
-                          <Leaf className="w-3 h-3 text-emerald-600" /> Veg: ₹{vegMonthly}/mo
+                        <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
+                          <Leaf className="w-3 h-3 text-emerald-600" /> Veg ₹{vegMonthly}/mo
                         </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-lg">No Veg Rate</span>
-                      )}
+                      ) : null}
 
                       {nonVegMonthly ? (
-                        <span className="text-[10px] font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-100 flex items-center gap-1">
-                          <Drumstick className="w-3 h-3 text-rose-600" /> Non-Veg: ₹{nonVegMonthly}/mo
+                        <span className="text-[11px] font-semibold text-rose-800 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100 flex items-center gap-1">
+                          <Drumstick className="w-3 h-3 text-rose-600" /> Non-Veg ₹{nonVegMonthly}/mo
                         </span>
                       ) : null}
 
                       {addonsCount > 0 ? (
-                        <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-100 flex items-center gap-1">
-                          <Tag className="w-3 h-3 text-amber-600" /> {addonsCount} Add-ons
+                        <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-slate-500" /> {addonsCount} Add-ons
                         </span>
                       ) : null}
                     </div>
                   </div>
                 </div>
 
-                {/* Primary Action Buttons */}
-                <div className="flex items-center gap-2 flex-wrap self-end md:self-center border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 w-full md:w-auto justify-end">
-                  {/* Edit Rates Button */}
-                  <Link
-                    href={`/admin/vendors/detail?vendorId=${v.id}&tab=pricing`}
-                    className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <DollarSign className="w-3.5 h-3.5 text-amber-600" /> Edit Rates
-                  </Link>
-
-                  {/* Manage Kitchen Console Button */}
+                {/* 1 Single Manage Kitchen Button */}
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   <Link
                     href={`/admin/vendors/detail?vendorId=${v.id}`}
-                    className="px-4 py-2.5 bg-brand text-white hover:bg-brand/90 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-brand/20"
+                    className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs"
                   >
-                    <Settings className="w-3.5 h-3.5" /> Manage Kitchen <ArrowRight className="w-3.5 h-3.5" />
+                    <Settings className="w-3.5 h-3.5 text-slate-300" /> Manage Kitchen <ArrowRight className="w-3 h-3" />
                   </Link>
 
-                  {/* Suspend / Approve */}
+                  {/* Suspend / Approve quick toggle */}
                   {isSuspended ? (
                     <button
                       onClick={() => handleSuspension(v.id, false)}
-                      className="p-2.5 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-100 transition-colors border border-emerald-200"
-                      title="Unsuspend Vendor"
+                      className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-200"
+                      title="Unsuspend"
                     >
                       <ShieldCheck className="w-4 h-4" />
                     </button>
                   ) : !v.is_approved ? (
                     <button
                       onClick={() => handleApproval(v.id, true)}
-                      className="p-2.5 bg-emerald-500 text-white rounded-2xl hover:bg-emerald-600 transition-colors shadow-sm"
+                      className="p-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors shadow-xs"
                       title="Approve"
                     >
                       <Check className="w-4 h-4" />
@@ -332,8 +317,8 @@ export default function AdminVendors() {
                   ) : (
                     <button
                       onClick={() => handleSuspension(v.id, true)}
-                      className="p-2.5 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 transition-colors border border-rose-200"
-                      title="Suspend Vendor"
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                      title="Suspend"
                     >
                       <ShieldAlert className="w-4 h-4" />
                     </button>
