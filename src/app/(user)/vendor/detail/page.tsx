@@ -8,18 +8,18 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { getUserById } from '@/lib/queries/users';
 import { getVendorReviews, addReview, editReview } from '@/lib/queries/reviews';
-import { getDocs, collection, query, where, getDoc, doc } from 'firebase/firestore';
+import { getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { createSubscription, getUserSubscriptions, cancelSubscription } from '@/lib/queries/subscriptions';
+import { getUserSubscriptions } from '@/lib/queries/subscriptions';
 import { validateDiscountCode } from '@/lib/queries/discounts';
 import { getImageUrl } from '@/lib/storage';
-import { formatDate, toMillis, cn } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { SkeletonCard } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import type { AppUser, Review, DiscountCode, SubscriptionFrequency } from '@/types';
-import { Star, ChevronLeft, MapPin, Users, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, ShieldCheck, AlertCircle, Clipboard } from 'lucide-react';
+import type { AppUser, Review, DiscountCode, SubscriptionFrequency, DietaryCategory } from '@/types';
+import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Leaf, Drumstick } from 'lucide-react';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -56,9 +56,12 @@ export default function VendorDetailPage() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [editingReview, setEditingReview] = useState(false);
   const [todayMenu, setTodayMenu] = useState<any>(null);
-  const [userSubs, setUserSubs] = useState<string[]>([]); // active plan IDs (lunch, dinner, both)
+  const [userSubs, setUserSubs] = useState<string[]>([]);
   const [totalActiveSubs, setTotalActiveSubs] = useState(0);
   
+  // Dietary Category selection state
+  const [selectedCategory, setSelectedCategory] = useState<DietaryCategory>('veg');
+
   // Promo code state
   const [promoInput, setPromoInput] = useState('');
   const [validatingPromo, setValidatingPromo] = useState(false);
@@ -73,7 +76,11 @@ export default function VendorDetailPage() {
   const [selectedFrequency, setSelectedFrequency] = useState<SubscriptionFrequency>('one-time');
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
 
-  useEffect(() => { loadAll(); }, [vendorId]);
+  useEffect(() => { 
+    if (vendorId) {
+      loadAll(); 
+    }
+  }, [vendorId]);
 
   async function loadAll() {
     setLoading(true);
@@ -87,6 +94,12 @@ export default function VendorDetailPage() {
       const mine = user ? revs.find((r) => r.user_id === user.id) ?? null : null;
       setMyReview(mine);
       if (mine) { setRating(mine.rating); setReviewText(mine.review_text ?? ''); }
+
+      if (v?.dietary_categories && !v.dietary_categories.includes('veg') && v.dietary_categories.includes('non_veg')) {
+        setSelectedCategory('non_veg');
+      } else {
+        setSelectedCategory('veg');
+      }
 
       // Load today's menu
       const today = new Date().toISOString().split('T')[0];
@@ -139,7 +152,6 @@ export default function VendorDetailPage() {
     finally { setSubmittingReview(false); }
   }
 
-
   async function handleApplyPromo() {
     if (!promoInput.trim()) return;
     setValidatingPromo(true);
@@ -171,38 +183,42 @@ export default function VendorDetailPage() {
     setIsModalOpen(true);
   }
 
-  // One-time = flat per-meal price (no lunch/dinner distinction).
-  // Weekly/monthly = per meal type.
-  // Fallback chain: new weekly/monthly fields → legacy rate_lunch/dinner/both fields → 0
-  const _lunchW  = vendor?.rate_lunch_weekly  ?? vendor?.rate_lunch  ?? 0;
-  const _lunchM  = vendor?.rate_lunch_monthly ?? vendor?.rate_lunch  ?? 0;
-  const _dinnerW = vendor?.rate_dinner_weekly  ?? vendor?.rate_dinner ?? 0;
-  const _dinnerM = vendor?.rate_dinner_monthly ?? vendor?.rate_dinner ?? 0;
-  const _bothW   = vendor?.rate_both_weekly    ?? vendor?.rate_both   ?? 0;
-  const _bothM   = vendor?.rate_both_monthly   ?? vendor?.rate_both   ?? 0;
+  const hasVeg = !vendor?.dietary_categories || vendor.dietary_categories.includes('veg');
+  const hasNonVeg = vendor?.dietary_categories?.includes('non_veg');
+  const hasBoth = hasVeg && hasNonVeg;
+
+  // Rate calculations based on selectedCategory
+  const isNonVeg = selectedCategory === 'non_veg';
+  const _lunchW  = isNonVeg ? (vendor?.rate_nonveg_lunch_weekly || 0) : (vendor?.rate_veg_lunch_weekly ?? vendor?.rate_lunch_weekly ?? vendor?.rate_lunch ?? 0);
+  const _lunchM  = isNonVeg ? (vendor?.rate_nonveg_lunch_monthly || 0) : (vendor?.rate_veg_lunch_monthly ?? vendor?.rate_lunch_monthly ?? vendor?.rate_lunch ?? 0);
+  const _dinnerW = isNonVeg ? (vendor?.rate_nonveg_dinner_weekly || 0) : (vendor?.rate_veg_dinner_weekly ?? vendor?.rate_dinner_weekly ?? vendor?.rate_dinner ?? 0);
+  const _dinnerM = isNonVeg ? (vendor?.rate_nonveg_dinner_monthly || 0) : (vendor?.rate_veg_dinner_monthly ?? vendor?.rate_dinner_monthly ?? vendor?.rate_dinner ?? 0);
+  const _bothW   = isNonVeg ? (vendor?.rate_nonveg_both_weekly || 0) : (vendor?.rate_veg_both_weekly ?? vendor?.rate_both_weekly ?? vendor?.rate_both ?? 0);
+  const _bothM   = isNonVeg ? (vendor?.rate_nonveg_both_monthly || 0) : (vendor?.rate_veg_both_monthly ?? vendor?.rate_both_monthly ?? vendor?.rate_both ?? 0);
+  const _onetime = isNonVeg ? (vendor?.rate_nonveg_onetime || 0) : (vendor?.rate_veg_onetime ?? vendor?.rate_onetime ?? 0);
 
   const plans = selectedFrequency === 'one-time'
-    ? (vendor?.rate_onetime
-        ? [{ id: 'one-time', label: 'Single Meal', price: vendor.rate_onetime, basePrice: vendor.rate_onetime, type: 'Any meal, any time' }]
+    ? (_onetime
+        ? [{ id: 'one-time', label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Single Meal`, price: _onetime, basePrice: _onetime, type: 'Any meal, any time' }]
         : [])
     : [
         (_lunchW || _lunchM) && {
           id: 'lunch',
-          label: 'Lunch Plan',
+          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch Plan`,
           price: selectedFrequency === 'monthly' ? _lunchM : _lunchW,
           basePrice: _lunchW,
           type: 'Lunch Only',
         },
         (_dinnerW || _dinnerM) && {
           id: 'dinner',
-          label: 'Dinner Plan',
+          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Dinner Plan`,
           price: selectedFrequency === 'monthly' ? _dinnerM : _dinnerW,
           basePrice: _dinnerW,
           type: 'Dinner Only',
         },
         (_bothW || _bothM) && {
           id: 'both',
-          label: 'Lunch + Dinner',
+          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch + Dinner`,
           price: selectedFrequency === 'monthly' ? _bothM : _bothW,
           basePrice: _bothW,
           type: 'Full Day',
@@ -291,41 +307,82 @@ export default function VendorDetailPage() {
             </div>
           </div>
         )}
-        {/* Today's Special Card */}
-        {todayMenu && (
-          <div className="card !p-0 overflow-hidden bg-white shadow-xl shadow-slate-200/50 group">
-            <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Utensils className="w-4 h-4 text-brand" />
-                <h3 className="text-white font-bold text-[11px] uppercase tracking-wide">Special of the Day</h3>
-              </div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                {todayMenu.date}
-              </span>
-            </div>
-            <div className="p-6">
-              <div className="space-y-3">
-                {todayMenu.items?.map((item: any, i: number) => (
-                  <div key={i} className="flex items-start gap-3 group-hover:translate-x-1 transition-transform duration-300">
-                    <CheckCircle2 className="w-4 h-4 text-brand mt-0.5 shrink-0" />
-                    <p className="text-[15px] font-bold text-slate-700 leading-tight">
-                      {item.name}
-                      {item.description && (
-                        <span className="block text-xs font-medium text-slate-400 mt-1">{item.description}</span>
-                      )}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              {todayMenu.note && (
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-start gap-2">
-                  <div className="text-brand text-lg leading-none">“</div>
-                  <p className="text-[13px] text-slate-500 italic leading-relaxed">{todayMenu.note}</p>
-                </div>
-              )}
-            </div>
+
+        {/* Dietary Category Selector (if vendor offers both) */}
+        {hasBoth && (
+          <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('veg')}
+              className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
+                selectedCategory === 'veg'
+                  ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Leaf className="w-4 h-4 text-emerald-600" /> 🌿 Pure Veg Plans
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('non_veg')}
+              className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
+                selectedCategory === 'non_veg'
+                  ? 'bg-white text-rose-700 shadow-sm ring-1 ring-rose-100'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Drumstick className="w-4 h-4 text-rose-600" /> 🍗 Non-Veg Plans
+            </button>
           </div>
         )}
+
+        {/* Today's Special Card */}
+        {todayMenu && (() => {
+          const activeSpecialItems = (selectedCategory === 'non_veg'
+            ? todayMenu.items_non_veg
+            : (todayMenu.items_veg && todayMenu.items_veg.length > 0 ? todayMenu.items_veg : todayMenu.items)
+          ) || [];
+          const activeSpecialNote = selectedCategory === 'non_veg' ? todayMenu.note_non_veg : (todayMenu.note_veg || todayMenu.note);
+
+          if (activeSpecialItems.length === 0 && !activeSpecialNote) return null;
+
+          return (
+            <div className="card !p-0 overflow-hidden bg-white shadow-xl shadow-slate-200/50 group">
+              <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Utensils className="w-4 h-4 text-brand" />
+                  <h3 className="text-white font-bold text-[11px] uppercase tracking-wide">
+                    {selectedCategory === 'non_veg' ? '🍗 Non-Veg Special of the Day' : '🌿 Veg Special of the Day'}
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {todayMenu.date}
+                </span>
+              </div>
+              <div className="p-6">
+                <div className="space-y-3">
+                  {activeSpecialItems.map((item: any, i: number) => (
+                    <div key={i} className="flex items-start gap-3 group-hover:translate-x-1 transition-transform duration-300">
+                      <CheckCircle2 className="w-4 h-4 text-brand mt-0.5 shrink-0" />
+                      <p className="text-[15px] font-bold text-slate-700 leading-tight">
+                        {item.name}
+                        {item.description && (
+                          <span className="block text-xs font-medium text-slate-400 mt-1">{item.description}</span>
+                        )}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {activeSpecialNote && (
+                  <div className="mt-5 pt-4 border-t border-slate-100 flex items-start gap-2">
+                    <div className="text-brand text-lg leading-none">“</div>
+                    <p className="text-[13px] text-slate-500 italic leading-relaxed">{activeSpecialNote}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Promo Code Section */}
         <div className="px-1">
@@ -553,7 +610,7 @@ export default function VendorDetailPage() {
                     </div>
                     <div className="flex gap-0.5">
                       {[1, 2, 3, 4, 5].map(s => (
-                        <Star key={s} className={`w-3 h-3 ${s <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                        <Star key={s} className={`w-3.5 h-3.5 ${s <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
                       ))}
                     </div>
                   </div>
