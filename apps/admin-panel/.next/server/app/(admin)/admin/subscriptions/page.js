@@ -2,7 +2,7 @@ var R=require("../../../../chunks/ssr/[turbopack]_runtime.js")("server/app/(admi
 R.c("server/chunks/ssr/[root-of-the-server]__10ksd4~._.js")
 R.c("server/chunks/ssr/0rk6_0i4ydnj._.js")
 R.c("server/chunks/ssr/0rk6_next_dist_esm_build_templates_app-page_0ns0ghk.js")
-R.c("server/chunks/ssr/[root-of-the-server]__0k8iy2_._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__0wdc5i5._.js")
 R.c("server/chunks/ssr/0rk6_0htg_7f._.js")
 R.c("server/chunks/ssr/[root-of-the-server]__0ogx6x4._.js")
 R.c("server/chunks/ssr/Desktop_CLOSEON_applications_Webapp_DBZARCH2_0nksl-o._.js")

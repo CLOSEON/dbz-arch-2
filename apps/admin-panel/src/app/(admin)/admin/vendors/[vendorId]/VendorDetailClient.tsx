@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getUserById, setVendorApproval } from '@/lib/queries/users';
 import { getVendorStats, getVendorOrderHistory, suspendVendor, unsuspendVendor, VendorPerformance } from '@/lib/queries/vendorAdmin';
 import { getVendorSubscriptions } from '@/lib/queries/subscriptions';
@@ -22,14 +22,17 @@ import { db } from '@/lib/firebase';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 
 interface PageProps {
-  params: Promise<{ vendorId: string }>;
+  params?: Promise<{ vendorId?: string }>;
 }
 
 type ActiveTab = 'overview' | 'menu' | 'pricing' | 'subscribers' | 'orders' | 'settings';
 
 export default function VendorDetailClient(props: PageProps) {
-  const params = use(props.params);
-  const vendorId = params.vendorId;
+  const searchParams = useSearchParams();
+  const rawParams = props.params ? use(props.params) : null;
+  const vendorId = (rawParams?.vendorId && rawParams.vendorId !== 'placeholder')
+    ? rawParams.vendorId
+    : (searchParams.get('vendorId') || searchParams.get('id') || '');
   const router = useRouter();
   const addToast = useUiStore((s) => s.addToast);
 

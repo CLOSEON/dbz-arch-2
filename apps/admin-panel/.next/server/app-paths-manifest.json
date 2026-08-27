@@ -11,6 +11,7 @@
   "/(admin)/admin/swaps/page": "app/(admin)/admin/swaps/page.js",
   "/(admin)/admin/users/page": "app/(admin)/admin/users/page.js",
   "/(admin)/admin/vendors/[vendorId]/page": "app/(admin)/admin/vendors/[vendorId]/page.js",
+  "/(admin)/admin/vendors/detail/page": "app/(admin)/admin/vendors/detail/page.js",
   "/(admin)/admin/vendors/page": "app/(admin)/admin/vendors/page.js",
   "/(auth)/admin-login/page": "app/(auth)/admin-login/page.js",
   "/(auth)/login/page": "app/(auth)/login/page.js",
