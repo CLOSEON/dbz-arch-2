@@ -12,7 +12,7 @@ import {
   ArrowLeft, Check, X, ShieldAlert, Award, DollarSign, Users, 
   ShoppingBag, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, 
   Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed,
-  Power, ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
+  ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
   Package, Sliders, CheckCircle2, AlertCircle, Building2, Store
 } from 'lucide-react';
 import Image from 'next/image';
@@ -84,7 +84,6 @@ export default function VendorDetailClient(props: PageProps) {
     bank_ifsc: string;
     bank_beneficiary: string;
     platform_fee_pct: string;
-    is_open: boolean;
     dietary_categories: DietaryCategory[];
     rate_onetime: string;
     rate_lunch_weekly: string;
@@ -126,7 +125,6 @@ export default function VendorDetailClient(props: PageProps) {
     bank_ifsc: '',
     bank_beneficiary: '',
     platform_fee_pct: '10',
-    is_open: true,
     dietary_categories: ['veg'],
     rate_onetime: '',
     rate_lunch_weekly: '',
@@ -205,7 +203,6 @@ export default function VendorDetailClient(props: PageProps) {
         bank_ifsc: vendorData.bank_details?.ifsc || '',
         bank_beneficiary: vendorData.bank_details?.beneficiary_name || '',
         platform_fee_pct: vendorData.platform_fee_pct ? String(vendorData.platform_fee_pct) : '10',
-        is_open: vendorData.is_open !== false,
         dietary_categories: vendorData.dietary_categories || ['veg'],
         rate_onetime: vendorData.rate_onetime ? String(vendorData.rate_onetime) : '',
         rate_lunch_weekly: vendorData.rate_lunch_weekly ? String(vendorData.rate_lunch_weekly) : '',
@@ -351,22 +348,6 @@ export default function VendorDetailClient(props: PageProps) {
       addons: prev.addons.filter(a => a.id !== id)
     }));
   };
-
-  async function handleToggleKitchenOpen() {
-    if (!vendor) return;
-    const newOpenState = !editForm.is_open;
-    setActionLoading(true);
-    try {
-      await updateDoc(doc(db, 'users', vendor.id), { is_open: newOpenState });
-      setEditForm(prev => ({ ...prev, is_open: newOpenState }));
-      setVendor(prev => prev ? { ...prev, is_open: newOpenState } : null);
-      addToast(newOpenState ? 'Kitchen is now OPEN for orders' : 'Kitchen is now CLOSED', 'info');
-    } catch (err) {
-      addToast('Failed to update kitchen open status', 'error');
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   async function handleApproval(approved: boolean) {
     if (!vendor) return;
@@ -568,21 +549,6 @@ export default function VendorDetailClient(props: PageProps) {
         
         {/* Quick Operations Actions */}
         <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
-          {/* Kitchen Open/Close Status Toggle */}
-          <button
-            onClick={handleToggleKitchenOpen}
-            disabled={actionLoading}
-            className={`px-3.5 py-2 rounded-2xl text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center gap-1.5 border ${
-              editForm.is_open 
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
-                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-            }`}
-            title="Toggle kitchen accepting orders"
-          >
-            <Power className="w-3.5 h-3.5" />
-            {editForm.is_open ? 'Kitchen: Open' : 'Kitchen: Closed'}
-          </button>
-
           {/* Customer View Preview Link */}
           <Link
             href={`/vendor/detail?vendorId=${vendor.id}`}
@@ -669,16 +635,6 @@ export default function VendorDetailClient(props: PageProps) {
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 flex items-center gap-0.5">Approved & Verified</span>
             ) : (
               <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200">Pending Review</span>
-            )}
-
-            {editForm.is_open ? (
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Accepting Orders
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-xl flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Kitchen Offline
-              </span>
             )}
           </div>
 

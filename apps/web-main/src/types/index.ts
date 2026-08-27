@@ -85,7 +85,6 @@ export interface AppUser {
   subscriberCount?: number;
   capacity?: number;
   capacityUnlimited?: boolean;
-  is_open?: boolean;
   upi_id?: string;
   // Razorpay Route (Settlements)
   rzp_account_id?: string;
