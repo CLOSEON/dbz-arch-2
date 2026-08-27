@@ -19,20 +19,20 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import type { AppUser, Review, DiscountCode, SubscriptionFrequency, DietaryCategory } from '@/types';
-import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Leaf, Drumstick } from 'lucide-react';
+import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Leaf, Drumstick, Sparkles } from 'lucide-react';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-1.5">
       {[1, 2, 3, 4, 5].map((star) => (
         <button
           key={star}
           type="button"
           onClick={() => onChange(star)}
-          className="transition-all duration-200 hover:scale-110 active:scale-95"
+          className="transition-all duration-150 hover:scale-115 active:scale-95"
         >
           <Star 
-            className={`w-8 h-8 ${star <= value ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} 
+            className={`w-7 h-7 ${star <= value ? 'fill-amber-400 text-amber-400' : 'text-slate-200 hover:text-amber-200'}`} 
           />
         </button>
       ))}
@@ -101,62 +101,75 @@ export default function VendorDetailPage() {
         setSelectedCategory('veg');
       }
 
-      // Load today's menu
-      const today = new Date().toISOString().split('T')[0];
-      const menuSnap = await getDocs(query(collection(db, 'daily_menus'), where('vendor_id', '==', vendorId), where('date', '==', today)));
-      if (!menuSnap.empty) setTodayMenu({ id: menuSnap.docs[0].id, ...menuSnap.docs[0].data() });
-
-      // Load user subscriptions
-      if (user) {
-        const subs = await getUserSubscriptions(user.id);
-        const activeForThisVendor = subs
-          .filter(s => s.vendor_id === vendorId && s.status === 'active')
-          .map(s => s.meal_type);
-        setUserSubs(activeForThisVendor);
-      }
-
-      // Load total active subscriptions for capacity check
-      let activeCount = 0;
+      // Fetch Today's Menu
       try {
-        const activeSnap = await getDocs(query(
-          collection(db, 'subscriptions'),
-          where('vendor_id', '==', vendorId),
-          where('status', '==', 'active')
-        ));
-        activeCount = activeSnap.size;
+        const todayStr = new Date().toISOString().split('T')[0];
+        const menuSnap = await getDocs(
+          query(collection(db, 'daily_menus'), where('vendor_id', '==', vendorId), where('date', '==', todayStr))
+        );
+        if (!menuSnap.empty) {
+          setTodayMenu(menuSnap.docs[0].data());
+        }
       } catch (err) {
-        console.warn('[VendorDetail] Failed to query total active subscriptions:', err);
+        console.warn('Could not load today menu:', err);
       }
-      setTotalActiveSubs(activeCount);
+
+      // Fetch Vendor Active Subscriptions Count
+      try {
+        const subsSnap = await getDocs(
+          query(collection(db, 'subscriptions'), where('vendor_id', '==', vendorId), where('status', '==', 'active'))
+        );
+        setTotalActiveSubs(subsSnap.size);
+      } catch (err) {
+        console.warn('Could not fetch active subs count:', err);
+      }
+
+      // If user is logged in, fetch their existing subscriptions for this vendor
+      if (user) {
+        const mySubs = await getUserSubscriptions(user.id);
+        const activeVendorSubs = mySubs
+          .filter((s) => s.vendor_id === vendorId && s.status === 'active')
+          .map((s) => s.meal_type);
+        setUserSubs(activeVendorSubs);
+      }
     } catch (err) {
-      addToast('Failed to load vendor', 'error');
+      addToast('Failed to load kitchen profile', 'error');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleReviewSubmit() {
-    if (rating === 0) { addToast('Select a star rating', 'warning'); return; }
+    if (!user) { addToast('Please sign in to leave a review', 'warning'); router.push('/login'); return; }
+    if (rating === 0) { addToast('Please select a star rating', 'warning'); return; }
+    if (!reviewText.trim()) { addToast('Please write a brief feedback note', 'warning'); return; }
+
     setSubmittingReview(true);
     try {
       if (myReview) {
-        await editReview(myReview.id, rating, reviewText);
-        addToast('Review updated', 'success');
+        await editReview(myReview.id, rating, reviewText.trim());
+        addToast('Review updated! Thank you.', 'success');
       } else {
-        await addReview(vendorId, user!.id, user!.name, rating, reviewText);
-        addToast('Review posted!', 'success');
+        await addReview(vendorId, user.id, user.name || 'Foodie', rating, reviewText.trim());
+        addToast('Review posted! Thank you.', 'success');
       }
       setEditingReview(false);
-      loadAll();
-    } catch { addToast('Failed to post review', 'error'); }
-    finally { setSubmittingReview(false); }
+      const revs = await getVendorReviews(vendorId);
+      setReviews(revs);
+      const mine = revs.find((r) => r.user_id === user.id) ?? null;
+      setMyReview(mine);
+    } catch (err) {
+      addToast('Failed to submit review', 'error');
+    } finally {
+      setSubmittingReview(false);
+    }
   }
 
   async function handleApplyPromo() {
     if (!promoInput.trim()) return;
     setValidatingPromo(true);
     try {
-      const discount = await validateDiscountCode(vendorId, promoInput.trim());
+      const discount = await validateDiscountCode(promoInput.trim(), vendorId);
       if (discount) {
         setAppliedDiscount(discount);
         addToast(`Success! ${discount.discount_pct}% off applied.`, 'success');
@@ -199,7 +212,7 @@ export default function VendorDetailPage() {
 
   const plans = selectedFrequency === 'one-time'
     ? (_onetime
-        ? [{ id: 'one-time', label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Single Meal`, price: _onetime, basePrice: _onetime, type: 'Any meal, any time' }]
+        ? [{ id: 'one-time', label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Single Meal`, price: _onetime, basePrice: _onetime, type: 'Any meal, anytime delivery' }]
         : [])
     : [
         (_lunchW || _lunchM) && {
@@ -207,21 +220,21 @@ export default function VendorDetailPage() {
           label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch Plan`,
           price: selectedFrequency === 'monthly' ? _lunchM : _lunchW,
           basePrice: _lunchW,
-          type: 'Lunch Only',
+          type: '11:00 AM – 01:00 PM Slot',
         },
         (_dinnerW || _dinnerM) && {
           id: 'dinner',
           label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Dinner Plan`,
           price: selectedFrequency === 'monthly' ? _dinnerM : _dinnerW,
           basePrice: _dinnerW,
-          type: 'Dinner Only',
+          type: '07:30 PM – 09:30 PM Slot',
         },
         (_bothW || _bothM) && {
           id: 'both',
-          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch + Dinner`,
+          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch + Dinner Combo`,
           price: selectedFrequency === 'monthly' ? _bothM : _bothW,
           basePrice: _bothW,
-          type: 'Full Day',
+          type: 'Full Day Meal Package',
         },
       ].filter(Boolean) as { id: string; label: string; price: number; basePrice: number; type: string }[];
 
@@ -229,29 +242,30 @@ export default function VendorDetailPage() {
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
     : null;
 
-  const othersReviews = reviews.filter((r) => r.user_id !== user?.id);
+  const othersReviews = reviews.filter(r => !user || r.user_id !== user.id);
 
   if (loading) {
     return (
-      <div className="page-shell pt-0">
-        <div className="skeleton h-52 w-full mb-4 rounded-none" />
-        <div className="px-4 space-y-3"><SkeletonCard lines={3} /><SkeletonCard lines={2} /></div>
+      <div className="page-shell space-y-6 pt-6 max-w-md mx-auto">
+        <SkeletonCard className="h-64 rounded-3xl" />
+        <SkeletonCard className="h-36 rounded-3xl" />
+        <SkeletonCard className="h-48 rounded-3xl" />
       </div>
     );
   }
 
   if (!vendor) {
     return (
-      <div className="page-shell flex items-center justify-center">
+      <div className="page-shell flex items-center justify-center min-h-[60vh]">
         <EmptyState icon={<AlertCircle className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="Vendor not found" action={<button className="btn-outline" onClick={() => router.back()}>Go Back</button>} />
       </div>
     );
   }
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-36 animate-fade-in bg-slate-50/50 min-h-screen">
       {/* Premium Hero */}
-      <div className="relative h-72 w-full bg-slate-200">
+      <div className="relative h-72 w-full bg-slate-900">
         {vendor.image ? (
           <Image 
             src={getImageUrl(vendor.image)} 
@@ -261,11 +275,11 @@ export default function VendorDetailPage() {
             priority
           />
         ) : (
-          <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-100 to-slate-200">
+          <div className="flex items-center justify-center h-full bg-gradient-to-br from-amber-600 to-brand">
             <span className="text-7xl">🍱</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
         
         <button
           onClick={() => router.back()}
@@ -274,69 +288,73 @@ export default function VendorDetailPage() {
           <ChevronLeft className="w-6 h-6" />
         </button>
 
-        <div className="absolute bottom-8 left-6 right-6">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="px-3 py-1 rounded-full bg-brand/90 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest shadow-lg">
+        <div className="absolute bottom-6 left-6 right-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="px-3 py-1 rounded-full bg-brand text-white text-[10px] font-black uppercase tracking-widest shadow-md">
               {vendor.cuisine_type ?? 'Home Style'}
             </div>
             {avgRating && (
-              <div className="px-3 py-1 rounded-full bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {avgRating}
+              <div className="px-3 py-1 rounded-full bg-white text-slate-900 text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {avgRating}
               </div>
             )}
+            <div className="px-3 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> Verified
+            </div>
           </div>
-          <h1 className="text-white text-4xl font-black tracking-tight leading-none drop-shadow-sm">
+          <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight leading-tight">
             {vendor.name}
           </h1>
-          <p className="text-white/70 text-sm font-medium mt-2 flex items-center gap-1.5 truncate">
-            <MapPin className="w-3.5 h-3.5 shrink-0" /> {vendor.address || (vendor as any).location?.address || 'Local Kitchen'}
+          <p className="text-white/80 text-xs sm:text-sm font-medium mt-1 flex items-center gap-1.5 truncate">
+            <MapPin className="w-3.5 h-3.5 shrink-0 text-brand" /> {vendor.address || (vendor as any).location?.address || 'Sector 62, Noida, Uttar Pradesh'}
           </p>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 pt-5 space-y-5">
+      <div className="max-w-xl mx-auto px-4 pt-6 space-y-6">
+        
         {/* Capacity Sold Out Banner */}
         {vendor.capacity !== undefined && vendor.capacity !== null && totalActiveSubs >= vendor.capacity && (
-          <div className="bg-rose-50 border border-rose-100 text-rose-700 p-4 rounded-2xl text-xs font-bold flex items-start gap-2.5 shadow-sm">
-            <span className="text-base shrink-0 mt-0.5">⚠️</span>
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-3xl text-xs font-bold flex items-start gap-3 shadow-xs">
+            <span className="text-lg shrink-0">⚠️</span>
             <div>
-              <p className="uppercase tracking-wider text-[10px] font-black text-rose-800">Kitchen at Capacity</p>
-              <p className="font-medium text-rose-600 mt-1 leading-relaxed">
-                This kitchen has reached its maximum subscription capacity. No new subscription slots are currently available.
+              <p className="uppercase tracking-wider text-[11px] font-black text-rose-900">Kitchen at Capacity</p>
+              <p className="font-medium text-rose-700 mt-0.5 leading-relaxed">
+                This kitchen has reached its maximum subscription capacity. Check back soon for opening slots.
               </p>
             </div>
           </div>
         )}
 
-        {/* Dietary Category Selector (if vendor offers both) */}
+        {/* Dietary Category Toggle (Veg vs Non-Veg) */}
         {hasBoth && (
-          <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+          <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() => setSelectedCategory('veg')}
               className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
                 selectedCategory === 'veg'
-                  ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Leaf className="w-4 h-4 text-emerald-600" /> 🌿 Pure Veg Plans
+              <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Plans
             </button>
             <button
               type="button"
               onClick={() => setSelectedCategory('non_veg')}
               className={`py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all ${
                 selectedCategory === 'non_veg'
-                  ? 'bg-white text-rose-700 shadow-sm ring-1 ring-rose-100'
+                  ? 'bg-rose-50 text-rose-800 border border-rose-200 shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Drumstick className="w-4 h-4 text-rose-600" /> 🍗 Non-Veg Plans
+              <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Plans
             </button>
           </div>
         )}
 
-        {/* Today's Special Card */}
+        {/* Today's Special Menu Card */}
         {todayMenu && (() => {
           const activeSpecialItems = (selectedCategory === 'non_veg'
             ? todayMenu.items_non_veg
@@ -347,36 +365,37 @@ export default function VendorDetailPage() {
           if (activeSpecialItems.length === 0 && !activeSpecialNote) return null;
 
           return (
-            <div className="card !p-0 overflow-hidden bg-white shadow-xl shadow-slate-200/50 group">
-              <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between">
+            <div className="rounded-3xl overflow-hidden bg-white border border-slate-200/80 shadow-xs">
+              <div className="bg-slate-900 px-5 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Utensils className="w-4 h-4 text-brand" />
-                  <h3 className="text-white font-bold text-[11px] uppercase tracking-wide">
-                    {selectedCategory === 'non_veg' ? '🍗 Non-Veg Special of the Day' : '🌿 Veg Special of the Day'}
+                  <h3 className="text-white font-black text-xs uppercase tracking-wider">
+                    {selectedCategory === 'non_veg' ? '🍗 Non-Veg Special of the Day' : '🌿 Pure Veg Special of the Day'}
                   </h3>
                 </div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {todayMenu.date}
                 </span>
               </div>
-              <div className="p-6">
-                <div className="space-y-3">
+              <div className="p-5">
+                <div className="space-y-2.5">
                   {activeSpecialItems.map((item: any, i: number) => (
-                    <div key={i} className="flex items-start gap-3 group-hover:translate-x-1 transition-transform duration-300">
+                    <div key={i} className="flex items-start gap-3">
                       <CheckCircle2 className="w-4 h-4 text-brand mt-0.5 shrink-0" />
-                      <p className="text-[15px] font-bold text-slate-700 leading-tight">
-                        {item.name}
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 leading-tight">
+                          {item.name}
+                        </p>
                         {item.description && (
-                          <span className="block text-xs font-medium text-slate-400 mt-1">{item.description}</span>
+                          <span className="block text-xs font-medium text-slate-400 mt-0.5">{item.description}</span>
                         )}
-                      </p>
+                      </div>
                     </div>
                   ))}
                 </div>
                 {activeSpecialNote && (
-                  <div className="mt-5 pt-4 border-t border-slate-100 flex items-start gap-2">
-                    <div className="text-brand text-lg leading-none">“</div>
-                    <p className="text-[13px] text-slate-500 italic leading-relaxed">{activeSpecialNote}</p>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-start gap-2">
+                    <p className="text-xs text-slate-500 italic leading-relaxed">“{activeSpecialNote}”</p>
                   </div>
                 )}
               </div>
@@ -385,21 +404,21 @@ export default function VendorDetailPage() {
         })()}
 
         {/* Promo Code Section */}
-        <div className="px-1">
+        <div>
           {appliedDiscount ? (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between animate-fade-in">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-sm shadow-emerald-200">
-                  <Tag className="w-5 h-5 text-white" />
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-xs">
+                  <Tag className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Code Applied</p>
-                  <p className="text-sm font-bold text-slate-900">{appliedDiscount.code} • {appliedDiscount.discount_pct}% OFF</p>
+                  <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Promo Applied</p>
+                  <p className="text-sm font-black text-slate-900">{appliedDiscount.code} • {appliedDiscount.discount_pct}% OFF</p>
                 </div>
               </div>
               <button 
                 onClick={() => { setAppliedDiscount(null); setPromoInput(''); }}
-                className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 hover:text-rose-500 transition-colors shadow-sm"
+                className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 hover:text-rose-500 transition-colors shadow-xs"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -410,8 +429,8 @@ export default function VendorDetailPage() {
                 <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="HAVE A PROMO CODE?"
-                  className="w-full bg-white border border-slate-100 rounded-2xl pl-11 pr-4 py-3.5 text-xs font-bold uppercase tracking-widest outline-none focus:border-brand/40 transition-all placeholder:text-slate-300"
+                  placeholder="Enter Promo Code"
+                  className="w-full bg-white border border-slate-200/80 rounded-2xl pl-11 pr-4 py-3.5 text-xs font-black uppercase tracking-wider outline-none focus:border-brand transition-all placeholder:text-slate-400 placeholder:font-medium"
                   value={promoInput}
                   onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                 />
@@ -419,7 +438,7 @@ export default function VendorDetailPage() {
               <button
                 onClick={handleApplyPromo}
                 disabled={validatingPromo || !promoInput.trim()}
-                className="bg-slate-950 text-white px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[100px]"
+                className="bg-slate-900 hover:bg-slate-800 text-white px-5 rounded-2xl text-xs font-black uppercase tracking-wider disabled:opacity-50 transition-all flex items-center justify-center min-w-[90px]"
               >
                 {validatingPromo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
               </button>
@@ -427,29 +446,26 @@ export default function VendorDetailPage() {
           )}
         </div>
 
-        {/* Meal Plans Section */}
-        <div className="px-1">
-          <div className="flex flex-col mb-6 gap-4">
+        {/* ── MEAL PLANS SECTION ───────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-[20px] font-black text-slate-900 tracking-tight">Select Plan</h2>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Flexible subscriptions</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
-                <Plus className="w-6 h-6 text-slate-400" />
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Select Meal Plan</h2>
+                <p className="text-xs font-semibold text-slate-400">Choose single meal or recurring subscription</p>
               </div>
             </div>
             
             {/* Frequency Selector */}
-            <div className="bg-slate-100 p-1 rounded-2xl flex">
+            <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex">
               {(['one-time', 'weekly', 'monthly'] as SubscriptionFrequency[]).map(freq => (
                 <button
                   key={freq}
                   onClick={() => setSelectedFrequency(freq)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                     selectedFrequency === freq 
-                      ? 'bg-white text-slate-900 shadow-sm' 
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'bg-slate-900 text-white shadow-xs' 
+                      : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
                   {freq === 'one-time' && <Clock className="w-3.5 h-3.5" />}
@@ -462,9 +478,9 @@ export default function VendorDetailPage() {
           </div>
 
           {plans.length === 0 ? (
-            <EmptyState icon={<Clipboard className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="No plans available" description="This vendor hasn't set their rates yet" />
+            <EmptyState icon={<Clipboard className="w-10 h-10 text-slate-300 stroke-[1.25]" />} title="No plans available" description="This kitchen has not published active rate cards." />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {plans.map((plan) => {
                 const isSoldOut = vendor.capacity !== undefined && vendor.capacity !== null && totalActiveSubs >= vendor.capacity;
                 const isSubscribed = userSubs.includes(plan.id);
@@ -473,33 +489,39 @@ export default function VendorDetailPage() {
                 const finalPrice = plan.price - discountAmount;
 
                 return (
-                  <div key={plan.id} className="group relative bg-white rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
-                    <div className="flex items-center p-3 sm:p-4 gap-3 sm:gap-4">
-                      <div className={cn(
-                        "w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex flex-col items-center justify-center shadow-inner shrink-0",
-                        plan.id === 'lunch' ? 'bg-amber-50 text-amber-500' : 
-                        plan.id === 'dinner' ? 'bg-indigo-50 text-indigo-500' : 
-                        'bg-brand/10 text-brand'
-                      )}>
-                        <span className="text-lg sm:text-xl mb-0.5">{plan.id === 'lunch' ? '☀️' : plan.id === 'dinner' ? '🌙' : '🍱'}</span>
-                        <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-tighter">{plan.id === 'lunch' ? 'Lunch' : plan.id === 'dinner' ? 'Dinner' : 'Combo'}</span>
-                      </div>
+                  <div key={plan.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:border-amber-300 transition-all">
+                    <div className="flex items-center justify-between gap-4">
                       
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight truncate">{plan.label}</h3>
-                        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 sm:mt-1 truncate">{plan.type}</p>
-                        <div className="flex items-center gap-1.5 mt-1 sm:mt-2">
-                          {appliedDiscount ? (
-                            <>
-                              <span className="text-base sm:text-lg font-black text-emerald-600">₹{finalPrice}</span>
-                              <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 line-through">₹{plan.price}</span>
-                            </>
-                          ) : (
-                            <span className="text-base sm:text-lg font-black text-slate-900">₹{plan.price}</span>
-                          )}
-                          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            / {selectedFrequency === 'one-time' ? 'meal' : selectedFrequency === 'weekly' ? 'week' : 'month'}
-                          </span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-xs",
+                          plan.id === 'lunch' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
+                          plan.id === 'dinner' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 
+                          'bg-amber-500/10 text-brand border border-amber-500/20'
+                        )}>
+                          {plan.id === 'lunch' ? '☀️' : plan.id === 'dinner' ? '🌙' : '🍱'}
+                        </div>
+                        
+                        <div className="min-w-0">
+                          <h3 className="font-black text-slate-900 text-base leading-tight">
+                            {plan.label}
+                          </h3>
+                          <p className="text-xs font-medium text-slate-400 mt-0.5">
+                            {plan.type}
+                          </p>
+                          <div className="flex items-baseline gap-1.5 mt-1.5">
+                            {appliedDiscount ? (
+                              <>
+                                <span className="text-xl font-black text-emerald-600">₹{finalPrice}</span>
+                                <span className="text-xs font-bold text-slate-300 line-through">₹{plan.price}</span>
+                              </>
+                            ) : (
+                              <span className="text-xl font-black text-slate-900">₹{plan.price}</span>
+                            )}
+                            <span className="text-xs font-bold text-slate-400">
+                              / {selectedFrequency === 'one-time' ? 'meal' : selectedFrequency === 'weekly' ? 'week' : 'month'}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -507,16 +529,17 @@ export default function VendorDetailPage() {
                         onClick={() => handleSubscribe(plan.id)}
                         disabled={isBtnDisabled}
                         className={cn(
-                          "px-4 sm:px-5 py-3 sm:py-3.5 rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
+                          "px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shrink-0 active:scale-95 shadow-md",
                           isSubscribed 
-                            ? "bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-none cursor-default" 
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default shadow-none" 
                             : isSoldOut 
-                              ? "bg-rose-50 text-rose-500 border border-rose-100 shadow-none cursor-not-allowed"
-                              : "bg-brand text-white shadow-lg shadow-brand/20 active:scale-95"
+                              ? "bg-rose-50 text-rose-600 border border-rose-200 cursor-not-allowed shadow-none"
+                              : "bg-brand hover:bg-amber-600 text-white shadow-brand/20"
                         )}
                       >
                         {subscribing === plan.id ? '...' : isSubscribed ? 'Subscribed' : isSoldOut ? 'Sold Out' : 'Subscribe'}
                       </button>
+
                     </div>
                   </div>
                 );
@@ -525,59 +548,79 @@ export default function VendorDetailPage() {
           )}
         </div>
 
-        {/* Reviews Section */}
-        <div>
-          <div className="flex items-center justify-between mb-4 px-1">
-            <h2 className="text-[17px] font-black text-slate-900 tracking-tight">Reviews</h2>
-            <div className="flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              <MessageSquare className="w-3 h-3" /> {reviews.length}
+        {/* ── REVIEWS SECTION ─────────────────────────────────────────── */}
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Customer Reviews</h2>
+              <p className="text-xs font-semibold text-slate-400">Real feedback from daily eaters</p>
             </div>
+            <span className="text-xs font-black text-brand bg-brand/10 px-3 py-1 rounded-full">
+              {reviews.length} Reviews
+            </span>
           </div>
 
           {/* User Review Block */}
-          <div className="card mb-6 border border-brand/10 bg-brand/[0.02]">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.03)] space-y-4">
             {!user ? (
               <div className="text-center py-4">
-                <p className="text-sm text-slate-500 mb-4">Wanna share your feedback?</p>
-                <Link href="/login" className="btn-outline inline-flex text-xs px-6 py-2.5">Login to Review</Link>
+                <p className="text-sm font-bold text-slate-800 mb-1">Eaten from this kitchen?</p>
+                <p className="text-xs text-slate-400 mb-4 font-medium">Sign in to leave your feedback and rating</p>
+                <Link href="/login" className="px-6 py-3 bg-brand hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider rounded-2xl inline-block shadow-md shadow-brand/20">
+                  Sign In to Review
+                </Link>
               </div>
             ) : myReview && !editingReview ? (
               <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-black text-slate-900 text-sm">Your Feedback</h4>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-950 text-white text-[9px] font-black uppercase tracking-widest">Verified</span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-slate-900 text-base">Your Feedback</h4>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-black uppercase tracking-wider">Verified Eater</span>
                   </div>
-                  <div className="flex gap-0.5 mb-2">
+                  <div className="flex gap-0.5 my-1">
                     {[1, 2, 3, 4, 5].map(s => (
-                      <Star key={s} className={`w-3.5 h-3.5 ${s <= myReview.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                      <Star key={s} className={`w-4 h-4 ${s <= myReview.rating ? 'fill-amber-400 text-amber-500' : 'text-slate-200'}`} />
                     ))}
                   </div>
-                  <p className="text-sm text-slate-600 leading-relaxed italic">&ldquo;{myReview.review_text}&rdquo;</p>
+                  <p className="text-sm text-slate-700 font-medium leading-relaxed italic mt-1">&ldquo;{myReview.review_text}&rdquo;</p>
                 </div>
                 <button 
-                  className="w-10 h-10 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-slate-400 hover:text-brand transition-colors" 
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900" 
                   onClick={() => setEditingReview(true)}
                 >
-                  <Plus className="w-5 h-5 rotate-45" />
+                  Edit
                 </button>
               </div>
             ) : (
-              <div>
-                <h4 className="font-black text-slate-900 text-sm mb-4">{myReview ? 'Update Your Review' : 'How was the food?'}</h4>
-                <StarSelector value={rating} onChange={setRating} />
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h4 className="font-black text-slate-900 text-base">{myReview ? 'Update Your Review' : 'How was the food?'}</h4>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">Rate your kitchen experience</p>
+                  </div>
+                  <StarSelector value={rating} onChange={setRating} />
+                </div>
+
                 <textarea
-                  className="input mt-5 resize-none min-h-[100px] border-slate-200/50 bg-white"
-                  placeholder="Share your experience with others…"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-brand focus:ring-4 focus:ring-brand/10 transition-all resize-none min-h-[100px] placeholder:text-slate-400"
+                  placeholder="Share what you loved about the taste, packaging, hygiene, or on-time delivery..."
                   value={reviewText}
                   onChange={(e) => setReviewText(e.target.value)}
                 />
-                <div className="flex gap-3 mt-5">
-                  <button className="btn-primary flex-1 py-4 text-xs font-black uppercase tracking-widest shadow-xl shadow-brand/20" onClick={handleReviewSubmit} disabled={submittingReview}>
-                    {submittingReview ? '...' : myReview ? 'Save Update' : 'Post Review'}
+
+                <div className="flex gap-3 pt-1">
+                  <button 
+                    className="flex-1 py-3.5 rounded-2xl bg-brand hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-brand/20 transition-all active:scale-[0.98] disabled:opacity-50" 
+                    onClick={handleReviewSubmit} 
+                    disabled={submittingReview || rating === 0}
+                  >
+                    {submittingReview ? 'Posting…' : myReview ? 'Save Updated Review' : 'Post Review'}
                   </button>
                   {myReview && (
-                    <button className="btn-outline flex-1 py-4 text-xs font-black uppercase tracking-widest" onClick={() => setEditingReview(false)}>
+                    <button 
+                      className="px-5 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200" 
+                      onClick={() => setEditingReview(false)}
+                    >
                       Cancel
                     </button>
                   )}
@@ -588,68 +631,74 @@ export default function VendorDetailPage() {
 
           {/* Community Reviews */}
           {othersReviews.length === 0 ? (
-            <div className="text-center py-10">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-slate-200" />
+            <div className="text-center py-8 bg-white rounded-3xl border border-slate-200/80 p-6">
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-2 text-slate-300">
+                <MessageSquare className="w-6 h-6" />
               </div>
-              <p className="text-sm font-bold text-slate-400">No community reviews yet.</p>
+              <p className="text-xs font-bold text-slate-400">No other community reviews yet. Be the first to share your experience!</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {othersReviews.map((r, i) => (
-                <div key={r.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 animate-fade-up" style={{ animationDelay: `${i * 0.05}s` }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 uppercase">
-                        {r.user_name?.charAt(0) || 'U'}
+            <div className="space-y-3">
+              {othersReviews.map((r) => (
+                <div key={r.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-brand text-white font-black text-xs flex items-center justify-center shadow-xs">
+                        {r.user_name?.[0]?.toUpperCase() || 'U'}
                       </div>
                       <div>
-                        <h5 className="font-bold text-slate-900 text-sm leading-none">{r.user_name}</h5>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{formatDate(r.created_at)}</p>
+                        <h4 className="font-bold text-slate-900 text-sm leading-none">{r.user_name || 'Customer'}</h4>
+                        <span className="text-[10px] text-slate-400 font-medium">{formatDate(r.created_at)}</span>
                       </div>
                     </div>
+
                     <div className="flex gap-0.5">
                       {[1, 2, 3, 4, 5].map(s => (
-                        <Star key={s} className={`w-3.5 h-3.5 ${s <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                        <Star key={s} className={`w-3.5 h-3.5 ${s <= r.rating ? 'fill-amber-400 text-amber-500' : 'text-slate-200'}`} />
                       ))}
                     </div>
                   </div>
+
                   {r.review_text && (
-                    <p className="text-sm text-slate-500 leading-relaxed">
-                      {r.review_text}
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed pl-10">
+                      &ldquo;{r.review_text}&rdquo;
                     </p>
                   )}
                 </div>
               ))}
             </div>
           )}
-          {/* Downgrade Restriction Modal */}
-          <ConfirmDialog
-            isOpen={showDowngradeModal}
-            title="Active Combo Plan"
-            message="You are currently subscribed to the Both (Lunch + Dinner) plan. To switch to a single meal plan, you must first cancel your combo subscription from your Orders page."
-            confirmLabel="Go to My Orders"
-            cancelLabel="Cancel"
-            variant="primary"
-            onConfirm={() => {
-              setShowDowngradeModal(false);
-              router.push('/orders');
-            }}
-            onCancel={() => setShowDowngradeModal(false)}
-          />
         </div>
+
       </div>
 
-      {/* Subscription Modal */}
-      {vendor && (
+      {/* Subscription Onboarding Modal */}
+      {isModalOpen && vendor && (
         <SubscriptionOnboardingModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          vendor={vendor as AppUser}
+          vendor={vendor}
           initialPlanId={modalInitialPlanId}
-          selectedFrequency={selectedFrequency}
-          appliedDiscount={appliedDiscount}
-          onSuccess={loadAll}
+          dietaryCategory={selectedCategory}
+          frequency={selectedFrequency}
+          discount={appliedDiscount}
+          onSuccess={() => {
+            setIsModalOpen(false);
+            loadAll();
+          }}
+        />
+      )}
+
+      {/* Downgrade/Combo Alert Modal */}
+      {showDowngradeModal && (
+        <ConfirmDialog
+          isOpen={showDowngradeModal}
+          title="Active Combo Plan"
+          message="You already have an active Combo (Lunch + Dinner) plan with this kitchen. You don't need an individual meal plan."
+          confirmLabel="Got It"
+          variant="primary"
+          onConfirm={() => setShowDowngradeModal(false)}
+          onCancel={() => setShowDowngradeModal(false)}
         />
       )}
     </div>
