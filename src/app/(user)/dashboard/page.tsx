@@ -212,7 +212,7 @@ export default function UserDashboard() {
           className="relative rounded-b-[36px] overflow-hidden"
           style={{
             background: '#E68A00',
-            paddingBottom: '44px',
+            paddingBottom: '0px',
             paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
           }}
         >
