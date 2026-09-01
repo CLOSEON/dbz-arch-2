@@ -109,9 +109,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
   const renderPermanentSlide = () => {
     if (activeDelivery) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between p-4.5 bg-slate-950 text-white rounded-2xl sm:rounded-3xl overflow-hidden">
+        <div className="relative w-full h-full flex flex-col justify-between p-4 sm:p-4.5 bg-slate-950/90 backdrop-blur-md text-white rounded-2xl sm:rounded-3xl">
           <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
@@ -123,15 +123,15 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             <p className="text-white font-bold text-base leading-tight truncate">
               {activeDelivery.partnerName || 'Your Kitchen'}
             </p>
-            <p className="text-slate-400 text-xs mt-1 capitalize">
+            <p className="text-slate-400 text-xs mt-0.5 capitalize">
               Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
             </p>
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <Link
               href="/track"
               onClick={triggerHapticSelection}
-              className="block w-full text-center py-2 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98]"
+              className="block w-full text-center py-2 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98] shadow-xs"
             >
               Track Live Delivery
             </Link>
@@ -142,9 +142,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
 
     if (activeSubs.length > 0) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between p-4.5 bg-slate-950 text-white rounded-2xl sm:rounded-3xl overflow-hidden">
+        <div className="relative w-full h-full flex flex-col justify-between p-4 sm:p-4.5 bg-slate-950/90 backdrop-blur-md text-white rounded-2xl sm:rounded-3xl">
           <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
@@ -160,15 +160,15 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                 ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions`
                 : 'Daily Meals'}
             </p>
-            <p className="text-slate-400 text-xs mt-1">
+            <p className="text-slate-400 text-xs mt-0.5">
               Your kitchen meals are scheduled and tracking automatically.
             </p>
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <Link
               href="/orders"
               onClick={triggerHapticSelection}
-              className="block w-full text-center py-2 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/5"
+              className="block w-full text-center py-2 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/10"
             >
               Manage Weekly Planner
             </Link>
@@ -177,9 +177,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
       );
     }
 
-    // Default Permanent Brand Card
+    // Default Glassmorphic Brand Card (Blended with hero)
     return (
-      <div className="relative w-full h-full flex flex-col justify-between p-4.5 bg-black/20 backdrop-blur-md border border-white/15 text-white rounded-2xl sm:rounded-3xl overflow-hidden">
+      <div className="relative w-full h-full flex flex-col justify-between p-4 sm:p-4.5 bg-black/15 backdrop-blur-md text-white rounded-2xl sm:rounded-3xl">
         <div>
           <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/15 text-white inline-block">
             Premium Meal Service
@@ -204,9 +204,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
       onTouchEnd={() => setIsPaused(false)}
     >
       {/* ════════════════════════════════════════
-          CAROUSEL CARD WRAPPER
+          BLENDED HERO CARD FRAME
       ════════════════════════════════════════ */}
-      <div className="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg border border-white/15 min-h-[148px] sm:min-h-[160px] aspect-[16/8.5] max-h-[190px] bg-black/30">
+      <div className="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden border border-white/20 bg-black/15 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.08)] h-[145px] sm:h-[155px]">
         {/* Horizontal Scroll Snap Area */}
         <div
           ref={containerRef}
@@ -217,7 +217,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          {/* SLIDE 0: Permanent Info / Subscription / Delivery Slide */}
+          {/* SLIDE 0: Permanent Info / Status Slide */}
           <div className="w-full h-full shrink-0 snap-center snap-always">
             {renderPermanentSlide()}
           </div>
@@ -237,11 +237,11 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                     loading="eager"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between p-4.5 text-white">
+                  <div className="w-full h-full bg-slate-900/90 flex flex-col justify-between p-4 text-white">
                     <div className="flex items-center gap-1.5">
                       <BadgePercent className="w-4 h-4 text-brand" />
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
-                        Featured Offer
+                        Special Offer
                       </span>
                     </div>
                     <h3 className="text-base font-black tracking-tight leading-snug line-clamp-2">
@@ -250,19 +250,24 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                   </div>
                 )}
 
-                {/* Subtle bottom shadow vignette */}
-                <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                {/* Soft top & bottom gradient vignettes */}
+                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/75 via-black/25 to-transparent pointer-events-none" />
+                <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-black/30 to-transparent pointer-events-none" />
 
-                {/* Deep-link action button */}
-                {isKitchenLink && (
-                  <div className="absolute bottom-2.5 right-2.5 z-10">
-                    <div className="px-3 py-1 rounded-full bg-black/75 hover:bg-brand text-white backdrop-blur-md text-[10.5px] font-bold flex items-center gap-1.5 shadow-md border border-white/15 transition-all duration-200">
-                      <Store className="w-3 h-3 text-amber-300" />
+                {/* Offer Title & Action Pill */}
+                <div className="absolute inset-x-3.5 bottom-3 flex items-center justify-between gap-2 z-10">
+                  <span className="text-xs font-bold text-white/90 drop-shadow-sm truncate max-w-[55%]">
+                    {offer.title}
+                  </span>
+
+                  {isKitchenLink && (
+                    <div className="px-3 py-1 rounded-full bg-white/95 hover:bg-white text-slate-900 backdrop-blur-md text-[10.5px] font-black tracking-tight flex items-center gap-1 shadow-md transition-all active:scale-95 shrink-0">
+                      <Store className="w-3 h-3 text-brand" />
                       <span>View Kitchen</span>
-                      <ArrowRight className="w-3 h-3 text-white/80" />
+                      <ArrowRight className="w-3 h-3 text-slate-700" />
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
 
@@ -291,18 +296,39 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
         </div>
 
         {/* ════════════════════════════════════════
-            INSTAGRAM-STYLE COUNTER (e.g. 1/2)
+            INTEGRATED COUNTER BADGE (e.g. 1/2)
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
           <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
-            <div className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white font-black text-[9.5px] tracking-wider border border-white/10 shadow-xs">
+            <div className="px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md text-white/90 font-bold text-[9px] tracking-wider border border-white/10 shadow-2xs">
               {currentIndex + 1}/{totalSlides}
             </div>
           </div>
         )}
 
         {/* ════════════════════════════════════════
-            DESKTOP ARROW CONTROLS
+            INTEGRATED BOTTOM PAGINATION DOTS (Inside Card)
+        ════════════════════════════════════════ */}
+        {totalSlides > 1 && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-md border border-white/10 pointer-events-auto">
+            {Array.from({ length: totalSlides }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => scrollToIndex(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                className={`transition-all duration-300 rounded-full ${
+                  i === currentIndex
+                    ? 'w-3.5 h-1 bg-white shadow-2xs'
+                    : 'w-1 h-1 bg-white/40 hover:bg-white/70'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════
+            DESKTOP CHEVRON CONTROLS (Hover only)
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
           <>
@@ -310,7 +336,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
               type="button"
               onClick={handlePrev}
               aria-label="Previous slide"
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/50 hover:bg-black/80 text-white backdrop-blur-md flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
+              className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -319,34 +345,13 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
               type="button"
               onClick={handleNext}
               aria-label="Next slide"
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/50 hover:bg-black/80 text-white backdrop-blur-md flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
+              className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </>
         )}
       </div>
-
-      {/* ════════════════════════════════════════
-          PAGINATION DOTS
-      ════════════════════════════════════════ */}
-      {totalSlides > 1 && (
-        <div className="flex items-center justify-center gap-1.5 mt-2">
-          {Array.from({ length: totalSlides }).map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => scrollToIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className={`transition-all duration-300 rounded-full ${
-                i === currentIndex
-                  ? 'w-4 h-1.5 bg-white shadow-xs'
-                  : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/60'
-              }`}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
