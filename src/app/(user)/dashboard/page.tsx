@@ -314,8 +314,10 @@ export default function UserDashboard() {
               </h1>
             </div>
 
-            {/* ── Status & Promotional Offers Carousel ── */}
-            <OffersCarousel activeDelivery={activeDelivery} activeSubs={activeSubs} />
+            {/* ── Status & Promotional Offers Carousel (Full-Bleed with Orange Gradient Blend) ── */}
+            <div className="-mx-5 sm:-mx-6 mt-1">
+              <OffersCarousel activeDelivery={activeDelivery} activeSubs={activeSubs} />
+            </div>
           </div>
         </section>
 
