@@ -230,20 +230,6 @@ export default function UserDashboard() {
             <div className="absolute -left-12 bottom-6 w-48 h-48 rounded-full border-2 border-white/10" />
             <div className="absolute -left-6 bottom-12 w-32 h-32 rounded-full bg-white/8" />
 
-            {/* Subtle 2D Decorative Dots & Vector Accents */}
-            <div className="absolute left-8 top-28 flex flex-col gap-2 opacity-25">
-              <div className="flex gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              </div>
-              <div className="flex gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              </div>
-            </div>
-
             <div className="absolute right-12 bottom-20 opacity-20">
               <svg
                 width="24"
