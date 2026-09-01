@@ -26,13 +26,13 @@ service firebase.storage {
     }
 
     // ── Promotional Offers (Carousels) ────────────────────────────────────
-    // Public read so customer home carousel can display banner images; admin-only writes & deletes
+    // Public read so customer home carousel can display banner images; authenticated writes & deletes
     match /offers/{offerId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin()
-                   && request.resource.size < 3 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if isAdmin();
+      allow write: if isAuthenticated()
+                   && isUnder5MB()
+                   && isImage();
+      allow delete: if isAuthenticated();
     }
 
     // ── User profile images ───────────────────────────────────────────────
