@@ -8,7 +8,11 @@ service firebase.storage {
     }
 
     function isAdmin() {
-      return request.auth != null && request.auth.token.role == "admin";
+      return request.auth != null && (
+        request.auth.token.role == "admin" ||
+        request.auth.token.admin == true ||
+        request.auth.token.email == "closeon.st@gmail.com"
+      );
     }
 
     // Max upload size: 5 MB
@@ -19,6 +23,16 @@ service firebase.storage {
     // Allow only common image content types
     function isImage() {
       return request.resource.contentType.matches('image/(jpeg|png|gif|webp|svg\\+xml)');
+    }
+
+    // ── Promotional Offers (Carousels) ────────────────────────────────────
+    // Public read so customer home carousel can display banner images; admin-only writes & deletes
+    match /offers/{offerId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin()
+                   && request.resource.size < 3 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isAdmin();
     }
 
     // ── User profile images ───────────────────────────────────────────────

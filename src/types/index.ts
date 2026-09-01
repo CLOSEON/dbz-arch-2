@@ -403,3 +403,27 @@ export interface AuditLog {
   metadata?: any;
   created_at: FirestoreTimestamp;
 }
+
+// ─── Promotional Offers Carousel ─────────────────────────────────────────────
+
+export type OfferLinkType = 'kitchen' | 'none';
+
+export interface Offer {
+  id: string;
+  imageUrl: string;
+  title: string;
+  linkType: OfferLinkType;
+  linkedKitchenId: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: FirestoreTimestamp;
+  updatedAt: FirestoreTimestamp;
+  createdBy: string;
+}
+
+export type CreateOfferInput = Omit<Offer, 'id' | 'createdAt' | 'updatedAt'> & {
+  createdAt?: FirestoreTimestamp;
+  updatedAt?: FirestoreTimestamp;
+};
+
+export type UpdateOfferInput = Partial<Omit<Offer, 'id' | 'createdAt' | 'createdBy'>>;

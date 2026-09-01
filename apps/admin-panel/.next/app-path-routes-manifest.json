@@ -5,6 +5,7 @@
   "/(admin)/admin/discount-codes/page": "/admin/discount-codes",
   "/(admin)/admin/migrate/page": "/admin/migrate",
   "/(admin)/admin/notifications/page": "/admin/notifications",
+  "/(admin)/admin/offers/page": "/admin/offers",
   "/(admin)/admin/orders/page": "/admin/orders",
   "/(admin)/admin/subscriptions/page": "/admin/subscriptions",
   "/(admin)/admin/support/page": "/admin/support",

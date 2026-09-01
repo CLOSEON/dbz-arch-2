@@ -7,7 +7,7 @@ import {
   Users, CheckCircle, ChefHat, PackageCheck, Phone, 
   CalendarClock, IndianRupee, UtensilsCrossed, Sliders, 
   Star, MapPin, Sparkles, Activity, ShieldCheck, Clock,
-  ArrowUpRight, AlertTriangle, RefreshCw
+  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
@@ -18,8 +18,10 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
 import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
+import { generateBoxTag } from '@/lib/boxTag';
+import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
 
-type ActiveTab = 'overview' | 'menu' | 'subscribers' | 'rates';
+type ActiveTab = 'overview' | 'tags' | 'menu' | 'subscribers' | 'rates';
 
 const BATCH_STATUS_DISPLAY: Record<BatchStatus, { label: string; color: string; bg: string; border: string }> = {
   pending:            { label: 'Pending',           color: 'text-slate-600',  bg: 'bg-slate-50',    border: 'border-slate-200' },
@@ -41,10 +43,6 @@ export default function VendorDashboard() {
   const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified' || user?.is_superadmin === true) &&
     user?.is_rejected !== true && (user as any)?.is_suspended !== true &&
     user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
-
-  if (user && (!isVendorRole || !isVerifiedVendor)) {
-    return <PendingVerificationScreen role="vendor" />;
-  }
 
   // Custom confirmation dialog state
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -153,12 +151,20 @@ export default function VendorDashboard() {
   const subscriberCount = subscriptions.length || user?.subscriberCount || 2;
   const capacityPercent = Math.min(100, Math.round((subscriberCount / kitchenCapacity) * 100));
 
+  const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>({});
+  const [tagFilterSlot, setTagFilterSlot] = useState<'all' | 'lunch' | 'dinner'>('all');
+
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Operations & Dispatch', icon: Activity },
+    { key: 'tags', label: '🏷️ Box Tags & Pack', icon: Tag },
     { key: 'menu', label: "Today's Menu", icon: UtensilsCrossed },
     { key: 'subscribers', label: `Subscribers (${subscriptions.length})`, icon: Users },
     { key: 'rates', label: 'Rates & Pricing', icon: IndianRupee },
   ];
+
+  if (user && (!isVendorRole || !isVerifiedVendor)) {
+    return <PendingVerificationScreen role="vendor" />;
+  }
 
   if (loading) {
     return (
@@ -522,6 +528,158 @@ export default function VendorDashboard() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: BOX TAGS & PACKING BOARD ──────────────────────────────── */}
+      {activeTab === 'tags' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Header & Instructions */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-brand bg-brand/10 px-3 py-1 rounded-full border border-brand/20">
+                  Zero-Mismatch System
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-2">
+                  🏷️ Tiffin Box Tagging Board
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  Write these exact unique codes on your tiffin container stickers with a marker pen. Riders & customers verify this code at handover.
+                </p>
+              </div>
+
+              {/* Slot Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shrink-0">
+                {(['all', 'lunch', 'dinner'] as const).map(slot => (
+                  <button
+                    key={slot}
+                    onClick={() => setTagFilterSlot(slot)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                      tagFilterSlot === slot
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {slot === 'all' ? 'All Slots' : slot}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Boxes</span>
+                <div className="text-xl font-black text-slate-900 mt-0.5">{subscriptions.length || 2}</div>
+              </div>
+              <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-200/60">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Pure Veg Boxes</span>
+                <div className="text-xl font-black text-emerald-900 mt-0.5">
+                  {subscriptions.filter(s => (s.meal_type as any) === 'veg' || !s.meal_type).length || 2}
+                </div>
+              </div>
+              <div className="bg-rose-50 p-3 rounded-2xl border border-rose-200/60">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-600">Non-Veg Boxes</span>
+                <div className="text-xl font-black text-rose-900 mt-0.5">
+                  {subscriptions.filter(s => (s.meal_type as any) === 'non_veg').length || 0}
+                </div>
+              </div>
+              <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200/60">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Tagged & Packed</span>
+                <div className="text-xl font-black text-amber-900 mt-0.5">
+                  {Object.values(packedBoxes).filter(Boolean).length} / {subscriptions.length || 2}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Digital Box Tag Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(() => {
+              const displayList = subscriptions.length > 0 ? subscriptions : [
+                { id: 'mock_1', userName: 'Siddhesh Thakur', name: 'Siddhesh Thakur', phone: '+919930577000', meal_type: 'veg', plan_type: 'weekly', cycle_number: 1, deliveryPreference: 'Standard 1:00 PM Slot' },
+                { id: 'mock_2', userName: 'Priya Verma', name: 'Priya Verma', phone: '+919718899221', meal_type: 'veg', plan_type: 'monthly', cycle_number: 1, deliveryPreference: 'Standard 1:00 PM Slot' }
+              ];
+
+              return displayList.map((sub: any, idx: number) => {
+                const boxTag = generateBoxTag({
+                  customerName: sub.userName || sub.name || 'Customer',
+                  vendorName: user?.kitchen_name || user?.name || 'Test Vendor',
+                  sequenceNumber: idx + 1,
+                  planType: sub.plan_type || sub.planType || 'weekly',
+                  cycleNumber: sub.cycle_number || 1,
+                  orderId: sub.id
+                });
+
+                const isVeg = (sub.meal_type as any) === 'veg' || !sub.meal_type || (sub.meal_type as any) === 'pure_veg';
+                const isPacked = packedBoxes[sub.id || idx];
+
+                return (
+                  <div 
+                    key={sub.id || idx}
+                    className={`bg-white rounded-3xl p-5 border transition-all relative overflow-hidden flex flex-col justify-between gap-4 ${
+                      isPacked 
+                        ? 'border-emerald-300 ring-2 ring-emerald-400/20 bg-emerald-50/10' 
+                        : 'border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.04)]'
+                    }`}
+                  >
+                    {/* Top Tag Bar */}
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          Box #{String(idx + 1).padStart(2, '0')}
+                        </span>
+                        <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size={14} />
+                      </div>
+
+                      {/* Giant Readable Tag Code */}
+                      <div className="bg-slate-900 text-white rounded-2xl p-4 text-center tracking-widest font-mono font-black text-2xl shadow-inner border border-slate-800">
+                        {boxTag}
+                      </div>
+                      <p className="text-[10px] text-center font-bold text-slate-400 mt-1.5 uppercase tracking-wider">
+                        Marker Code for Box Sticker
+                      </p>
+                    </div>
+
+                    {/* Customer & Meal Specs */}
+                    <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-3.5 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-sm text-slate-900">{sub.userName || sub.name || 'Customer'}</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-white border border-slate-200 px-2 py-0.5 rounded-lg text-slate-700">
+                          {(sub.plan_type || 'Weekly').toUpperCase()} • C{sub.cycle_number || 1}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-slate-400" /> {sub.userPhone || sub.phone || '+91 9900990022'}
+                      </p>
+                      <p className="text-xs text-brand font-bold">
+                        Slot: {sub.deliveryPreference || 'Lunch (1:00 PM)'}
+                      </p>
+                    </div>
+
+                    {/* Mark Packed Action Button */}
+                    <button
+                      onClick={() => {
+                        setPackedBoxes(prev => ({ ...prev, [sub.id || idx]: !prev[sub.id || idx] }));
+                        if (!isPacked) {
+                          toast.success(`Box ${boxTag} marked as Tagged & Packed! ✨`);
+                        }
+                      }}
+                      className={`w-full py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                        isPacked
+                          ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {isPacked ? <Check className="w-4 h-4" /> : <Tag className="w-4 h-4 text-brand" />}
+                      {isPacked ? 'Box Tagged & Packed ✓' : 'Mark Tagged & Packed'}
+                    </button>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}

@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: #431407;
+  --color-brand: #E68A00;
   --color-brand-50: #FFFBEB;
   --color-brand-100: #FEF3C7;
-  --color-brand-500: #431407;
+  --color-brand-500: #E68A00;
   --color-brand-600: #D97706;
   --color-brand-700: #B45309;
   --color-brand-secondary: #F59E0B;
-  --color-ivory: #FFF7ED;
-  --color-ivory-dark: #FFEDD5;
+  --color-ivory: #FEFCE8;
+  --color-ivory-dark: #FEF08A;
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
   --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
@@ -109,17 +109,18 @@
   }
 
   html {
-    background: #FEFCE8;
+    background-color: #FEFCE8;
     overscroll-behavior: none;
   }
 
   body {
-    background-color: #FFF7ED;
+    background-color: #FEFCE8;
     color: #0f172a;
     font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.015em;
     overscroll-behavior: none;
+    min-height: 100vh;
   }
   
   h1, h2, h3, h4, h5, h6 {

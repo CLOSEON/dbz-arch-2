@@ -19,7 +19,8 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import type { AppUser, Review, DiscountCode, SubscriptionFrequency, DietaryCategory } from '@/types';
-import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Leaf, Drumstick, Sparkles } from 'lucide-react';
+import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Sparkles } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -212,31 +213,34 @@ export default function VendorDetailPage() {
 
   const plans = selectedFrequency === 'one-time'
     ? (_onetime
-        ? [{ id: 'one-time', label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Single Meal`, price: _onetime, basePrice: _onetime, type: 'Any meal, anytime delivery' }]
+        ? [{ id: 'one-time', label: `${isNonVeg ? 'Non-Veg ' : 'Pure Veg '}Single Meal`, price: _onetime, basePrice: _onetime, type: 'Any meal, anytime delivery', isNonVeg }]
         : [])
     : [
         (_lunchW || _lunchM) && {
           id: 'lunch',
-          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch Plan`,
+          label: `${isNonVeg ? 'Non-Veg ' : 'Pure Veg '}Lunch Plan`,
           price: selectedFrequency === 'monthly' ? _lunchM : _lunchW,
           basePrice: _lunchW,
           type: '11:00 AM – 01:00 PM Slot',
+          isNonVeg,
         },
         (_dinnerW || _dinnerM) && {
           id: 'dinner',
-          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Dinner Plan`,
+          label: `${isNonVeg ? 'Non-Veg ' : 'Pure Veg '}Dinner Plan`,
           price: selectedFrequency === 'monthly' ? _dinnerM : _dinnerW,
           basePrice: _dinnerW,
           type: '07:30 PM – 09:30 PM Slot',
+          isNonVeg,
         },
         (_bothW || _bothM) && {
           id: 'both',
-          label: `${isNonVeg ? '🍗 Non-Veg ' : '🌿 Veg '}Lunch + Dinner Combo`,
+          label: `${isNonVeg ? 'Non-Veg ' : 'Pure Veg '}Lunch + Dinner Combo`,
           price: selectedFrequency === 'monthly' ? _bothM : _bothW,
           basePrice: _bothW,
           type: 'Full Day Meal Package',
+          isNonVeg,
         },
-      ].filter(Boolean) as { id: string; label: string; price: number; basePrice: number; type: string }[];
+      ].filter(Boolean) as { id: string; label: string; price: number; basePrice: number; type: string; isNonVeg: boolean }[];
 
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
@@ -247,9 +251,9 @@ export default function VendorDetailPage() {
   if (loading) {
     return (
       <div className="page-shell space-y-6 pt-6 max-w-md mx-auto">
-        <SkeletonCard className="h-64 rounded-3xl" />
-        <SkeletonCard className="h-36 rounded-3xl" />
-        <SkeletonCard className="h-48 rounded-3xl" />
+        <SkeletonCard hasImage lines={3} />
+        <SkeletonCard lines={2} />
+        <SkeletonCard lines={2} />
       </div>
     );
   }
@@ -263,7 +267,7 @@ export default function VendorDetailPage() {
   }
 
   return (
-    <div className="pb-36 animate-fade-in bg-slate-50/50 min-h-screen">
+    <div className="pb-36 animate-fade-in bg-[#FEFCE8] min-h-screen">
       {/* Premium Hero */}
       <div className="relative h-72 w-full bg-slate-900">
         {vendor.image ? (
@@ -338,7 +342,7 @@ export default function VendorDetailPage() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Plans
+              <VegIcon size={16} /> Pure Veg Plans
             </button>
             <button
               type="button"
@@ -349,7 +353,7 @@ export default function VendorDetailPage() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Plans
+              <NonVegIcon size={16} /> Non-Veg Plans
             </button>
           </div>
         )}
@@ -368,9 +372,9 @@ export default function VendorDetailPage() {
             <div className="rounded-3xl overflow-hidden bg-white border border-slate-200/80 shadow-xs">
               <div className="bg-slate-900 px-5 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Utensils className="w-4 h-4 text-brand" />
+                  {selectedCategory === 'non_veg' ? <NonVegIcon size={16} /> : <VegIcon size={16} />}
                   <h3 className="text-white font-black text-xs uppercase tracking-wider">
-                    {selectedCategory === 'non_veg' ? '🍗 Non-Veg Special of the Day' : '🌿 Pure Veg Special of the Day'}
+                    {selectedCategory === 'non_veg' ? 'Non-Veg Special of the Day' : 'Pure Veg Special of the Day'}
                   </h3>
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -494,18 +498,21 @@ export default function VendorDetailPage() {
                       
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className={cn(
-                          "w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-xs",
-                          plan.id === 'lunch' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
-                          plan.id === 'dinner' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 
+                          "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs",
+                          plan.id === 'lunch' ? 'bg-amber-50 text-amber-600 border border-amber-200/70' : 
+                          plan.id === 'dinner' ? 'bg-indigo-50 text-indigo-600 border border-indigo-200/70' : 
                           'bg-amber-500/10 text-brand border border-amber-500/20'
                         )}>
-                          {plan.id === 'lunch' ? '☀️' : plan.id === 'dinner' ? '🌙' : '🍱'}
+                          {plan.id === 'lunch' ? <Clock className="w-5 h-5" /> : plan.id === 'dinner' ? <Clock className="w-5 h-5" /> : <Utensils className="w-5 h-5" />}
                         </div>
                         
                         <div className="min-w-0">
-                          <h3 className="font-black text-slate-900 text-base leading-tight">
-                            {plan.label}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            {plan.isNonVeg ? <NonVegIcon size={15} /> : <VegIcon size={15} />}
+                            <h3 className="font-black text-slate-900 text-base leading-tight">
+                              {plan.label}
+                            </h3>
+                          </div>
                           <p className="text-xs font-medium text-slate-400 mt-0.5">
                             {plan.type}
                           </p>
@@ -679,9 +686,9 @@ export default function VendorDetailPage() {
           onClose={() => setIsModalOpen(false)}
           vendor={vendor}
           initialPlanId={modalInitialPlanId}
-          dietaryCategory={selectedCategory}
-          frequency={selectedFrequency}
-          discount={appliedDiscount}
+          category={selectedCategory}
+          selectedFrequency={selectedFrequency}
+          appliedDiscount={appliedDiscount}
           onSuccess={() => {
             setIsModalOpen(false);
             loadAll();

@@ -12,6 +12,7 @@ import { getApprovedVendors } from '@/lib/queries/users';
 import { getDocs, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { VendorCard } from '@/components/vendor/VendorCard';
+import { OffersCarousel } from '@/components/home/OffersCarousel';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import type { SelectedLocation } from '@/components/shared/LocationSheet';
@@ -106,10 +107,9 @@ export default function UserDashboard() {
       // Listen to today's active delivery order
       const ACTIVE_STATUSES = ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery'];
       let ordersList: any[] = [];
-      let deliveryOrdersList: any[] = [];
 
       const updateActiveDelivery = () => {
-        const allActive = [...ordersList, ...deliveryOrdersList];
+        const allActive = [...ordersList];
         if (allActive.length > 0) {
           const priorityOrder: Record<string, number> = {
             out_for_delivery: 1,
@@ -140,27 +140,12 @@ export default function UserDashboard() {
         },
         (err) => console.warn('Dashboard orders listener warning:', err.message)
       );
-
-      const qDeliveries = query(
-        collection(db, 'delivery_orders'),
-        where('customerId', '==', user.id),
-        where('status', 'in', ACTIVE_STATUSES)
-      );
-      unsubDeliveries = onSnapshot(
-        qDeliveries,
-        (snap) => {
-          deliveryOrdersList = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          updateActiveDelivery();
-        },
-        (err) => console.warn('Dashboard delivery_orders listener warning:', err.message)
-      );
     }, 100);
 
     return () => {
       clearTimeout(timer);
       unsubSubs();
       unsubOrders();
-      unsubDeliveries();
     };
   }, [user]);
 
@@ -486,6 +471,9 @@ export default function UserDashboard() {
               );
             })}
           </div>
+
+          {/* ── Promotional Offers Carousel ── */}
+          <OffersCarousel />
 
           {/* ── Vendor Section Header ── */}
           <div className="mb-4 flex items-center justify-between">

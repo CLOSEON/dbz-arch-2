@@ -206,6 +206,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Promotional Offers Carousel — public read for active offers, admin-only write & full management
+    match /offers/{offerId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+      allow write: if isAdmin();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // ORDERS & SUBSCRIPTIONS (Customer + Vendor + Rider Shared)
     // ═══════════════════════════════════════════════════════════════════════
@@ -298,11 +304,6 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    match /delivery_orders/{orderId} {
-      allow list, get: if request.auth != null;
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
-    }
 
     match /subscription_swap_allowances/{docId} {
       allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());

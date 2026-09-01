@@ -16,6 +16,7 @@ const LiveDeliveryMap = dynamic(() => import('@/components/delivery/LiveDelivery
 });
 import { motion, AnimatePresence } from 'framer-motion';
 import type { DeliveryOrder } from '@/types/delivery';
+import { generateBoxTag } from '@/lib/boxTag';
 
 const RiderTrackingCard = dynamic(
   () => import('@/components/delivery/RiderTrackingCard').then(m => ({ default: m.RiderTrackingCard })),
@@ -191,11 +192,6 @@ export default function CustomerTrackPage() {
       where('user_id', '==', user.id)
     );
 
-    const qDeliveryOrders = query(
-      collection(db, 'delivery_orders'),
-      where('customerId', '==', user.id)
-    );
-
     const qSubs = query(
       collection(db, 'subscriptions'),
       where('user_id', '==', user.id),
@@ -207,18 +203,12 @@ export default function CustomerTrackPage() {
       mergeAndSortOrders();
     }, err => console.warn("Track Orders listener error:", err.message));
 
-    const unsubDeliveryOrders = onSnapshot(qDeliveryOrders, (snap) => {
-      fromDeliveryOrders = snap.docs.map(mapOrderDoc);
-      mergeAndSortOrders();
-    }, err => console.warn("Track DeliveryOrders listener error:", err.message));
-
     const unsubSubs = onSnapshot(qSubs, (snap) => {
       setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, err => console.warn("Track Subs listener error:", err.message));
 
     return () => {
       unsubOrders();
-      unsubDeliveryOrders();
       unsubSubs();
     };
   }, [user?.id]);
@@ -469,6 +459,14 @@ export default function CustomerTrackPage() {
               riderRating={4.8}
               vehicleNumber={currentOrder.vehicleNumber}
               otp={currentOrder.otp || '1234'}
+              boxTag={generateBoxTag({
+                customerName: user?.name,
+                vendorName: currentOrder.vendorName || currentOrder.vendor?.name || 'Kitchen',
+                sequenceNumber: 1,
+                planType: currentOrder.plan_type || currentOrder.planType || 'weekly',
+                cycleNumber: currentOrder.cycle_number || 1,
+                orderId: currentOrder.id
+              })}
               driverLocation={riderLocation || currentOrder.driverLocation || undefined}
               destLocation={currentOrder.address}
               onCallRider={handleCallRider}

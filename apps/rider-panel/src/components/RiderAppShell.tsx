@@ -21,7 +21,7 @@ export function RiderAppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard allowedRoles={['delivery', 'admin']}>
       <RiderDataProvider>
-        <div className="min-h-screen flex flex-col md:flex-row bg-[#FFF7ED] text-slate-900">
+        <div className="min-h-screen flex flex-col md:flex-row bg-[#FEFCE8] text-slate-900">
           <NetworkBanner />
           {/* Desktop Sidebar */}
           <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white/90 backdrop-blur-xl border-r border-slate-200/70 z-50 shadow-[12px_0_40px_rgba(15,23,42,0.04)]">

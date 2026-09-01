@@ -26,7 +26,8 @@ import {
   Clock,
   Phone,
   UserCheck,
-  Plus
+  Plus,
+  PackageOpen
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { DriverProfile, RiderTrip } from '@/types/delivery';
@@ -54,6 +55,8 @@ function getTimestampMs(timestamp: any): number {
 
 export default function AdminDeliveryOversightPage() {
   const { user, isHydrated } = useAuthStore();
+  const isAdmin = user?.role === 'admin' || (user as any)?.is_superadmin === true || user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com';
+
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [riderTrips, setRiderTrips] = useState<RiderTrip[]>([]);
@@ -63,6 +66,8 @@ export default function AdminDeliveryOversightPage() {
   const [allRiders, setAllRiders] = useState<AppUser[]>([]);
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'online' | 'requested' | 'rejected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [showDevActions, setShowDevActions] = useState(false);
   
   // Info Request Modal
   const [infoModalRider, setInfoModalRider] = useState<AppUser | null>(null);
@@ -80,17 +85,39 @@ export default function AdminDeliveryOversightPage() {
 
   // Real-time Fleet Listener
   useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
-    const q = query(collection(db, 'users'), where('role', '==', 'delivery'));
+    if (!isHydrated || !user || !isAdmin) return;
+    const q = query(collection(db, 'users'));
     const unsub = onSnapshot(q, snap => {
-      setAllRiders(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppUser)));
+      const rawRiders = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as AppUser))
+        .filter(u => u.role === 'delivery' || (u as any).roles?.delivery || u.phone === '+919900990044' || u.phone === '+919930577000');
+      
+      // Deduplicate by unique phone number or email (keeping active primary account)
+      const seen = new Set<string>();
+      const deduped: AppUser[] = [];
+      
+      const sorted = [...rawRiders].sort((a, b) => {
+        if (a.email && !b.email) return -1;
+        if (!a.email && b.email) return 1;
+        return 0;
+      });
+
+      for (const r of sorted) {
+        const key = r.phone || r.email || r.id;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(r);
+        }
+      }
+
+      setAllRiders(deduped);
     }, err => console.warn("Admin Riders listener error:", err.message));
     return () => unsub();
-  }, [isHydrated, user]);
+  }, [isHydrated, user, isAdmin]);
 
   // Payments
   useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
+    if (!isHydrated || !user || !isAdmin) return;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const q = query(
@@ -99,7 +126,7 @@ export default function AdminDeliveryOversightPage() {
     );
     const unsub = onSnapshot(q, snap => setPayments(snap.docs.map(d => d.data())));
     return () => unsub();
-  }, [isHydrated, user]);
+  }, [isHydrated, user, isAdmin]);
 
   // Anomalies
   useEffect(() => {
@@ -185,53 +212,54 @@ export default function AdminDeliveryOversightPage() {
 
   // Location listener & Marker updates
   useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
-    if (!isMapLoaded || !googleMapRef.current) return;
+    if (!isHydrated || !user || !isAdmin) return;
     const unsub = subscribeToAllDriverLocations((driversList) => {
       setActiveDrivers(driversList);
-      driversList.forEach((driver) => {
-        if (!driver.currentLocation) return;
-        const { lat, lng } = driver.currentLocation;
-        let marker = markersRef.current.get(driver.uid);
-        if (marker) {
-          marker.setPosition({ lat, lng });
-        } else {
-          marker = new google.maps.Marker({
-            position: { lat, lng },
-            map: googleMapRef.current,
-            label: { text: (driver.name || 'R').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' },
-            icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#ff6b00', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2, scale: 16 }
-          });
-          marker.addListener('click', () => {
-            const drvTrips = tripsRef.current.filter(t => t.riderId === driver.uid).map(t => t.id);
-            const drvOrders = ordersRef.current.filter(o => o.rider_trip_id && drvTrips.includes(o.rider_trip_id));
-            const delivered = drvOrders.filter(o => o.status === 'delivered').length;
-            
-            infoWindowRef.current!.setContent(`
-              <div style="padding: 10px; font-family: sans-serif; font-size: 11px;">
-                <h4 style="margin: 0 0 2px 0; font-weight: 900; color: #ff6b00;">${driver.name}</h4>
-                <p style="margin: 0 0 6px 0; color: #64748b;">📞 ${driver.phone}</p>
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; text-align: center;">
-                  <span style="font-size: 9px; color: #475569;">WORKLOAD</span><br/>
-                  <span style="font-weight: bold;">${delivered} / ${drvOrders.length} Done</span>
+      if (isMapLoaded && googleMapRef.current) {
+        driversList.forEach((driver) => {
+          if (!driver.currentLocation) return;
+          const { lat, lng } = driver.currentLocation;
+          let marker = markersRef.current.get(driver.uid);
+          if (marker) {
+            marker.setPosition({ lat, lng });
+          } else {
+            marker = new google.maps.Marker({
+              position: { lat, lng },
+              map: googleMapRef.current,
+              label: { text: (driver.name || 'R').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' },
+              icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#ff6b00', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2, scale: 16 }
+            });
+            marker.addListener('click', () => {
+              const drvTrips = tripsRef.current.filter(t => t.riderId === driver.uid).map(t => t.id);
+              const drvOrders = ordersRef.current.filter(o => o.rider_trip_id && drvTrips.includes(o.rider_trip_id));
+              const delivered = drvOrders.filter(o => o.status === 'delivered').length;
+              
+              infoWindowRef.current!.setContent(`
+                <div style="padding: 10px; font-family: sans-serif; font-size: 11px;">
+                  <h4 style="margin: 0 0 2px 0; font-weight: 900; color: #ff6b00;">${driver.name}</h4>
+                  <p style="margin: 0 0 6px 0; color: #64748b;">📞 ${driver.phone}</p>
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; text-align: center;">
+                    <span style="font-size: 9px; color: #475569;">WORKLOAD</span><br/>
+                    <span style="font-weight: bold;">${delivered} / ${drvOrders.length} Done</span>
+                  </div>
                 </div>
-              </div>
-            `);
-            infoWindowRef.current!.open(googleMapRef.current!, marker as google.maps.Marker);
-          });
-          markersRef.current.set(driver.uid, marker);
-        }
-      });
-      markersRef.current.forEach((marker, uid) => {
-        if (!driversList.some(d => d.uid === uid)) { marker.setMap(null); markersRef.current.delete(uid); }
-      });
+              `);
+              infoWindowRef.current!.open(googleMapRef.current!, marker as google.maps.Marker);
+            });
+            markersRef.current.set(driver.uid, marker);
+          }
+        });
+        markersRef.current.forEach((marker, uid) => {
+          if (!driversList.some(d => d.uid === uid)) { marker.setMap(null); markersRef.current.delete(uid); }
+        });
+      }
     });
     return () => unsub();
-  }, [isMapLoaded, isHydrated, user]);
+  }, [isMapLoaded, isHydrated, user, isAdmin]);
 
   // Data Listeners: Orders and RiderTrips for today
   useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
+    if (!isHydrated || !user || !isAdmin) return;
     const todayStr = new Date().toISOString().split('T')[0];
 
     const unsubOrders = onSnapshot(query(collection(db, 'orders'), where('date', '==', todayStr)), snap => {
@@ -244,7 +272,7 @@ export default function AdminDeliveryOversightPage() {
     }, err => console.warn("Admin Trips listener error:", err.message));
 
     return () => { unsubOrders(); unsubTrips(); };
-  }, [isHydrated, user]);
+  }, [isHydrated, user, isAdmin]);
 
   // Admin Actions on Riders
   const handleApproveRider = async (rider: AppUser) => {
@@ -381,81 +409,122 @@ export default function AdminDeliveryOversightPage() {
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">Security & Logistics</span>
           <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">Logistics & Fleet Control</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Quick Approve Rider Button */}
           <button 
             onClick={handleQuickApproveByPhone}
-            className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white transition-colors rounded-xl text-xs font-black shadow-xs flex items-center gap-1.5"
+            className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white transition-all rounded-xl text-xs font-black shadow-xs flex items-center gap-2"
           >
-            <UserCheck className="w-3.5 h-3.5" /> Approve Rider ⚡
+            <UserCheck className="w-4 h-4" /> Quick Approve Rider
           </button>
+
+          {/* Master 1-Click Auto Dispatch */}
           <button 
             onClick={async () => {
+              setIsDispatching(true);
+              const toastId = toast.loading('Step 1/3: Generating daily deliveries...');
               try {
-                const { generateTestDeliveryFn } = await import('@/lib/queries/delivery');
-                toast.promise(generateTestDeliveryFn(), {
-                  loading: 'Generating test flow...',
-                  success: (res: any) => res.message || 'Test flow generated',
-                  error: 'Failed to generate test flow'
-                });
+                const { generateTodayDeliveries, forceFormBatches, forceAssignRiders } = await import('@/lib/queries/delivery');
+                
+                const genRes = await generateTodayDeliveries();
+                toast.loading(`Step 2/3: Forming kitchen batches (${genRes.created || 0} orders)...`, { id: toastId });
+                
+                const batchRes = await forceFormBatches();
+                toast.loading(`Step 3/3: Auto-assigning fleet (${batchRes.batchesCreated || 0} batches)...`, { id: toastId });
+                
+                const assignRes = await forceAssignRiders();
+                toast.success(`🎉 Auto-Dispatch Completed! Assigned ${assignRes.assignedCount || 0} batches to riders.`, { id: toastId, duration: 4000 });
               } catch (err: any) {
-                toast.error(err.message);
+                toast.error(err.message || 'Auto-dispatch failed', { id: toastId });
+              } finally {
+                setIsDispatching(false);
               }
-            }} 
-            className="h-9 px-3 bg-purple-600 text-white hover:bg-purple-700 transition-colors rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
+            }}
+            disabled={isDispatching}
+            className="h-10 px-4 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white transition-all rounded-xl text-xs font-black shadow-xs flex items-center gap-2 disabled:opacity-50"
           >
-            <RefreshCw className="w-3 h-3" /> Gen. Test Flow
+            {isDispatching ? <Loader2 className="w-4 h-4 animate-spin text-brand" /> : <RefreshCw className="w-4 h-4 text-brand" />}
+            {isDispatching ? 'Dispatching Fleet...' : 'Auto-Dispatch Fleet'}
           </button>
-          <button 
-            onClick={async () => {
-              try {
-                const { generateTodayDeliveries } = await import('@/lib/queries/delivery');
-                toast.promise(generateTodayDeliveries(), {
-                  loading: 'Generating deliveries...',
-                  success: (res: any) => `Generated: ${res.created}, Skipped: ${res.skipped}`,
-                  error: 'Failed to generate deliveries'
-                });
-              } catch (err: any) {
-                toast.error(err.message);
-              }
-            }} 
-            className="h-9 px-3 bg-slate-900 text-white hover:bg-slate-800 transition-colors rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3 h-3" /> Generate Deliveries
-          </button>
-          <button 
-            onClick={async () => {
-              try {
-                const { forceFormBatches } = await import('@/lib/queries/delivery');
-                toast.promise(forceFormBatches(), {
-                  loading: 'Forming batches...',
-                  success: (res: any) => res.debugStr || `Batches created: ${res.batchesCreated}`,
-                  error: 'Failed to form batches'
-                });
-              } catch (err: any) {
-                toast.error(err.message);
-              }
-            }} 
-            className="h-9 px-3 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3 h-3" /> Form Batches
-          </button>
-          <button 
-            onClick={async () => {
-              try {
-                const { forceAssignRiders } = await import('@/lib/queries/delivery');
-                toast.promise(forceAssignRiders(), {
-                  loading: 'Assigning riders...',
-                  success: (res: any) => res.message || 'Riders assigned',
-                  error: 'Failed to assign riders'
-                });
-              } catch (err: any) {
-                toast.error(err.message);
-              }
-            }} 
-            className="h-9 px-3 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3 h-3" /> Assign Riders
-          </button>
+
+          {/* Consolidated Advanced Controls Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowDevActions(prev => !prev)}
+              className="h-10 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 transition-all rounded-xl text-xs font-black shadow-xs flex items-center gap-1.5"
+            >
+              <Route className="w-3.5 h-3.5 text-slate-400" />
+              Advanced
+              <span className="text-[10px] text-slate-400">▾</span>
+            </button>
+
+            {showDevActions && (
+              <div className="absolute right-0 top-12 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 animate-fade-in space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 py-1.5">Manual Step Execution</p>
+                <button
+                  onClick={async () => {
+                    setShowDevActions(false);
+                    const { generateTestDeliveryFn } = await import('@/lib/queries/delivery');
+                    toast.promise(generateTestDeliveryFn(), {
+                      loading: 'Generating test flow...',
+                      success: (res: any) => res.message || 'Test flow generated',
+                      error: 'Failed to generate test flow'
+                    });
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-800 hover:bg-purple-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-purple-600" />
+                  1-Click Simulation Flow
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDevActions(false);
+                    const { generateTodayDeliveries } = await import('@/lib/queries/delivery');
+                    toast.promise(generateTodayDeliveries(), {
+                      loading: 'Generating deliveries...',
+                      success: (res: any) => `Generated: ${res.created}, Skipped: ${res.skipped}`,
+                      error: 'Failed to generate deliveries'
+                    });
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-800 hover:bg-blue-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" />
+                  Generate Deliveries Only
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDevActions(false);
+                    const { forceFormBatches } = await import('@/lib/queries/delivery');
+                    toast.promise(forceFormBatches(), {
+                      loading: 'Forming batches...',
+                      success: (res: any) => res.debugStr || `Batches created: ${res.batchesCreated}`,
+                      error: 'Failed to form batches'
+                    });
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-800 hover:bg-indigo-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <PackageOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  Form Batches Only
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDevActions(false);
+                    const { forceAssignRiders } = await import('@/lib/queries/delivery');
+                    toast.promise(forceAssignRiders(), {
+                      loading: 'Assigning riders...',
+                      success: (res: any) => res.message || 'Riders assigned',
+                      error: 'Failed to assign riders'
+                    });
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-800 hover:bg-emerald-50 rounded-xl transition-colors flex items-center gap-2"
+                >
+                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                  Assign Available Fleet
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -610,50 +679,37 @@ export default function AdminDeliveryOversightPage() {
             </button>
 
             {/* Filter Tabs */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60">
-              <button
-                onClick={() => setFilterTab('all')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  filterTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                All ({allRiders.length})
-              </button>
-              <button
-                onClick={() => setFilterTab('pending')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all relative ${
-                  filterTab === 'pending' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-700 hover:bg-amber-50'
-                }`}
-              >
-                Pending Approval ({pendingApprovalCount})
-                {pendingApprovalCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-600 rounded-full animate-ping" />
-                )}
-              </button>
-              <button
-                onClick={() => setFilterTab('online')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  filterTab === 'online' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-700 hover:bg-emerald-50'
-                }`}
-              >
-                Active Online ({activeDrivers.length})
-              </button>
-              <button
-                onClick={() => setFilterTab('requested')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  filterTab === 'requested' ? 'bg-blue-600 text-white shadow-xs' : 'text-blue-700 hover:bg-blue-50'
-                }`}
-              >
-                Info Requested ({detailsRequestedCount})
-              </button>
-              <button
-                onClick={() => setFilterTab('rejected')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  filterTab === 'rejected' ? 'bg-rose-600 text-white shadow-xs' : 'text-rose-700 hover:bg-rose-50'
-                }`}
-              >
-                Rejected ({rejectedRidersCount})
-              </button>
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 overflow-x-auto scrollbar-none max-w-full">
+              {[
+                { key: 'all', label: 'All', count: allRiders.length },
+                { key: 'pending', label: 'Pending Approval', count: pendingApprovalCount, alert: pendingApprovalCount > 0 },
+                { key: 'online', label: 'Active Online', count: activeDrivers.length },
+                { key: 'requested', label: 'Info Requested', count: detailsRequestedCount },
+                { key: 'rejected', label: 'Rejected', count: rejectedRidersCount },
+              ].map((tab) => {
+                const active = filterTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setFilterTab(tab.key as any)}
+                    className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 shrink-0 ${
+                      active 
+                        ? 'bg-slate-900 text-white shadow-xs' 
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                      active ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {tab.count}
+                    </span>
+                    {tab.alert && !active && (
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -687,7 +743,7 @@ export default function AdminDeliveryOversightPage() {
             {filteredRiders.map((rider) => {
               const isOnline = activeDrivers.some(d => d.uid === rider.id);
               const liveProfile = activeDrivers.find(d => d.uid === rider.id);
-              const isApproved = rider.is_approved === true && rider.verification_status === 'verified';
+              const isApproved = rider.is_approved === true || rider.verification_status === 'verified';
               const isInfoReq = rider.verification_status === 'details_requested';
               const isRejected = rider.is_rejected || rider.verification_status === 'rejected';
 

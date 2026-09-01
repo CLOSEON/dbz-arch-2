@@ -1,7 +1,8 @@
 'use client';
 
 import { useAuthStore } from '@/store/authStore';
-import { IndianRupee, Clock, RotateCcw, Calendar, Leaf, Drumstick, Tag, ShieldCheck, PhoneCall } from 'lucide-react';
+import { IndianRupee, Clock, RotateCcw, Calendar, Tag, ShieldCheck, PhoneCall } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 export function MealRatesCard() {
   const user = useAuthStore((s) => s.user);
@@ -69,12 +70,12 @@ export function MealRatesCard() {
         </div>
       </div>
 
-      {/* 🌿 Vegetarian Rates */}
+      {/* Vegetarian Rates */}
       {hasVeg && (
         <div className="bg-emerald-50/30 rounded-2xl p-4 border border-emerald-100 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Leaf className="w-4 h-4 text-emerald-600" />
+              <VegIcon size={16} />
               <span className="text-xs font-black uppercase tracking-wider text-emerald-900">Vegetarian Plan Rates</span>
             </div>
             <span className="text-[10px] font-bold bg-white text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100 shadow-sm">
@@ -104,12 +105,12 @@ export function MealRatesCard() {
         </div>
       )}
 
-      {/* 🍗 Non-Vegetarian Rates */}
+      {/* Non-Vegetarian Rates */}
       {hasNonVeg && (
         <div className="bg-rose-50/30 rounded-2xl p-4 border border-rose-100 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Drumstick className="w-4 h-4 text-rose-600" />
+              <NonVegIcon size={16} />
               <span className="text-xs font-black uppercase tracking-wider text-rose-900">Non-Vegetarian Plan Rates</span>
             </div>
             <span className="text-[10px] font-bold bg-white text-rose-700 px-2 py-0.5 rounded-lg border border-rose-100 shadow-sm">

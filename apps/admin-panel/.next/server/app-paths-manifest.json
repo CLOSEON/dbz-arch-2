@@ -5,6 +5,7 @@
   "/(admin)/admin/discount-codes/page": "app/(admin)/admin/discount-codes/page.js",
   "/(admin)/admin/migrate/page": "app/(admin)/admin/migrate/page.js",
   "/(admin)/admin/notifications/page": "app/(admin)/admin/notifications/page.js",
+  "/(admin)/admin/offers/page": "app/(admin)/admin/offers/page.js",
   "/(admin)/admin/orders/page": "app/(admin)/admin/orders/page.js",
   "/(admin)/admin/subscriptions/page": "app/(admin)/admin/subscriptions/page.js",
   "/(admin)/admin/support/page": "app/(admin)/admin/support/page.js",

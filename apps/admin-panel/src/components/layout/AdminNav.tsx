@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store, Sparkles } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
@@ -11,6 +11,11 @@ const NAV_ITEMS = [
     href: '/admin/dashboard',
     label: 'Overview',
     icon: (active: boolean) => <LayoutDashboard className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/offers',
+    label: 'Offers',
+    icon: (active: boolean) => <Sparkles className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/admin/batches',

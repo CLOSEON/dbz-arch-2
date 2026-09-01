@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, MapPin, ArrowLeft, ShieldCheck, CreditCard, Plus, Check, Leaf, Drumstick, Sparkles } from 'lucide-react';
+import { Loader2, MapPin, Navigation, ArrowLeft, ShieldCheck, CreditCard, Plus, Check, Sparkles } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 import { AppUser, SubscriptionFrequency, MealType, DietaryCategory, SelectedAddon } from '@/types';
 import { updateUser } from '@/lib/queries/users';
 import { createSubscription } from '@/lib/queries/subscriptions';
@@ -12,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
+import { reverseGeocode } from '@/lib/geo';
 
 type RazorpayPaymentResponse = {
   razorpay_payment_id: string;
@@ -46,6 +48,10 @@ export function SubscriptionOnboardingModal({
 
   const [step, setStep] = useState(1);
   const [address, setAddress] = useState(user?.address || '');
+  const [flatBuilding, setFlatBuilding] = useState('');
+  const [areaStreet, setAreaStreet] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [cityPincode, setCityPincode] = useState('');
   const [location, setLocation] = useState(user?.location || null);
   const [detectingLoc, setDetectingLoc] = useState(false);
   const [planId, setPlanId] = useState(initialPlanId || 'lunch');
@@ -69,6 +75,20 @@ export function SubscriptionOnboardingModal({
       setLocation(user?.location || null);
       setDeliveryPreference(user?.deliveryPreference || null);
       setPaymentStatus('idle');
+
+      if (user?.address) {
+        const parts = user.address.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (parts.length === 1) {
+          setFlatBuilding(parts[0]);
+        } else if (parts.length === 2) {
+          setFlatBuilding(parts[0]);
+          setCityPincode(parts[1]);
+        } else {
+          setFlatBuilding(parts[0]);
+          setAreaStreet(parts.slice(1, -1).join(', '));
+          setCityPincode(parts[parts.length - 1]);
+        }
+      }
     }
   }, [isOpen, initialPlanId, initialCategory, user]);
 
@@ -177,23 +197,74 @@ export function SubscriptionOnboardingModal({
   const handleDetectLocation = () => {
     setDetectingLoc(true);
     if (!navigator.geolocation) {
-      addToast('Geolocation not supported', 'error');
+      addToast('Geolocation not supported on this browser', 'error');
       setDetectingLoc(false);
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, updated_at: Date.now() });
-        setDetectingLoc(false);
-        addToast('Location detected!', 'success');
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({ lat, lng, updated_at: Date.now() });
+
+        try {
+          const geo = await reverseGeocode(lat, lng);
+          
+          const areaParts = [
+            geo.building,
+            geo.road,
+            geo.neighbourhood,
+            geo.suburb,
+            geo.locality
+          ].filter(Boolean);
+
+          const uniqueArea: string[] = [];
+          areaParts.forEach((p) => {
+            if (p && !uniqueArea.some((u) => u.toLowerCase() === p.toLowerCase())) {
+              uniqueArea.push(p);
+            }
+          });
+
+          if (uniqueArea.length > 0) {
+            setAreaStreet(uniqueArea.join(', '));
+          }
+
+          const cityParts = [geo.city, geo.state, geo.pincode ? `PIN ${geo.pincode}` : ''].filter(Boolean);
+          if (cityParts.length > 0) {
+            setCityPincode(cityParts.join(', '));
+          }
+
+          if (geo.completeAddress) {
+            setAddress(geo.completeAddress);
+          }
+          addToast('GPS location & area detected! 📍', 'success');
+        } catch (e) {
+          addToast('Location coordinates captured!', 'success');
+        } finally {
+          setDetectingLoc(false);
+        }
       },
-      () => { setDetectingLoc(false); addToast('Please allow location access.', 'error'); },
-      { enableHighAccuracy: true, timeout: 10000 }
+      () => { 
+        setDetectingLoc(false); 
+        addToast('Please allow location access in your browser settings.', 'error'); 
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
     );
   };
 
   const handleConfirmStep1 = () => {
-    if (!address.trim()) { addToast('Please enter an address', 'error'); return; }
+    const computed = [
+      flatBuilding.trim(),
+      landmark.trim() ? `(Landmark: ${landmark.trim()})` : '',
+      areaStreet.trim(),
+      cityPincode.trim()
+    ].filter(Boolean).join(', ') || address.trim();
+
+    if (!computed.trim()) {
+      addToast('Please enter your delivery doorstep address', 'error');
+      return;
+    }
+    setAddress(computed);
     setStep(2);
   };
   const handleConfirmStep2 = () => setStep(3);
@@ -408,29 +479,99 @@ export function SubscriptionOnboardingModal({
 
                 {/* ── Step 1: Location ─────────────────────────────────────── */}
                 {step === 1 && (
-                  <div className="space-y-5 animate-fade-in">
-                    <button
-                      onClick={handleDetectLocation}
-                      disabled={detectingLoc}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-brand-50 text-brand rounded-2xl font-bold transition-colors hover:bg-brand-100"
-                    >
-                      {detectingLoc ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className="w-5 h-5" />}
-                      {location ? 'Location Detected (Update)' : 'Detect Current Location'}
-                    </button>
+                  <div className="space-y-4 animate-fade-in">
+                    {/* Live GPS Header Card */}
+                    <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          location ? 'bg-emerald-100 text-emerald-700' : 'bg-brand/10 text-brand'
+                        }`}>
+                          <Navigation className={`w-5 h-5 ${detectingLoc ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-slate-900 leading-tight">
+                            {location ? 'GPS Location Pinned' : 'Delivery Coordinates'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">
+                            {detectingLoc 
+                              ? 'Locating high-precision GPS...' 
+                              : cityPincode || (location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Tap to pin current location')}
+                          </p>
+                        </div>
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Complete Address</label>
-                      <textarea
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder="Flat/House No, Building, Street, Landmark"
-                        rows={3}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-medium outline-none focus:border-brand/40 transition-colors resize-none"
-                      />
+                      <button
+                        type="button"
+                        onClick={handleDetectLocation}
+                        disabled={detectingLoc}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 active:scale-95 shadow-xs"
+                      >
+                        {detectingLoc ? 'Locating…' : location ? 'Re-Pin GPS' : 'Use GPS'}
+                      </button>
                     </div>
 
-                    <button onClick={handleConfirmStep1} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
-                      Confirm Location
+                    {/* Form Fields for Maximum Rider Accuracy */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                          Flat / House / Floor No. & Building <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={flatBuilding}
+                          onChange={(e) => setFlatBuilding(e.target.value)}
+                          placeholder="e.g. Flat 402, Sunshine Heights, Wing B"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                          Area / Street / Colony <span className="text-slate-400 font-normal">(Auto-Detected)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={areaStreet}
+                          onChange={(e) => setAreaStreet(e.target.value)}
+                          placeholder="e.g. Near Medical Square, Rambagh"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                            Landmark <span className="text-slate-400 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={landmark}
+                            onChange={(e) => setLandmark(e.target.value)}
+                            placeholder="e.g. Opp. SBI Bank"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                            City & Pincode
+                          </label>
+                          <input
+                            type="text"
+                            value={cityPincode}
+                            onChange={(e) => setCityPincode(e.target.value)}
+                            placeholder="e.g. Nagpur, Maharashtra - 440008"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleConfirmStep1} 
+                      className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-[0.98] shadow-md mt-2"
+                    >
+                      Confirm Delivery Address
                     </button>
                   </div>
                 )}
@@ -450,7 +591,7 @@ export function SubscriptionOnboardingModal({
                               : 'text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg
+                          <VegIcon size={16} /> Pure Veg
                         </button>
                         <button
                           type="button"
@@ -461,7 +602,7 @@ export function SubscriptionOnboardingModal({
                               : 'text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg
+                          <NonVegIcon size={16} /> Non-Veg
                         </button>
                       </div>
                     )}

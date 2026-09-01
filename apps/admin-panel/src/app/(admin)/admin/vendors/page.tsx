@@ -34,7 +34,26 @@ export default function AdminVendors() {
     setLoading(true);
     try {
       const list = await getAllUsers();
-      setUsers(list.filter(u => u.role === 'vendor'));
+      const rawVendors = list.filter(u => u.role === 'vendor' || (u as any).roles?.vendor);
+      
+      // Deduplicate vendors by unique phone or unique kitchen name (prioritizing profile with logo/banner)
+      const seen = new Set<string>();
+      const deduped: AppUser[] = [];
+      const sorted = [...rawVendors].sort((a, b) => {
+        if ((a as any).banner_url || (a as any).logo_url) return -1;
+        if ((b as any).banner_url || (b as any).logo_url) return 1;
+        return 0;
+      });
+
+      for (const v of sorted) {
+        const key = v.phone || v.kitchen_name || v.id;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(v);
+        }
+      }
+
+      setUsers(deduped);
     } catch (err) {
       addToast('Failed to load vendors', 'error');
     } finally {

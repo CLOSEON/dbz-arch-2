@@ -102,6 +102,7 @@ interface RiderTrackingCardProps {
   riderRating?: number;
   vehicleNumber?: string;
   otp?: string;
+  boxTag?: string;
   driverLocation?: { lat: number; lng: number };
   destLocation?: { lat: number; lng: number };
   onCallRider?: (phone: string) => void;
@@ -117,6 +118,7 @@ export function RiderTrackingCard({
   riderRating = 4.8,
   vehicleNumber,
   otp,
+  boxTag,
   driverLocation,
   destLocation,
   onCallRider,
@@ -279,24 +281,41 @@ export function RiderTrackingCard({
         </AnimatePresence>
       </div>
 
-      {/* ── OTP Handover — shown prominently when rider is out_for_delivery ── */}
+      {/* ── Box Tag & OTP Card (visible when out for delivery or rider assigned) ── */}
       <AnimatePresence>
-        {!isDelivered && !isCancelled && otp && (
+        {otp && ['rider_assigned', 'picked_up', 'out_for_delivery'].includes(status) && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className={`rounded-[24px] border-2 overflow-hidden ${
-              status === 'out_for_delivery'
-                ? 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-teal-50'
-                : 'border-slate-100 bg-white'
-            }`}
+            className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)] space-y-4"
           >
-            <div className="p-4">
-              <div className="flex items-center justify-between">
+            {/* Box Tag Banner */}
+            {boxTag && (
+              <div className="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between border border-slate-800 shadow-md">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Handover PIN</p>
-                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    🏷️ Your Tiffin Box Tag Code
+                  </span>
+                  <div className="text-2xl font-mono font-black text-white tracking-widest mt-0.5">
+                    {boxTag}
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Verify this code on your tiffin container at delivery
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                  Match Tag ✓
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                  {status === 'out_for_delivery' ? '⚡ Delivery PIN' : 'Handover PIN'}
+                </span>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
                     {status === 'out_for_delivery' ? '🔔 Rider is nearby! Share this PIN at your door' : 'Share with rider when they arrive'}
                   </p>
                 </div>
@@ -340,7 +359,6 @@ export function RiderTrackingCard({
                   <p className="text-[10px] font-bold text-emerald-700">Your rider is on the way to your door right now</p>
                 </motion.div>
               )}
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
