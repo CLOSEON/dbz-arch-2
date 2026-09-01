@@ -212,7 +212,7 @@ export default function UserDashboard() {
           className="relative rounded-b-[36px] overflow-hidden"
           style={{
             background: '#E68A00',
-            paddingBottom: '44px',
+            paddingBottom: '16px',
             paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
           }}
         >
@@ -248,7 +248,7 @@ export default function UserDashboard() {
 
           <div className="relative z-10 px-5 sm:px-6">
             {/* ── Top bar ── */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between">
               {/* Location — opens dynamic sheet */}
               <button
                 type="button"
@@ -300,7 +300,7 @@ export default function UserDashboard() {
             </div>
 
             {/* ── Full Hero Stage Offers Carousel (Seamless Edge-to-Edge) ── */}
-            <div className="-mx-5 sm:-mx-6 mt-2">
+            <div className="-mx-5 sm:-mx-6 mt-1">
               <OffersCarousel
                 activeDelivery={activeDelivery}
                 activeSubs={activeSubs}
@@ -316,7 +316,7 @@ export default function UserDashboard() {
         ════════════════════════════════════════ */}
         <div className="px-5 pb-8 sm:px-6">
           {/* ── Search Bar ── */}
-          <div className="group relative -mt-7 mb-5">
+          <div className="group relative -mt-6 mb-5">
             <div className="pointer-events-none absolute left-4.5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-brand">
               <Search className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </div>

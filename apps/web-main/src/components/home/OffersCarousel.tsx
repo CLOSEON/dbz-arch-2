@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { getActiveOffers } from '@/lib/offers';
 import { getImageUrl } from '@/lib/storage';
 import { Offer } from '@/types';
-import { Store, ArrowRight, ChevronLeft, ChevronRight, BadgePercent, Sparkles, ChefHat } from 'lucide-react';
+import { Store, ArrowRight, ChevronLeft, ChevronRight, BadgePercent, ChefHat } from 'lucide-react';
 import { triggerHapticSelection, triggerHapticImpact, ImpactStyle } from '@/lib/haptics';
 
 interface OffersCarouselProps {
@@ -116,7 +116,7 @@ export function OffersCarousel({
   const renderPermanentSlide = () => {
     if (activeDelivery) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-gradient-to-b from-[#B45309]/50 via-black/40 to-black/70 text-white">
           <div>
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
@@ -134,11 +134,11 @@ export function OffersCarousel({
               Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing your fresh meal'}
             </p>
           </div>
-          <div className="mt-3">
+          <div className="mt-2">
             <Link
               href="/track"
               onClick={triggerHapticSelection}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-950 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-900 transition-all duration-200 active:scale-[0.98] shadow-md border border-white/10"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2 bg-slate-950 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-900 transition-all duration-200 active:scale-[0.98] shadow-md border border-white/15"
             >
               <span>Track Live Delivery</span>
               <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
@@ -150,7 +150,7 @@ export function OffersCarousel({
 
     if (activeSubs.length > 0) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-gradient-to-b from-[#B45309]/50 via-black/40 to-black/70 text-white">
           <div>
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
@@ -172,11 +172,11 @@ export function OffersCarousel({
               Your kitchen meals are scheduled and tracking automatically.
             </p>
           </div>
-          <div className="mt-3">
+          <div className="mt-2">
             <Link
               href="/orders"
               onClick={triggerHapticSelection}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-white/20 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-white/25 transition-all duration-200 active:scale-[0.98] border border-white/20 shadow-md backdrop-blur-md"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2 bg-white/20 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-white/25 transition-all duration-200 active:scale-[0.98] border border-white/20 shadow-md backdrop-blur-md"
             >
               <span>Manage Weekly Planner</span>
               <ArrowRight className="w-3.5 h-3.5 text-white/90" />
@@ -188,29 +188,27 @@ export function OffersCarousel({
 
     // Default Grand Hero Brand Slide
     return (
-      <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-6 bg-gradient-to-b from-black/10 via-black/15 to-black/30 text-white">
+      <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-gradient-to-b from-[#B45309]/40 via-black/35 to-black/65 text-white">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="rounded-full px-3 py-0.5 text-[10px] font-black tracking-widest uppercase bg-white/20 text-white inline-block border border-white/10">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="rounded-full px-2.5 py-0.5 text-[9.5px] font-black tracking-widest uppercase bg-white/20 text-white inline-block border border-white/10">
               Dabzzo Tiffins
             </span>
             <span className="text-[11px] font-bold tracking-wider text-amber-100/90 uppercase">
               {greetingText}, {firstName}!
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">
             Homestyle Meals &amp; Daily Tiffins
           </h2>
-          <p className="mt-1.5 text-xs sm:text-sm text-white/90 leading-relaxed font-medium max-w-[90%]">
+          <p className="mt-1 text-xs sm:text-[13px] text-white/90 leading-relaxed font-medium max-w-[90%]">
             Authentic kitchen cooked meals delivered daily. Pause, swap kitchens, or customize anytime.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-100/80">
-            <ChefHat className="w-4 h-4 text-amber-300" />
-            <span>Verified Local Home Chefs</span>
-          </div>
+        <div className="flex items-center gap-2 text-[11px] font-bold text-amber-100/80">
+          <ChefHat className="w-4 h-4 text-amber-300" />
+          <span>Verified Local Home Chefs</span>
         </div>
       </div>
     );
@@ -225,7 +223,7 @@ export function OffersCarousel({
       onTouchEnd={() => setIsPaused(false)}
     >
       {/* ════════════════════════════════════════
-          FULL-BLEED IMMERSIVE HERO STAGE
+          FULL-BLEED HERO BANNER STAGE
       ════════════════════════════════════════ */}
       <div className="relative w-full overflow-hidden h-[210px] sm:h-[235px] bg-[#E68A00]">
         {/* Horizontal Scroll Snap Area */}
@@ -255,16 +253,10 @@ export function OffersCarousel({
                     src={bannerUrl}
                     alt={offer.title || 'Promotional Offer'}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    style={{
-                      WebkitMaskImage:
-                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 10%, black 25%)',
-                      maskImage:
-                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 10%, black 25%)',
-                    }}
                     loading="eager"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-6 sm:px-8 py-6 text-white">
+                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-6 sm:px-8 py-5 text-white">
                     <div className="flex items-center gap-1.5">
                       <BadgePercent className="w-4 h-4 text-brand" />
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
@@ -277,8 +269,14 @@ export function OffersCarousel({
                   </div>
                 )}
 
-                {/* ── Seamless Multi-Stop Warm Orange Top Blend ── */}
-                <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#E68A00] via-[#E68A00]/40 to-transparent pointer-events-none z-10" />
+                {/* ── Rich Dark Orange Shadow Blend from Top ── */}
+                <div
+                  className="absolute inset-x-0 top-0 h-28 pointer-events-none z-10"
+                  style={{
+                    background:
+                      'linear-gradient(to bottom, #E68A00 0%, rgba(194, 94, 0, 0.85) 30%, rgba(124, 45, 18, 0.6) 65%, rgba(69, 26, 3, 0.25) 85%, transparent 100%)',
+                  }}
+                />
 
                 {/* ── Soft Edge Vignette ── */}
                 <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#E68A00]/40 to-transparent pointer-events-none z-10" />
@@ -288,7 +286,7 @@ export function OffersCarousel({
                 <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
 
                 {/* Offer Title & Action Pill */}
-                <div className="absolute inset-x-5 sm:inset-x-6 bottom-4 flex items-center justify-between gap-3 z-20">
+                <div className="absolute inset-x-5 sm:inset-x-6 bottom-3.5 flex items-center justify-between gap-3 z-20">
                   <span className="text-sm sm:text-base font-black text-white drop-shadow-md truncate max-w-[55%]">
                     {offer.title}
                   </span>
@@ -343,7 +341,7 @@ export function OffersCarousel({
             INTEGRATED BOTTOM PAGINATION DOTS
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
+          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
             {Array.from({ length: totalSlides }).map((_, i) => (
               <button
                 key={i}
