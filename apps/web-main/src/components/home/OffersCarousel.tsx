@@ -5,15 +5,22 @@ import Link from 'next/link';
 import { getActiveOffers } from '@/lib/offers';
 import { getImageUrl } from '@/lib/storage';
 import { Offer } from '@/types';
-import { Store, ArrowRight, ChevronLeft, ChevronRight, BadgePercent } from 'lucide-react';
+import { Store, ArrowRight, ChevronLeft, ChevronRight, BadgePercent, Sparkles, ChefHat } from 'lucide-react';
 import { triggerHapticSelection, triggerHapticImpact, ImpactStyle } from '@/lib/haptics';
 
 interface OffersCarouselProps {
   activeDelivery?: any;
   activeSubs?: any[];
+  firstName?: string;
+  greetingText?: string;
 }
 
-export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarouselProps) {
+export function OffersCarousel({
+  activeDelivery,
+  activeSubs = [],
+  firstName = 'there',
+  greetingText = 'Good day',
+}: OffersCarouselProps) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -109,31 +116,32 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
   const renderPermanentSlide = () => {
     if (activeDelivery) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-black/25 text-white">
           <div>
-            <div className="flex items-center justify-between gap-3 mb-1.5">
+            <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider">
                   Live Delivery Status
                 </span>
               </div>
-              <span className="text-[9.5px] font-bold text-white/60 uppercase">Today</span>
+              <span className="text-[10px] font-bold text-white/60 uppercase">Today</span>
             </div>
-            <p className="text-white font-bold text-base leading-tight truncate">
+            <p className="text-white font-black text-xl sm:text-2xl leading-tight truncate">
               {activeDelivery.partnerName || 'Your Kitchen'}
             </p>
-            <p className="text-amber-100/80 text-xs mt-0.5 capitalize">
-              Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
+            <p className="text-amber-100/90 text-sm mt-1 capitalize font-medium">
+              Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing your fresh meal'}
             </p>
           </div>
-          <div className="mt-2.5">
+          <div className="mt-3">
             <Link
               href="/track"
               onClick={triggerHapticSelection}
-              className="block w-full text-center py-2 bg-slate-950/90 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-slate-900 transition-all duration-200 active:scale-[0.98] shadow-xs border border-white/10"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-950 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-900 transition-all duration-200 active:scale-[0.98] shadow-md border border-white/10"
             >
-              Track Live Delivery
+              <span>Track Live Delivery</span>
+              <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
             </Link>
           </div>
         </div>
@@ -142,54 +150,67 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
 
     if (activeSubs.length > 0) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-5 bg-black/25 text-white">
           <div>
-            <div className="flex items-center justify-between gap-3 mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-amber-300" />
-                <span className="text-[10px] font-bold text-amber-200 uppercase tracking-wider">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-300" />
+                <span className="text-[11px] font-black text-amber-200 uppercase tracking-wider">
                   Subscription Active
                 </span>
               </div>
-              <span className="text-[9.5px] font-bold text-white/60 uppercase">
+              <span className="text-[10px] font-bold text-white/60 uppercase">
                 {activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}
               </span>
             </div>
-            <p className="text-white font-bold text-base leading-tight truncate">
+            <p className="text-white font-black text-xl sm:text-2xl leading-tight truncate">
               {activeSubs[0].meal_type
                 ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions`
-                : 'Daily Meals'}
+                : 'Daily Meals Scheduled'}
             </p>
-            <p className="text-amber-100/80 text-xs mt-0.5">
+            <p className="text-amber-100/90 text-sm mt-1 font-medium">
               Your kitchen meals are scheduled and tracking automatically.
             </p>
           </div>
-          <div className="mt-2.5">
+          <div className="mt-3">
             <Link
               href="/orders"
               onClick={triggerHapticSelection}
-              className="block w-full text-center py-2 bg-white/15 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/20 transition-all duration-200 active:scale-[0.98] border border-white/15"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-white/20 text-white font-black text-xs uppercase tracking-wider rounded-xl hover:bg-white/25 transition-all duration-200 active:scale-[0.98] border border-white/20 shadow-md backdrop-blur-md"
             >
-              Manage Weekly Planner
+              <span>Manage Weekly Planner</span>
+              <ArrowRight className="w-3.5 h-3.5 text-white/90" />
             </Link>
           </div>
         </div>
       );
     }
 
-    // Default Glassmorphic Brand Card
+    // Default Grand Hero Brand Slide
     return (
-      <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-gradient-to-b from-black/10 via-black/15 to-black/25 text-white">
+      <div className="relative w-full h-full flex flex-col justify-between px-6 sm:px-8 py-6 bg-gradient-to-b from-black/10 via-black/15 to-black/30 text-white">
         <div>
-          <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/20 text-white inline-block">
-            Premium Meal Service
-          </span>
-          <h2 className="mt-2 text-base sm:text-lg font-bold text-white leading-snug">
-            Healthy Home Tiffins. Pause or Swap Anytime.
+          <div className="flex items-center gap-2 mb-2">
+            <span className="rounded-full px-3 py-0.5 text-[10px] font-black tracking-widest uppercase bg-white/20 text-white inline-block border border-white/10">
+              Dabzzo Tiffins
+            </span>
+            <span className="text-[11px] font-bold tracking-wider text-amber-100/90 uppercase">
+              {greetingText}, {firstName}!
+            </span>
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight">
+            Homestyle Meals &amp; Daily Tiffins
           </h2>
-          <p className="mt-1 text-[11.5px] text-white/85 leading-relaxed font-normal line-clamp-2">
-            Switch kitchens easily if you want a change, or pause when you are away.
+          <p className="mt-1.5 text-xs sm:text-sm text-white/90 leading-relaxed font-medium max-w-[90%]">
+            Authentic kitchen cooked meals delivered daily. Pause, swap kitchens, or customize anytime.
           </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-100/80">
+            <ChefHat className="w-4 h-4 text-amber-300" />
+            <span>Verified Local Home Chefs</span>
+          </div>
         </div>
       </div>
     );
@@ -204,9 +225,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
       onTouchEnd={() => setIsPaused(false)}
     >
       {/* ════════════════════════════════════════
-          FULL-BLEED HERO CAROUSEL FRAME
+          FULL-BLEED IMMERSIVE HERO STAGE
       ════════════════════════════════════════ */}
-      <div className="relative w-full overflow-hidden h-[160px] sm:h-[170px] bg-[#E68A00]">
+      <div className="relative w-full overflow-hidden h-[210px] sm:h-[235px] bg-[#E68A00]">
         {/* Horizontal Scroll Snap Area */}
         <div
           ref={containerRef}
@@ -217,7 +238,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          {/* SLIDE 0: Permanent Info / Status Slide */}
+          {/* SLIDE 0: Permanent Brand / Status Slide */}
           <div className="w-full h-full shrink-0 snap-start snap-always">
             {renderPermanentSlide()}
           </div>
@@ -236,47 +257,47 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     style={{
                       WebkitMaskImage:
-                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 15%, black 35%)',
+                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 10%, black 25%)',
                       maskImage:
-                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 15%, black 35%)',
+                        'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 10%, black 25%)',
                     }}
                     loading="eager"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-5 sm:px-6 py-4 text-white">
+                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-6 sm:px-8 py-6 text-white">
                     <div className="flex items-center gap-1.5">
                       <BadgePercent className="w-4 h-4 text-brand" />
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
                         Special Offer
                       </span>
                     </div>
-                    <h3 className="text-base font-black tracking-tight leading-snug line-clamp-2">
+                    <h3 className="text-xl sm:text-2xl font-black tracking-tight leading-snug line-clamp-2">
                       {offer.title}
                     </h3>
                   </div>
                 )}
 
                 {/* ── Seamless Multi-Stop Warm Orange Top Blend ── */}
-                <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#E68A00] via-[#E68A00]/50 to-transparent pointer-events-none z-10" />
+                <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#E68A00] via-[#E68A00]/40 to-transparent pointer-events-none z-10" />
 
                 {/* ── Soft Edge Vignette ── */}
                 <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#E68A00]/40 to-transparent pointer-events-none z-10" />
                 <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#E68A00]/40 to-transparent pointer-events-none z-10" />
 
                 {/* ── Bottom Dark Shadow for Legibility ── */}
-                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/85 via-black/35 to-transparent pointer-events-none z-10" />
+                <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-10" />
 
                 {/* Offer Title & Action Pill */}
-                <div className="absolute inset-x-5 sm:inset-x-6 bottom-3 flex items-center justify-between gap-2 z-20">
-                  <span className="text-xs sm:text-sm font-black text-white drop-shadow-md truncate max-w-[55%]">
+                <div className="absolute inset-x-5 sm:inset-x-6 bottom-4 flex items-center justify-between gap-3 z-20">
+                  <span className="text-sm sm:text-base font-black text-white drop-shadow-md truncate max-w-[55%]">
                     {offer.title}
                   </span>
 
                   {isKitchenLink && (
-                    <div className="px-3.5 py-1.5 rounded-full bg-white text-slate-950 backdrop-blur-md text-[11px] font-black tracking-tight flex items-center gap-1.5 shadow-lg active:scale-95 shrink-0 transition-transform hover:bg-white/95">
+                    <div className="px-4 py-2 rounded-full bg-white text-slate-950 backdrop-blur-md text-xs font-black tracking-tight flex items-center gap-1.5 shadow-xl active:scale-95 shrink-0 transition-transform hover:bg-white/95">
                       <Store className="w-3.5 h-3.5 text-[#E68A00]" />
                       <span>View Kitchen</span>
-                      <ArrowRight className="w-3 h-3 text-slate-700" />
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-700" />
                     </div>
                   )}
                 </div>
@@ -311,8 +332,8 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             INTEGRATED COUNTER BADGE (e.g. 1/2)
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
-          <div className="absolute top-2.5 right-4 sm:right-6 z-20 pointer-events-none">
-            <div className="px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-md text-white/90 font-bold text-[9px] tracking-wider border border-white/10 shadow-2xs">
+          <div className="absolute top-3 right-5 sm:right-6 z-20 pointer-events-none">
+            <div className="px-2.5 py-0.5 rounded-full bg-black/50 backdrop-blur-md text-white/90 font-bold text-[9.5px] tracking-wider border border-white/10 shadow-xs">
               {currentIndex + 1}/{totalSlides}
             </div>
           </div>
@@ -322,7 +343,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             INTEGRATED BOTTOM PAGINATION DOTS
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
             {Array.from({ length: totalSlides }).map((_, i) => (
               <button
                 key={i}
@@ -331,8 +352,8 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                 aria-label={`Go to slide ${i + 1}`}
                 className={`transition-all duration-300 rounded-full ${
                   i === currentIndex
-                    ? 'w-4 h-1 bg-white shadow-2xs'
-                    : 'w-1 h-1 bg-white/40 hover:bg-white/70'
+                    ? 'w-4 h-1.5 bg-white shadow-xs'
+                    : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'
                 }`}
               />
             ))}
@@ -348,18 +369,18 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
               type="button"
               onClick={handlePrev}
               aria-label="Previous slide"
-              className="hidden sm:flex absolute left-3 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
+              className="hidden sm:flex absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
 
             <button
               type="button"
               onClick={handleNext}
               aria-label="Next slide"
-              className="hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
+              className="hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md border border-white/10 active:scale-95"
             >
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </>
         )}

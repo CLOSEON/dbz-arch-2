@@ -299,24 +299,14 @@ export default function UserDashboard() {
               </div>
             </div>
 
-            {/* ── Headline ── */}
-            <div className="mb-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-100/90 mb-1">
-                {greeting()}, {firstName}!
-              </p>
-              <h1
-                className="font-black leading-[1.08] tracking-[-0.025em] text-white"
-                style={{ fontSize: 'clamp(28px, 8vw, 36px)' }}
-              >
-                Fresh Home Tiffins
-                <br />
-                Delivered Daily.
-              </h1>
-            </div>
-
-            {/* ── Status & Promotional Offers Carousel (Full-Bleed with Orange Gradient Blend) ── */}
-            <div className="-mx-5 sm:-mx-6 mt-1">
-              <OffersCarousel activeDelivery={activeDelivery} activeSubs={activeSubs} />
+            {/* ── Full Hero Stage Offers Carousel (Seamless Edge-to-Edge) ── */}
+            <div className="-mx-5 sm:-mx-6 mt-2">
+              <OffersCarousel
+                activeDelivery={activeDelivery}
+                activeSubs={activeSubs}
+                firstName={firstName}
+                greetingText={greeting()}
+              />
             </div>
           </div>
         </section>
