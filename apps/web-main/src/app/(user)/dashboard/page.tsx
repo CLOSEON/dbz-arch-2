@@ -314,76 +314,8 @@ export default function UserDashboard() {
               </h1>
             </div>
 
-            {/* ── Status / Subscription Card ── */}
-            {activeDelivery ? (
-              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                      Live Delivery Status
-                    </span>
-                  </div>
-                  <span className="text-[9.5px] font-bold text-white/50 uppercase">Today</span>
-                </div>
-                <p className="text-white font-bold text-base leading-tight">
-                  {activeDelivery.partnerName || 'Your Kitchen'}
-                </p>
-                <p className="text-slate-400 text-xs mt-1 capitalize">
-                  Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
-                </p>
-                <div className="mt-3.5 flex gap-2">
-                  <Link
-                    href="/track"
-                    className="flex-1 text-center py-2.5 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98]"
-                  >
-                    Track Live Delivery
-                  </Link>
-                </div>
-              </div>
-            ) : activeSubs.length > 0 ? (
-              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
-                      Subscription Active
-                    </span>
-                  </div>
-                  <span className="text-[9.5px] font-bold text-white/50 uppercase">
-                    {activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}
-                  </span>
-                </div>
-                <p className="text-white font-bold text-base leading-tight">
-                  {activeSubs[0].meal_type
-                    ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions`
-                    : 'Daily Meals'}
-                </p>
-                <p className="text-slate-400 text-xs mt-1">
-                  Your kitchen meals are scheduled and tracking automatically.
-                </p>
-                <div className="mt-3.5">
-                  <Link
-                    href="/orders"
-                    className="block w-full text-center py-2.5 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/5"
-                  >
-                    Manage Weekly Planner
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="relative overflow-hidden rounded-2xl bg-black/15 backdrop-blur-md p-4.5 border border-white/15 shadow-sm">
-                <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/15 text-white">
-                  Premium Meal Service
-                </span>
-                <h2 className="mt-2 text-base font-bold text-white leading-snug">
-                  Healthy Home Tiffins. Pause or Swap Anytime.
-                </h2>
-                <p className="mt-1 text-[11.5px] text-white/80 leading-relaxed font-normal">
-                  Switch kitchens easily if you want a change, or pause when you are away.
-                </p>
-              </div>
-            )}
+            {/* ── Status & Promotional Offers Carousel ── */}
+            <OffersCarousel activeDelivery={activeDelivery} activeSubs={activeSubs} />
           </div>
         </section>
 
@@ -457,9 +389,6 @@ export default function UserDashboard() {
               );
             })}
           </div>
-
-          {/* ── Promotional Offers Carousel ── */}
-          <OffersCarousel />
 
           {/* ── Vendor Section Header ── */}
           <div className="mb-4 flex items-center justify-between">
