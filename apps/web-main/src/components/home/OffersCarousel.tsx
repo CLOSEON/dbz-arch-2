@@ -109,7 +109,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
   const renderPermanentSlide = () => {
     if (activeDelivery) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 pt-3 pb-8 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-black/25 text-white">
           <div>
             <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="flex items-center gap-2">
@@ -127,7 +127,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
               Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
             </p>
           </div>
-          <div className="mt-2">
+          <div className="mt-2.5">
             <Link
               href="/track"
               onClick={triggerHapticSelection}
@@ -142,7 +142,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
 
     if (activeSubs.length > 0) {
       return (
-        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 pt-3 pb-8 bg-black/25 text-white">
+        <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-black/25 text-white">
           <div>
             <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="flex items-center gap-1.5">
@@ -164,7 +164,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
               Your kitchen meals are scheduled and tracking automatically.
             </p>
           </div>
-          <div className="mt-2">
+          <div className="mt-2.5">
             <Link
               href="/orders"
               onClick={triggerHapticSelection}
@@ -177,14 +177,14 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
       );
     }
 
-    // Default Glassmorphic Brand Card (Extending cleanly to bottom)
+    // Default Glassmorphic Brand Card
     return (
-      <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 pt-3 pb-8 bg-gradient-to-b from-black/10 via-black/15 to-black/30 text-white">
+      <div className="relative w-full h-full flex flex-col justify-between px-5 sm:px-6 py-4 bg-gradient-to-b from-black/10 via-black/15 to-black/25 text-white">
         <div>
           <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/20 text-white inline-block">
             Premium Meal Service
           </span>
-          <h2 className="mt-1.5 text-base sm:text-lg font-bold text-white leading-snug">
+          <h2 className="mt-2 text-base sm:text-lg font-bold text-white leading-snug">
             Healthy Home Tiffins. Pause or Swap Anytime.
           </h2>
           <p className="mt-1 text-[11.5px] text-white/85 leading-relaxed font-normal line-clamp-2">
@@ -204,9 +204,9 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
       onTouchEnd={() => setIsPaused(false)}
     >
       {/* ════════════════════════════════════════
-          FULL-BLEED HERO CAROUSEL FRAME (Extends to bottom)
+          FULL-BLEED HERO CAROUSEL FRAME
       ════════════════════════════════════════ */}
-      <div className="relative w-full overflow-hidden h-[180px] sm:h-[195px] bg-[#E68A00]">
+      <div className="relative w-full overflow-hidden h-[160px] sm:h-[170px] bg-[#E68A00]">
         {/* Horizontal Scroll Snap Area */}
         <div
           ref={containerRef}
@@ -243,7 +243,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                     loading="eager"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-5 sm:px-6 pt-3 pb-8 text-white">
+                  <div className="w-full h-full bg-slate-900 flex flex-col justify-between px-5 sm:px-6 py-4 text-white">
                     <div className="flex items-center gap-1.5">
                       <BadgePercent className="w-4 h-4 text-brand" />
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
@@ -257,17 +257,17 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
                 )}
 
                 {/* ── Seamless Multi-Stop Warm Orange Top Blend ── */}
-                <div className="absolute inset-x-0 top-0 h-18 bg-gradient-to-b from-[#E68A00] via-[#E68A00]/50 to-transparent pointer-events-none z-10" />
+                <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#E68A00] via-[#E68A00]/50 to-transparent pointer-events-none z-10" />
 
                 {/* ── Soft Edge Vignette ── */}
                 <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#E68A00]/40 to-transparent pointer-events-none z-10" />
                 <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#E68A00]/40 to-transparent pointer-events-none z-10" />
 
                 {/* ── Bottom Dark Shadow for Legibility ── */}
-                <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/85 via-black/35 to-transparent pointer-events-none z-10" />
+                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/85 via-black/35 to-transparent pointer-events-none z-10" />
 
                 {/* Offer Title & Action Pill */}
-                <div className="absolute inset-x-5 sm:inset-x-6 bottom-7 flex items-center justify-between gap-2 z-20">
+                <div className="absolute inset-x-5 sm:inset-x-6 bottom-3 flex items-center justify-between gap-2 z-20">
                   <span className="text-xs sm:text-sm font-black text-white drop-shadow-md truncate max-w-[55%]">
                     {offer.title}
                   </span>
@@ -322,7 +322,7 @@ export function OffersCarousel({ activeDelivery, activeSubs = [] }: OffersCarous
             INTEGRATED BOTTOM PAGINATION DOTS
         ════════════════════════════════════════ */}
         {totalSlides > 1 && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 pointer-events-auto">
             {Array.from({ length: totalSlides }).map((_, i) => (
               <button
                 key={i}
