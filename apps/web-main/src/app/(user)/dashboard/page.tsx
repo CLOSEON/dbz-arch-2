@@ -209,10 +209,10 @@ export default function UserDashboard() {
             HERO — Solid Orange with Crisp 2D Graphics
         ════════════════════════════════════════ */}
         <section
-          className="relative rounded-b-[36px] overflow-hidden"
+          className="relative rounded-b-[32px] overflow-hidden"
           style={{
             background: '#E68A00',
-            paddingBottom: '16px',
+            paddingBottom: '32px',
             paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
           }}
         >
@@ -246,9 +246,9 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          <div className="relative z-10 px-5 sm:px-6">
+          <div className="relative z-10 px-4 sm:px-5">
             {/* ── Top bar ── */}
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               {/* Location — opens dynamic sheet */}
               <button
                 type="button"
@@ -299,8 +299,8 @@ export default function UserDashboard() {
               </div>
             </div>
 
-            {/* ── Full Hero Stage Offers Carousel (Seamless Edge-to-Edge) ── */}
-            <div className="-mx-5 sm:-mx-6 mt-1">
+            {/* ── Polished Hero Offers Carousel Card ── */}
+            <div className="w-full mt-2">
               <OffersCarousel
                 activeDelivery={activeDelivery}
                 activeSubs={activeSubs}
@@ -314,7 +314,7 @@ export default function UserDashboard() {
         {/* ════════════════════════════════════════
             BODY — Clean Slate Canvas
         ════════════════════════════════════════ */}
-        <div className="px-5 pb-8 sm:px-6">
+        <div className="px-4 pb-8 sm:px-5">
           {/* ── Search Bar ── */}
           <div className="group relative -mt-6 mb-5">
             <div className="pointer-events-none absolute left-4.5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-brand">
