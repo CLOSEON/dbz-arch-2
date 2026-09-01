@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { getActiveOffers } from '@/lib/offers';
 import { getImageUrl } from '@/lib/storage';
 import { Offer } from '@/types';
-import { Sparkles, Store, ArrowRight } from 'lucide-react';
+import { BadgePercent, Store, ArrowRight } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 export function OffersCarousel() {
@@ -98,10 +98,10 @@ export function OffersCarousel() {
                   loading={idx === 0 ? 'eager' : 'lazy'}
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-amber-500 via-brand to-orange-600 flex flex-col justify-between p-4 sm:p-5 text-white">
+                <div className="w-full h-full bg-slate-900 flex flex-col justify-between p-4 sm:p-5 text-white">
                   <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-200" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-100">
+                    <BadgePercent className="w-4 h-4 text-brand" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
                       Exclusive Deal
                     </span>
                   </div>

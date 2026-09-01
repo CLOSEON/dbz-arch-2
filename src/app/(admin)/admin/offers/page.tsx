@@ -16,7 +16,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Offer, AppUser, OfferLinkType } from '@/types';
 import {
-  Sparkles,
+  BadgePercent,
   Plus,
   Trash2,
   Edit3,
@@ -360,7 +360,7 @@ export default function AdminOffersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-orange-50 border border-orange-200/60 text-brand flex items-center justify-center shadow-xs">
-            <Sparkles className="w-5 h-5 text-brand stroke-[2.2]" />
+            <BadgePercent className="w-5 h-5 text-brand stroke-[2]" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
@@ -425,7 +425,7 @@ export default function AdminOffersPage() {
       </div>
 
       {/* ════════════════════════════════════════
-          OFFERS LIST & BESPOKE VECTOR EMPTY STATE
+          OFFERS LIST & EMPTY STATE
       ════════════════════════════════════════ */}
       <div className="space-y-3.5">
         <div className="flex items-center justify-between px-1">
@@ -449,43 +449,11 @@ export default function AdminOffersPage() {
             ))}
           </div>
         ) : offers.length === 0 ? (
-          /* Bespoke Vector Illustration & Single Clean Action */
+          /* Clean Professional Empty State */
           <div className="bg-white rounded-[2.5rem] p-10 sm:p-14 text-center shadow-sm border border-slate-100 flex flex-col items-center">
-            {/* Clean Vector Illustration */}
-            <div className="w-28 h-28 mb-4 relative flex items-center justify-center">
-              <svg
-                width="112"
-                height="112"
-                viewBox="0 0 112 112"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Background Ring */}
-                <circle cx="56" cy="56" r="48" fill="#FFF7ED" stroke="#FED7AA" strokeWidth="2" strokeDasharray="4 4" />
-                {/* Back Card (Rotated) */}
-                <rect x="26" y="28" width="56" height="34" rx="8" transform="rotate(-6 26 28)" fill="#F1F5F9" stroke="#CBD5E1" strokeWidth="2" />
-                {/* Front Hero Banner Card */}
-                <rect x="30" y="36" width="58" height="36" rx="10" fill="#FFFFFF" stroke="#E68A00" strokeWidth="2.5" />
-                {/* Banner Thumbnail Placeholder */}
-                <rect x="36" y="42" width="22" height="16" rx="5" fill="#FEF3C7" />
-                <path d="M40 52L44 48L49 53L54 47L56 50" stroke="#F59E0B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Banner Text Mockup Lines */}
-                <rect x="62" y="44" width="20" height="4" rx="2" fill="#E68A00" />
-                <rect x="62" y="51" width="14" height="3" rx="1.5" fill="#94A3B8" />
-                <rect x="62" y="57" width="10" height="3" rx="1.5" fill="#CBD5E1" />
-                {/* Carousel Pagination Dots */}
-                <circle cx="50" cy="80" r="3" fill="#E68A00" />
-                <circle cx="58" cy="80" r="2" fill="#CBD5E1" />
-                <circle cx="64" cy="80" r="2" fill="#CBD5E1" />
-                {/* Floating Tag Icon */}
-                <g transform="translate(68, 20)">
-                  <rect width="26" height="26" rx="8" fill="#0F172A" />
-                  <path d="M8 13L13 8H18V13L13 18L8 13Z" fill="#FBBF24" />
-                  <circle cx="15.5" cy="10.5" r="1.5" fill="#0F172A" />
-                </g>
-                {/* Star Accent */}
-                <path d="M22 42L23.5 37L28 35.5L23.5 34L22 29L20.5 34L16 35.5L20.5 37L22 42Z" fill="#F59E0B" />
-              </svg>
+            {/* Clean Badge Container */}
+            <div className="w-16 h-16 rounded-3xl bg-orange-50 border border-orange-100 flex items-center justify-center text-brand mb-4 shadow-xs">
+              <BadgePercent className="w-8 h-8 text-brand stroke-[1.8]" />
             </div>
 
             <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">
@@ -648,7 +616,7 @@ export default function AdminOffersPage() {
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200/60 text-brand flex items-center justify-center shadow-xs">
-                      <Sparkles className="w-5 h-5 text-brand stroke-[2.2]" />
+                      <BadgePercent className="w-5 h-5 text-brand stroke-[2]" />
                     </div>
                     <div>
                       <h3 className="text-lg font-black text-slate-900 tracking-tight">

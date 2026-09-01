@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { getActiveOffers } from '@/lib/offers';
 import { getImageUrl } from '@/lib/storage';
 import { Offer } from '@/types';
-import { Sparkles, Store, ArrowRight } from 'lucide-react';
+import { BadgePercent, Store, ArrowRight } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 export function OffersCarousel() {
@@ -16,80 +16,61 @@ export function OffersCarousel() {
 
   useEffect(() => {
     let isMounted = true;
-
     async function loadOffers() {
       try {
-        const active = await getActiveOffers();
+        const data = await getActiveOffers();
         if (isMounted) {
-          setOffers(active);
+          setOffers(data);
         }
       } catch (err) {
-        console.warn('[OffersCarousel] Could not load offers:', err);
+        console.warn('[OffersCarousel] Failed to load offers:', err);
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     }
-
     loadOffers();
-
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Sync pagination indicator with horizontal scroll position
   const handleScroll = () => {
     if (!scrollRef.current) return;
-    const { scrollLeft, offsetWidth } = scrollRef.current;
-    if (offsetWidth === 0) return;
-    const cardWidth = Math.min(window.innerWidth * 0.82, 360);
-    const index = Math.round(scrollLeft / (cardWidth + 12));
-    setActiveIndex(Math.min(Math.max(0, index), Math.max(0, offers.length - 1)));
+    const container = scrollRef.current;
+    const scrollLeft = container.scrollLeft;
+    const itemWidth = container.clientWidth * 0.82;
+    if (itemWidth > 0) {
+      const newIndex = Math.round(scrollLeft / itemWidth);
+      setActiveIndex(Math.min(Math.max(0, newIndex), offers.length - 1));
+    }
   };
 
-  // ─── 1. Loading Skeleton State (Zero Layout Shift) ──────────────────────────
   if (loading) {
     return (
-      <section className="mb-5 animate-fade-in" aria-label="Promotions loading">
-        <div className="flex gap-3 overflow-x-hidden -mx-5 px-5 sm:-mx-6 sm:px-6 pb-1">
-          {/* Main compact 16:9 skeleton card */}
-          <div className="w-[82vw] max-w-[320px] sm:max-w-[360px] md:max-w-[400px] shrink-0 aspect-[16/9] rounded-2xl sm:rounded-3xl bg-slate-200/75 animate-pulse border border-slate-200/60 shadow-2xs" />
-          {/* Peeking secondary skeleton card */}
-          <div className="w-[82vw] max-w-[320px] sm:max-w-[360px] md:max-w-[400px] shrink-0 aspect-[16/9] rounded-2xl sm:rounded-3xl bg-slate-200/40 animate-pulse border border-slate-200/40 shadow-2xs" />
-        </div>
-      </section>
+      <div className="w-full px-4 mb-3">
+        <div className="w-full aspect-[16/9] max-h-[175px] sm:max-h-[190px] rounded-3xl bg-slate-100/90 animate-pulse border border-slate-200/50 shadow-xs" />
+      </div>
     );
   }
 
-  // ─── 2. Empty State: Collapse completely ────────────────────────────────────
   if (offers.length === 0) {
     return null;
   }
 
-  // ─── 3. Active Offers Carousel ──────────────────────────────────────────────
   return (
-    <section className="mb-5 animate-fade-in" aria-label="Special Offers">
-      {/* Scrollable Container with Snap-to-Card and Peeking */}
+    <section className="w-full mb-4">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none -mx-5 px-5 sm:-mx-6 sm:px-6 pb-1 pt-0.5 touch-pan-x"
-        style={{
-          scrollPaddingLeft: '1.25rem',
-          scrollPaddingRight: '1.25rem',
-          WebkitOverflowScrolling: 'touch',
-        }}
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none px-4 py-1"
+        style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch' }}
       >
         {offers.map((offer, idx) => {
           const isKitchenLink = offer.linkType === 'kitchen' && Boolean(offer.linkedKitchenId);
           const bannerUrl = getImageUrl(offer.imageUrl);
 
-          // Card visual structure
           const cardContent = (
-            <div className="relative w-full h-full overflow-hidden rounded-2xl sm:rounded-3xl bg-slate-900 shadow-[0_4px_20px_rgba(15,23,42,0.06)] border border-slate-100/90 group transition-all duration-300">
-              {/* 16:9 Banner Image */}
+            <div className="relative w-full h-full overflow-hidden rounded-3xl bg-slate-900 shadow-sm border border-slate-100 group">
               {bannerUrl ? (
                 <img
                   src={bannerUrl}
@@ -98,10 +79,10 @@ export function OffersCarousel() {
                   loading={idx === 0 ? 'eager' : 'lazy'}
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-amber-500 via-brand to-orange-600 flex flex-col justify-between p-4 sm:p-5 text-white">
+                <div className="w-full h-full bg-slate-900 flex flex-col justify-between p-4 sm:p-5 text-white">
                   <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-200" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-100">
+                    <BadgePercent className="w-4 h-4 text-brand" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
                       Exclusive Deal
                     </span>
                   </div>
