@@ -39,7 +39,7 @@ export default function AdminSubscriptions() {
         ...s,
         userName: userMap[s.user_id]?.name || 'Unknown User',
         userPhone: userMap[s.user_id]?.phone || '',
-        vendorName: userMap[s.vendor_id]?.name || 'Unknown Vendor',
+        vendorName: userMap[s.vendor_id]?.kitchen_name || userMap[s.vendor_id]?.name || 'Unknown Vendor',
       }));
 
       setSubs(enriched);

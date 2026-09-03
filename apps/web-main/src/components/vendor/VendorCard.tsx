@@ -27,6 +27,13 @@ export function VendorCard({ vendor }: VendorCardProps) {
   const remainingSlots = hasCapacityLimit && capacity !== null ? Math.max(0, capacity - subCount) : null;
   const isAtCapacity = hasCapacityLimit && remainingSlots !== null && remainingSlots <= 0;
 
+  const kitchenTitle = vendor.kitchen_name?.trim() || vendor.name;
+  const showOwnerSubtitle = Boolean(
+    vendor.kitchen_name?.trim() &&
+    vendor.name?.trim() &&
+    vendor.kitchen_name.trim().toLowerCase() !== vendor.name.trim().toLowerCase()
+  );
+
   return (
     <Link
       href={`/vendor/detail?id=${vendor.id}`}
@@ -36,7 +43,7 @@ export function VendorCard({ vendor }: VendorCardProps) {
         {vendor.image ? (
           <Image
             src={getImageUrl(vendor.image)}
-            alt={vendor.name}
+            alt={kitchenTitle}
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-105"
             sizes="(max-width: 500px) 100vw, 500px"
@@ -72,8 +79,13 @@ export function VendorCard({ vendor }: VendorCardProps) {
         <div className="flex justify-between items-start mb-2">
           <div className="min-w-0 pr-4 flex-1">
             <h3 className="truncate font-black text-slate-900 text-[17px] leading-tight tracking-tight transition-colors duration-200 group-hover:text-brand">
-              {vendor.name}
+              {kitchenTitle}
             </h3>
+            {showOwnerSubtitle && (
+              <p className="text-[11.5px] font-medium text-slate-400 truncate mt-0.5">
+                by {vendor.name}
+              </p>
+            )}
             <div className="flex min-w-0 flex-wrap items-center gap-2 mt-2">
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.12em] bg-slate-50 px-2 py-1 rounded-lg border border-slate-200/70">
                 {vendor.cuisine_type || 'Home Style'}

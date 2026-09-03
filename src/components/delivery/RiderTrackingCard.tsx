@@ -103,6 +103,7 @@ interface RiderTrackingCardProps {
   riderRating?: number;
   vehicleNumber?: string;
   otp?: string;
+  boxTag?: string;
   driverLocation?: { lat: number; lng: number };
   destLocation?: { lat: number; lng: number };
   onCallRider?: (phone: string) => void;
@@ -118,6 +119,7 @@ export function RiderTrackingCard({
   riderRating = 4.8,
   vehicleNumber,
   otp,
+  boxTag,
   driverLocation,
   destLocation,
   onCallRider,
@@ -293,7 +295,27 @@ export function RiderTrackingCard({
                 : 'border-slate-100 bg-white'
             }`}
           >
-            <div className="p-4">
+            <div className="p-4 space-y-3">
+              {/* Box Tag Banner */}
+              {boxTag && (
+                <div className="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between border border-slate-800 shadow-md">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                      🏷️ Your Tiffin Box Tag Code
+                    </span>
+                    <div className="text-2xl font-mono font-black text-white tracking-widest mt-0.5">
+                      {boxTag}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                      Verify this code on your tiffin container at delivery
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                    Match Tag ✓
+                  </span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Handover PIN</p>

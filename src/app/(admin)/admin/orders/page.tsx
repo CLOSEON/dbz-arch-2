@@ -26,6 +26,7 @@ export default function AdminOrdersTrackingPage() {
   const [relatedRecords, setRelatedRecords] = useState<any[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [isLoadingActive, setIsLoadingActive] = useState(true);
+  const [vendorsMap, setVendorsMap] = useState<Record<string, any>>({});
 
   // Custom confirmation dialog state
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -50,7 +51,14 @@ export default function AdminOrdersTrackingPage() {
       try {
         const todayStr = new Date().toLocaleDateString('en-CA');
         const q = query(collection(db, 'orders'), where('date', '==', todayStr));
-        const snap = await getDocs(q);
+        const [snap, vendorSnap] = await Promise.all([
+          getDocs(q),
+          getDocs(query(collection(db, 'users'), where('role', '==', 'vendor')))
+        ]);
+        const vMap: Record<string, any> = {};
+        vendorSnap.docs.forEach(d => { vMap[d.id] = d.data(); });
+        setVendorsMap(vMap);
+
         const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Order);
         
         // Filter out completed/cancelled to show only "ongoing"
@@ -241,7 +249,7 @@ export default function AdminOrdersTrackingPage() {
                       <p className="text-sm font-black text-slate-800">{o.id}</p>
                       <span className="text-[9px] font-black uppercase tracking-widest text-brand">{o.status.replace(/_/g, ' ')}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-bold truncate">Vendor: {o.vendor_id || 'Unassigned'}</p>
+                    <p className="text-[10px] text-slate-500 font-bold truncate">Vendor: {o.vendor_id ? (vendorsMap[o.vendor_id]?.kitchen_name || vendorsMap[o.vendor_id]?.name || o.vendor_id) : 'Unassigned'}</p>
                     <p className="text-[10px] text-slate-500 font-bold truncate">Customer: {o.user_id}</p>
                   </div>
                 ))}
@@ -297,8 +305,11 @@ export default function AdminOrdersTrackingPage() {
                   <p className="text-sm font-bold text-slate-900">{order.user_id}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendor ID</p>
-                  <p className="text-sm font-bold text-slate-900">{order.vendor_id || 'Not Assigned'}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Kitchen Partner</p>
+                  <p className="text-sm font-bold text-slate-900">{order.vendor_id ? (vendorsMap[order.vendor_id]?.kitchen_name || vendorsMap[order.vendor_id]?.name || order.vendor_id) : 'Not Assigned'}</p>
+                  {order.vendor_id && vendorsMap[order.vendor_id]?.kitchen_name && vendorsMap[order.vendor_id]?.name && vendorsMap[order.vendor_id].kitchen_name.toLowerCase() !== vendorsMap[order.vendor_id].name.toLowerCase() && (
+                    <p className="text-[11px] text-slate-400 font-medium">Owner: {vendorsMap[order.vendor_id].name}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Delivery Address</p>

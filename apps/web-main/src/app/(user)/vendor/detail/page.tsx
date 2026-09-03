@@ -266,6 +266,13 @@ export default function VendorDetailPage() {
     );
   }
 
+  const kitchenTitle = vendor.kitchen_name?.trim() || vendor.name;
+  const showOwnerSubtitle = Boolean(
+    vendor.kitchen_name?.trim() &&
+    vendor.name?.trim() &&
+    vendor.kitchen_name.trim().toLowerCase() !== vendor.name.trim().toLowerCase()
+  );
+
   return (
     <div className="pb-36 animate-fade-in bg-[#FEFCE8] min-h-screen">
       {/* Premium Hero */}
@@ -273,7 +280,7 @@ export default function VendorDetailPage() {
         {vendor.image ? (
           <Image 
             src={getImageUrl(vendor.image)} 
-            alt={vendor.name} 
+            alt={kitchenTitle} 
             fill 
             className="object-cover"
             priority
@@ -307,8 +314,13 @@ export default function VendorDetailPage() {
             </div>
           </div>
           <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight leading-tight">
-            {vendor.name}
+            {kitchenTitle}
           </h1>
+          {showOwnerSubtitle && (
+            <p className="text-amber-200/90 text-xs sm:text-sm font-semibold mt-1">
+              by {vendor.name}
+            </p>
+          )}
           <p className="text-white/80 text-xs sm:text-sm font-medium mt-1 flex items-center gap-1.5 truncate">
             <MapPin className="w-3.5 h-3.5 shrink-0 text-brand" /> {vendor.address || (vendor as any).location?.address || 'Sector 62, Noida, Uttar Pradesh'}
           </p>

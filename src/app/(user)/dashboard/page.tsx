@@ -185,6 +185,7 @@ export default function UserDashboard() {
       const q = search.toLowerCase();
       list = list.filter(
         (v) =>
+          (v.kitchen_name ?? '').toLowerCase().includes(q) ||
           v.name.toLowerCase().includes(q) ||
           (v.cuisine_type ?? '').toLowerCase().includes(q)
       );

@@ -291,6 +291,8 @@ export default function CustomerTrackPage() {
           status: 'pending',
           meal: { type: mealType, name: mealType === 'lunch' ? 'Lunch' : 'Dinner' },
           scheduledSlot,
+          vendorName: (sub as any).vendor_name || (sub as any).kitchen_name,
+          vendorId: sub.vendor_id,
           address: { line1: 'Delivery Address from Plan' }, // Placeholder or use user.location if available
           createdAt: { toDate: () => targetDate, seconds: targetDate.getTime() / 1000 },
           isProjected: true
@@ -461,7 +463,7 @@ export default function CustomerTrackPage() {
               otp={currentOrder.otp || '1234'}
               boxTag={generateBoxTag({
                 customerName: user?.name,
-                vendorName: currentOrder.vendorName || currentOrder.vendor?.name || 'Kitchen',
+                vendorName: currentOrder.vendorName || currentOrder.vendor?.kitchen_name || currentOrder.vendor?.name || activeSubs.find((s: any) => s.id === (currentOrder.subscription_id || currentOrder.subscriptionId) || s.vendor_id === (currentOrder.vendor_id || currentOrder.vendorId))?.vendor_name || 'Kitchen',
                 sequenceNumber: 1,
                 planType: currentOrder.plan_type || currentOrder.planType || 'weekly',
                 cycleNumber: currentOrder.cycle_number || 1,

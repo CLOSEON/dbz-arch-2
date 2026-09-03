@@ -299,6 +299,7 @@ export function SubscriptionOnboardingModal({
     await createSubscription({
       user_id: user.id,
       vendor_id: vendor.id,
+      vendor_name: vendor.kitchen_name || vendor.name,
       plan_id: planId,
       meal_type: planId as MealType,
       category: dietaryCategory,

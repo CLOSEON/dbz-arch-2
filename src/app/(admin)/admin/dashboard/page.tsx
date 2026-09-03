@@ -664,7 +664,7 @@ export default function AdminDashboard() {
                   <div>
                     <span className="text-[9px] font-black uppercase bg-brand/10 text-brand px-2 py-0.5 rounded">Move Order</span>
                     <h4 className="font-bold text-slate-900 mt-2 text-sm">Order ID: {selectedOrderToMove.id}</h4>
-                    <p className="text-xs text-slate-500 font-medium">Slot: {selectedOrderToMove.delivery_slot} | Current Kitchen: {allVendors.find(v => v.id === selectedOrderToMove.vendor_id)?.kitchen_name || 'Unknown'}</p>
+                    <p className="text-xs text-slate-500 font-medium">Slot: {selectedOrderToMove.delivery_slot} | Current Kitchen: {allVendors.find(v => v.id === selectedOrderToMove.vendor_id)?.kitchen_name || allVendors.find(v => v.id === selectedOrderToMove.vendor_id)?.name || 'Unknown'}</p>
                   </div>
                   <button onClick={() => setSelectedOrderToMove(null)} className="p-1 rounded-full hover:bg-orange-100 text-slate-500"><X className="w-4 h-4" /></button>
                 </div>
@@ -708,7 +708,7 @@ export default function AdminDashboard() {
                       <tr key={order.id} className="hover:bg-slate-50/50">
                         <td className="p-4 font-bold text-slate-800">{order.user_id}</td>
                         <td className="p-4 font-bold text-slate-500 uppercase">{order.delivery_slot}</td>
-                        <td className="p-4 font-bold text-slate-700">{allVendors.find(v => v.id === order.vendor_id)?.kitchen_name || 'Unknown'}</td>
+                        <td className="p-4 font-bold text-slate-700">{allVendors.find(v => v.id === order.vendor_id)?.kitchen_name || allVendors.find(v => v.id === order.vendor_id)?.name || 'Unknown'}</td>
                         <td className="p-4">
                           <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] uppercase font-bold">{order.status}</span>
                         </td>

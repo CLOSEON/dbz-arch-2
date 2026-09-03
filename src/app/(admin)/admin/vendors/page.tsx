@@ -248,6 +248,9 @@ export default function AdminVendors() {
                       >
                         {v.kitchen_name || `${v.name}'s Kitchen`}
                       </Link>
+                      {v.kitchen_name && v.name && v.kitchen_name.toLowerCase() !== v.name.toLowerCase() && (
+                        <span className="text-[11px] text-slate-400 font-medium">({v.name})</span>
+                      )}
 
                       {isSuspended ? (
                         <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">Suspended</span>

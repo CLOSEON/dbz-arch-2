@@ -201,7 +201,7 @@ export default function OrdersPage() {
 
               return {
                 ...s,
-                vendorName: vendor.kitchen_name ?? vendor.name ?? 'Vendor',
+                vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
                 vendorImage: vendor.image ?? '',
                 planTitle: title,
                 planPrice: price,
@@ -447,7 +447,7 @@ export default function OrdersPage() {
 
         return {
           ...s,
-          vendorName: vendor.name ?? 'Vendor',
+          vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
           vendorImage: vendor.image ?? '',
           planTitle: title,
           planPrice: price,
