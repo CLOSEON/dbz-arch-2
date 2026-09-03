@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Ticket, Truck, Package, RefreshCw, Store, BadgePercent, IndianRupee, UserCheck } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
@@ -11,6 +11,21 @@ const NAV_ITEMS = [
     href: '/admin/dashboard',
     label: 'Overview',
     icon: (active: boolean) => <LayoutDashboard className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/users',
+    label: 'Users',
+    icon: (active: boolean) => <UserCheck className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/offers',
+    label: 'Offers',
+    icon: (active: boolean) => <BadgePercent className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
+  },
+  {
+    href: '/admin/pricing',
+    label: 'Pricing',
+    icon: (active: boolean) => <IndianRupee className={cn("w-5 h-5", active ? "text-brand" : "text-slate-400")} />,
   },
   {
     href: '/admin/batches',
@@ -96,7 +111,10 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-4 left-4 right-4 z-40 border border-slate-200/40 bg-white/95 px-3 py-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2rem] animate-fade-in">
+    <nav 
+      className="fixed left-4 right-4 z-40 border border-slate-200/40 bg-white/95 px-3 py-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2rem] animate-fade-in"
+      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+    >
       <div className="max-w-md mx-auto flex items-center justify-around">
         {MOBILE_NAV_ITEMS.map((item) => {
           const isDash = item.href.endsWith('/dashboard');
@@ -107,7 +125,7 @@ export function AdminNav({ variant = 'bottom' }: AdminNavProps) {
               href={item.href}
               onClick={triggerHapticSelection}
               className={cn(
-                'group flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-none focus-visible:ring-4 focus-visible:ring-brand/10 relative',
+                'group flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-1 transition-all duration-300 outline-none select-none touch-manipulation focus-visible:ring-4 focus-visible:ring-brand/10 relative',
                 active ? 'text-brand' : 'text-slate-400 hover:text-slate-600'
               )}
             >
