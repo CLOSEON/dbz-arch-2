@@ -212,7 +212,27 @@ async function processDailyDeliveries(force = false) {
                 result.details.push({ subId, userName: sub.user_id, status: 'error', reason: 'User or vendor profile not found' });
                 continue;
             }
-            const mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+            const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+            let mealTypesToGenerate = [];
+            if (customPattern) {
+                const mealsToday = Number(customPattern[todayDayName] || 0);
+                if (mealsToday === 1) {
+                    mealTypesToGenerate = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
+                }
+                else if (mealsToday >= 2) {
+                    mealTypesToGenerate = ['lunch', 'dinner'];
+                }
+                else {
+                    mealTypesToGenerate = [];
+                }
+            }
+            else {
+                mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+            }
+            if (mealTypesToGenerate.length === 0)
+                continue;
             const userLat = user.location?.lat ?? 18.5204;
             const userLng = user.location?.lng ?? 73.8567;
             for (const mealType of mealTypesToGenerate) {
@@ -389,7 +409,9 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
     }
     const driversSnap = await db.collection('users').where('role', 'in', ['delivery', 'delivery_agent']).get();
     const driverIds = driversSnap.docs.map(d => d.id);
-    const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+    const isCustom = sub.isCustomPlan || sub.is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly';
+    const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+    const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || (isCustom ? 9 : 14));
     const userLat = user.location?.lat ?? 18.5204;
     const userLng = user.location?.lng ?? 73.8567;
     const now = new Date();
@@ -406,8 +428,31 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
         await cleanBatch.commit();
     const batch = db.batch();
     let ordersCreated = 0;
-    for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
-        for (const mealType of mealTypes) {
+    for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
+        if (ordersCreated >= maxMealsTotal)
+            break;
+        const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+        const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
+        const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        let dayMealTypes = [];
+        if (customPattern) {
+            const mealsForDay = Number(customPattern[dayName] || 0);
+            if (mealsForDay === 1) {
+                dayMealTypes = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
+            }
+            else if (mealsForDay >= 2) {
+                dayMealTypes = ['lunch', 'dinner'];
+            }
+            else {
+                dayMealTypes = [];
+            }
+        }
+        else {
+            dayMealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+        }
+        for (const mealType of dayMealTypes) {
+            if (ordersCreated >= maxMealsTotal)
+                break;
             if (dayOffset === 0) {
                 if (mealType === 'lunch' && istHour >= 10)
                     continue;
@@ -415,8 +460,6 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
                     continue;
             }
             const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
-            const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-            const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
             const otp = String(Math.floor(1000 + Math.random() * 9000));
             const newOrderRef = db.collection('orders').doc();
             batch.set(newOrderRef, {
