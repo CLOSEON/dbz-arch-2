@@ -240,6 +240,26 @@ export async function cancelSubscription(
   else invalidateSubsCache();
 }
 
+// ─── Pause Subscription ───────────────────────────────────────────────────────
+export async function pauseSubscription(subId: string, userId?: string): Promise<void> {
+  await updateDoc(doc(db, 'subscriptions', subId), {
+    status: 'paused',
+    paused_at: Timestamp.now(),
+  });
+  if (userId) invalidateSubsCache(userId);
+  else invalidateSubsCache();
+}
+
+// ─── Resume Subscription ──────────────────────────────────────────────────────
+export async function resumeSubscription(subId: string, userId?: string): Promise<void> {
+  await updateDoc(doc(db, 'subscriptions', subId), {
+    status: 'active',
+    resumed_at: Timestamp.now(),
+  });
+  if (userId) invalidateSubsCache(userId);
+  else invalidateSubsCache();
+}
+
 // ─── One-time migration: old random-ID docs → deterministic IDs ───────────────
 /**
  * Run once after login for existing users to migrate legacy subscription docs
@@ -330,3 +350,44 @@ export async function getAllSubscriptions(
 // ─── Legacy alias kept so old purge import in login page still compiles ───────
 /** @deprecated Use migrateSubscriptions instead */
 export const purgeSubscriptionDuplicates = migrateSubscriptions;
+
+// ─── Custom Plan Subscription Caller ──────────────────────────────────────────
+export interface CreateCustomPlanParams {
+  userId: string;
+  planType: 'weekly' | 'monthly';
+  pattern: Record<string, any>;
+  totalMeals: number;
+  totalPrice: number;
+  planStartDate?: Date | string | number;
+  vendorId?: string;
+  paymentId?: string;
+  razorpayOrderId?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateCustomPlanResponse {
+  success: boolean;
+  subscriptionId: string;
+  confirmation: boolean;
+  message: string;
+  subscription: any;
+}
+
+/**
+ * Calls the "createCustomPlanSubscription" Cloud Function.
+ */
+export async function createCustomPlanSubscription(
+  params: CreateCustomPlanParams
+): Promise<CreateCustomPlanResponse> {
+  const { httpsCallable } = await import('firebase/functions');
+  const { functions } = await import('@/lib/firebase');
+
+  const fn = httpsCallable<CreateCustomPlanParams, CreateCustomPlanResponse>(
+    functions,
+    'createCustomPlanSubscription'
+  );
+
+  const res = await fn(params);
+  invalidateSubsCache(params.userId);
+  return res.data;
+}

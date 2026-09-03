@@ -95,3 +95,40 @@ export async function savePricingConfig(
 
   return payload;
 }
+
+export interface CloudPricingConfigResponse {
+  type: 'weekly' | 'monthly';
+  pricePerMeal: number;
+  vendorCostPerMeal: number;
+  margin: number;
+  lastUpdatedAt: any;
+}
+
+/**
+ * Calls the "getPricingConfig" Cloud Function directly.
+ * Used whenever a customer or admin builds a custom meal plan to fetch live validated rates.
+ */
+export async function fetchPricingConfigViaFunction(
+  planType: PlanPricingType
+): Promise<CloudPricingConfigResponse> {
+  const { httpsCallable } = await import('firebase/functions');
+  const { functions } = await import('@/lib/firebase');
+
+  const getPricingFn = httpsCallable<{ planType: string }, CloudPricingConfigResponse>(
+    functions,
+    'getPricingConfig'
+  );
+
+  const result = await getPricingFn({ planType });
+  return result.data;
+}
+
+export {
+  calculateCustomPlanPrice,
+  type CustomPlanType,
+  type CustomPlanPattern,
+  type CustomPlanPriceResult,
+  type WeeklyPlanPattern,
+  type MonthlyPlanPattern,
+} from '@/lib/pricing';
+

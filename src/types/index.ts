@@ -120,7 +120,7 @@ export interface Vendor extends AppUser {
 
 // ─── Subscriptions ───────────────────────────────────────────────────────────
 
-export type SubscriptionStatus = 'active' | 'cancelled';
+export type SubscriptionStatus = 'active' | 'cancelled' | 'paused';
 export type MealType = 'lunch' | 'dinner' | 'both';
 
 export type SubscriptionFrequency = 'one-time' | 'weekly' | 'monthly';

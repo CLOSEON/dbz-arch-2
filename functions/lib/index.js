@@ -130,4 +130,5 @@ __exportStar(require("./notificationTriggers"), exports);
 __exportStar(require("./cronTriggers"), exports);
 __exportStar(require("./adminManagementTriggers"), exports);
 __exportStar(require("./razorpayFunctions"), exports);
+__exportStar(require("./pricingFunctions"), exports);
 //# sourceMappingURL=index.js.map
