@@ -673,7 +673,6 @@ export default function VendorDetailClient(props: PageProps) {
       {activeTab === 'overview' && (
         <div className="space-y-4 animate-fade-in">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {/* 1. Total Sales */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-indigo-600" /> Total Sales
@@ -682,18 +681,14 @@ export default function VendorDetailClient(props: PageProps) {
               <div className="text-[10px] text-slate-400 mt-0.5">Gross customer sales</div>
             </div>
 
-            {/* 2. Revenue (What vendor gets) */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
-                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue (What They Get)
+                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue
               </div>
-              <div className="text-xl font-bold text-emerald-600">₹{(stats.netRevenue ?? stats.totalRevenue ?? 0).toLocaleString('en-IN')}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                {stats.hasExplicitObligation ? 'Vendor payout obligation' : `After ${stats.commissionRate || 10}% comm.`}
-              </div>
+              <div className="text-xl font-bold text-slate-900">₹{(stats.netRevenue ?? stats.totalRevenue ?? 0).toLocaleString('en-IN')}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Net vendor earnings</div>
             </div>
 
-            {/* 3. Active Subscribers */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <Users className="w-3.5 h-3.5 text-brand" /> Active Subscribers
@@ -702,7 +697,6 @@ export default function VendorDetailClient(props: PageProps) {
               <div className="text-[10px] text-slate-400 mt-0.5">Recurring subscribers</div>
             </div>
 
-            {/* 4. Total Orders */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <ShoppingBag className="w-3.5 h-3.5 text-blue-600" /> Total Orders
@@ -713,71 +707,12 @@ export default function VendorDetailClient(props: PageProps) {
               </div>
             </div>
 
-            {/* 5. Punctuality */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs col-span-2 sm:col-span-1">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <Award className="w-3.5 h-3.5 text-amber-600" /> Punctuality
               </div>
               <div className="text-xl font-bold text-slate-900">{stats.deliverySuccessRate}%</div>
               <div className="text-[10px] text-slate-400 mt-0.5">On-time fulfillment</div>
-            </div>
-          </div>
-
-          {/* Detailed Financial & Commission Breakdown Banner */}
-          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-2xl p-5 text-white shadow-xs border border-slate-800">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
-                    {stats.hasExplicitObligation ? 'Vendor Payout Obligation Engine' : 'Settlement & Commission Engine'}
-                  </span>
-                  <span className="text-xs text-slate-400 font-medium">
-                    {stats.hasExplicitObligation
-                      ? <strong className="text-emerald-300">Obligation Defined at Subscription Creation</strong>
-                      : <>Platform Fee: <strong className="text-white">{stats.commissionRate || 10}%</strong></>}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-white mt-1">Total Sales vs. Vendor Revenue</h3>
-                <p className="text-xs text-slate-400">
-                  Total Sales is gross collections from customers. Revenue is what {vendor.kitchen_name || vendor.name} receives based on agreed payout obligation.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('settings')}
-                className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white border border-white/10 transition-colors flex items-center gap-1.5"
-              >
-                <Sliders className="w-3.5 h-3.5" /> Adjust Settings
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-800">
-              <div className="bg-white/5 rounded-xl p-3.5 border border-white/5">
-                <div className="text-[11px] font-medium text-slate-400">1. Total Sales (Gross Customer Price)</div>
-                <div className="text-xl font-black text-white mt-0.5">₹{(stats.totalSales || 0).toLocaleString('en-IN')}</div>
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Subscriptions: ₹{(stats.subscriptionSales || 0).toLocaleString('en-IN')} {(stats.orderSales || 0) > 0 ? `• Direct Orders: ₹${stats.orderSales.toLocaleString('en-IN')}` : ''}
-                </div>
-              </div>
-
-              <div className="bg-white/5 rounded-xl p-3.5 border border-white/5">
-                <div className="text-[11px] font-medium text-slate-400">
-                  2. {stats.hasExplicitObligation ? 'Dabzzo Retained / Margin' : `Dabzzo Commission (${stats.commissionRate || 10}%)`}
-                </div>
-                <div className="text-xl font-black text-rose-400 mt-0.5">- ₹{(stats.commissionAmount || 0).toLocaleString('en-IN')}</div>
-                <div className="text-[10px] text-slate-400 mt-1">
-                  {stats.hasExplicitObligation ? 'Customer sales minus vendor payout' : 'Platform fee deduction'}
-                </div>
-              </div>
-
-              <div className="bg-emerald-500/10 rounded-xl p-3.5 border border-emerald-500/20">
-                <div className="text-[11px] font-medium text-emerald-400">3. Revenue (What Vendor Gets)</div>
-                <div className="text-xl font-black text-emerald-400 mt-0.5">₹{(stats.netRevenue ?? stats.totalRevenue ?? 0).toLocaleString('en-IN')}</div>
-                <div className="text-[10px] text-emerald-300/80 mt-1">
-                  {stats.hasExplicitObligation ? 'Vendor payout obligation credited' : 'Net payout payable to vendor'}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -1486,43 +1421,57 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => (
-                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                        order.status === 'delivered' || order.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : order.status === 'dispatched'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
-                    </div>
-                  </div>
+              {history.map((order, idx) => {
+                const addr = order.delivery_address || (order as any).address;
+                let displayAddress = 'Address on file';
+                if (typeof addr === 'string' && addr.trim().length > 0) {
+                  displayAddress = addr;
+                } else if (typeof addr === 'object' && addr !== null) {
+                  displayAddress = addr.full_address || addr.line1 || addr.address_line1 || addr.street || addr.city || (addr.lat && addr.lng ? `Location: ${addr.lat.toFixed(4)}, ${addr.lng.toFixed(4)}` : 'Address on file');
+                }
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="cooking">Cooking</option>
-                      <option value="ready">Ready for Pickup</option>
-                      <option value="dispatched">Dispatched</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                const orderAmount = Number(order.total_amount ?? order.amount ?? (order as any).price ?? 0) || 0;
+                const orderIdStr = String(order.id || `order-${idx}`);
+                const orderStatus = String(order.status || 'pending');
+
+                return (
+                  <div key={order.id || idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 font-mono">#{orderIdStr.slice(0, 8)}</span>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+                          orderStatus === 'delivered' || orderStatus === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : orderStatus === 'dispatched'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {orderStatus}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {String(displayAddress)} • ₹{orderAmount}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
+                      <select
+                        value={orderStatus}
+                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="cooking">Cooking</option>
+                        <option value="ready">Ready for Pickup</option>
+                        <option value="dispatched">Dispatched</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
