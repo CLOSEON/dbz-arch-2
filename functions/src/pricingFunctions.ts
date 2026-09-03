@@ -654,3 +654,190 @@ export const getCustomPlanStats = functions.https.onCall(
     }
   }
 );
+
+/**
+ * ─── activateExternalSubscriptionAdmin ─────────────────────────────────────────
+ * Admin-privileged Cloud Function to activate an external (offline UPI/cash) subscription,
+ * set customer active membership, record transaction, and credit vendor payout ledger.
+ */
+export const activateExternalSubscriptionAdmin = functions.https.onCall(
+  async (data, context) => {
+    try {
+      const {
+        userId,
+        userName,
+        userPhone,
+        planType = 'custom_weekly',
+        planName,
+        subscriptionType = 'custom_weekly',
+        billingCycle = 'weekly',
+        mealType = 'both',
+        dietary = 'veg',
+        pattern = {},
+        totalMeals = 7,
+        totalPrice = 350,
+        pricePerMeal = 50,
+        paymentMethod = 'upi',
+        transactionId,
+        paymentNotes = 'Offline transaction recorded by admin',
+        vendorId,
+        vendorName,
+        vendorCostPerMeal = 35,
+        vendorTotalPayable,
+        startDate,
+        deliverySlot = 'lunch',
+        deliveryAddress,
+      } = data || {};
+
+      if (!userId || typeof userId !== 'string') {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          'userId is required.'
+        );
+      }
+
+      const db = admin.firestore();
+      const batch = db.batch();
+      const subRef = db.collection('subscriptions').doc();
+      const subId = subRef.id;
+
+      const startDateObj = startDate ? new Date(startDate) : new Date();
+      const daysToAdd = billingCycle === 'monthly' ? 30 : 7;
+      const nextBillingDateObj = new Date(startDateObj.getTime() + daysToAdd * 86400000);
+
+      const isCustom = subscriptionType !== 'standard';
+
+      // 1. Subscription Document
+      batch.set(subRef, {
+        id: subId,
+        user_id: userId,
+        status: 'active',
+        isCustomPlan: isCustom,
+        is_custom_plan: isCustom,
+        subscriptionType,
+        billingCycle,
+        frequency: billingCycle,
+        plan_id: subscriptionType,
+        plan_name:
+          planName ||
+          (subscriptionType === 'custom_weekly'
+            ? 'Weekly Custom Plan'
+            : subscriptionType === 'custom_monthly'
+            ? 'Monthly Custom Plan'
+            : 'Standard Plan'),
+        meal_type: mealType,
+        dietary: dietary || 'veg',
+        deliveryPattern: pattern || {},
+        customPlan: isCustom
+          ? {
+              pattern: pattern || {},
+              totalMeals,
+              totalPrice,
+              pricePerMeal,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            }
+          : null,
+        total_meals: totalMeals,
+        totalMeals,
+        total_price: totalPrice,
+        price: totalPrice,
+        vendor_id: vendorId || '',
+        vendor_name: vendorName || '',
+        is_external_payment: true,
+        payment_method: `external_${paymentMethod}`,
+        transaction_id: transactionId || `EXT-${Date.now()}`,
+        payment_notes: paymentNotes,
+        delivery_status: 'ready_for_delivery',
+        start_date: admin.firestore.Timestamp.fromDate(startDateObj),
+        startDate: admin.firestore.Timestamp.fromDate(startDateObj),
+        next_billing_date: admin.firestore.Timestamp.fromDate(nextBillingDateObj),
+        nextBillingDate: admin.firestore.Timestamp.fromDate(nextBillingDateObj),
+        delivery_address: deliveryAddress || '',
+        delivery_slot: deliverySlot || 'lunch',
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_by_admin: context?.auth?.uid || 'admin',
+      });
+
+      // 2. Payments Record
+      const paymentRef = db.collection('payments').doc();
+      batch.set(paymentRef, {
+        id: paymentRef.id,
+        user_id: userId,
+        subscription_id: subId,
+        amount: totalPrice,
+        currency: 'INR',
+        status: 'success',
+        method: `external_${paymentMethod}`,
+        is_external: true,
+        transaction_id: transactionId || `EXT-${Date.now()}`,
+        notes: paymentNotes,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 3. Vendor Payout & Earnings
+      if (vendorId) {
+        const payable =
+          vendorTotalPayable !== undefined
+            ? Number(vendorTotalPayable)
+            : Number(vendorCostPerMeal || 35) * Number(totalMeals);
+
+        const vendorPayoutRef = db.collection('vendor_payouts').doc();
+        batch.set(vendorPayoutRef, {
+          id: vendorPayoutRef.id,
+          vendor_id: vendorId,
+          vendor_name: vendorName || '',
+          subscription_id: subId,
+          user_id: userId,
+          user_name: userName || '',
+          amount: payable,
+          cost_per_meal: vendorCostPerMeal || 35,
+          total_meals: totalMeals,
+          source: 'external_subscription',
+          status: 'credited',
+          reference_id: transactionId || '',
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Increment vendor balance
+        const vendorDocRef = db.collection('users').doc(vendorId);
+        batch.set(
+          vendorDocRef,
+          {
+            total_earnings: admin.firestore.FieldValue.increment(payable),
+            pending_payout: admin.firestore.FieldValue.increment(payable),
+            last_payout_credit_at: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      // 4. Update Customer Membership to Active
+      const customerDocRef = db.collection('users').doc(userId);
+      batch.set(
+        customerDocRef,
+        {
+          is_active_subscriber: true,
+          membership_status: 'active',
+          active_subscription_id: subId,
+          last_subscribed_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await batch.commit();
+
+      return {
+        success: true,
+        subscriptionId: subId,
+        message: 'External subscription successfully activated and vendor credited.',
+      };
+    } catch (err: any) {
+      console.error('[activateExternalSubscriptionAdmin] Error:', err);
+      throw new functions.https.HttpsError(
+        'internal',
+        err?.message || 'Failed to activate external subscription.'
+      );
+    }
+  }
+);

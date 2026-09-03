@@ -52,6 +52,7 @@ import {
   resumeSubscription,
   cancelSubscription,
   activateExternalSubscription,
+  invalidateSubsCache,
   type ExternalSubscriptionParams
 } from '@/lib/queries/subscriptions';
 import { useAuthStore } from '@/store/authStore';
@@ -100,6 +101,7 @@ export function UserManagementHub() {
   const [extBillingCycle, setExtBillingCycle] = useState<'weekly' | 'monthly'>('weekly');
   const [extMealType, setExtMealType] = useState<'lunch' | 'dinner' | 'both'>('both');
   const [extDietary, setExtDietary] = useState<'veg' | 'non_veg'>('veg');
+  const [extModalError, setExtModalError] = useState<string | null>(null);
   const [extWeeklyPattern, setExtWeeklyPattern] = useState<Record<string, number>>({
     monday: 1,
     tuesday: 1,
@@ -153,14 +155,22 @@ export function UserManagementHub() {
     setSelectedUser(user);
     setLoadingUserDetails(true);
     try {
-      const [subs, creditsSnap, allowancesSnap] = await Promise.all([
+      invalidateSubsCache(user.id);
+      const [subs, creditsSnap, allowancesSnap, freshUserSnap] = await Promise.all([
         getUserSubscriptions(user.id),
         getDocs(query(collection(db, 'user_credits'), where('user_id', '==', user.id))),
         getDocs(query(collection(db, 'subscription_swap_allowances'), where('user_id', '==', user.id))),
+        getDoc(doc(db, 'users', user.id)),
       ]);
       setUserSubs(subs);
       setUserCredits(creditsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setUserAllowances(allowancesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      if (freshUserSnap.exists()) {
+        const freshUser = { id: freshUserSnap.id, ...freshUserSnap.data() } as AppUser;
+        setSelectedUser(freshUser);
+        setUsers((prev) => prev.map((u) => (u.id === freshUser.id ? freshUser : u)));
+      }
     } catch (err) {
       console.error('[UserManagementHub] selectUser error:', err);
     } finally {
@@ -312,6 +322,7 @@ export function UserManagementHub() {
     }
 
     setSubmittingExternal(true);
+    setExtModalError(null);
     try {
       const selectedVendor = vendors.find((v) => v.id === extVendorId);
 
@@ -348,19 +359,21 @@ export function UserManagementHub() {
       };
 
       const result = await activateExternalSubscription(params);
+      setShowExternalModal(false);
       setNotification({
         text: `Active Membership Granted! Subscription #${result.subscriptionId.slice(0, 8)} created. Vendor credited ₹${computedTotalVendorPayable}.`,
         type: 'success',
       });
-      setShowExternalModal(false);
 
-      // Refresh data
-      selectUser(selectedUser);
-      loadAllData();
+      // Immediate fresh refresh
+      await selectUser(selectedUser);
+      await loadAllData();
     } catch (err: any) {
       console.error('Failed to activate external subscription:', err);
+      const errMsg = err?.message || 'Failed to activate external subscription. Please check permissions.';
+      setExtModalError(errMsg);
       setNotification({
-        text: err?.message || 'Failed to activate external subscription.',
+        text: errMsg,
         type: 'error',
       });
     } finally {
@@ -1010,12 +1023,12 @@ export function UserManagementHub() {
 
                     <div className="grid grid-cols-7 gap-1 sm:gap-2 pt-1">
                       {WEEKDAYS.map(({ full, short }) => {
-                        const count = extWeeklyPattern[full] || 0;
+                        const count = extWeeklyPattern[full] === 2 ? 2 : 1;
                         return (
-                          <div key={short} className="text-center p-1.5 rounded-xl bg-white border border-amber-200 shadow-xs">
-                            <span className="text-[10px] font-bold text-slate-500 block">{short}</span>
-                            <div className="flex items-center justify-center gap-1 mt-1">
-                              {[0, 1, 2].map((c) => (
+                          <div key={short} className="text-center p-2 rounded-xl bg-white border border-amber-200 shadow-xs">
+                            <span className="text-[11px] font-black text-slate-700 block mb-1">{short}</span>
+                            <div className="flex items-center justify-center gap-1">
+                              {[1, 2].map((c) => (
                                 <button
                                   key={c}
                                   type="button"
@@ -1023,10 +1036,10 @@ export function UserManagementHub() {
                                     setExtWeeklyPattern({ ...extWeeklyPattern, [full]: c })
                                   }
                                   className={cn(
-                                    'w-5 h-5 rounded text-[10px] font-black transition-all',
+                                    'w-7 h-7 rounded-lg text-xs font-black transition-all flex items-center justify-center cursor-pointer',
                                     count === c
-                                      ? 'bg-amber-500 text-white'
-                                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                   )}
                                 >
                                   {c}
@@ -1234,6 +1247,13 @@ export function UserManagementHub() {
                     </div>
                   </div>
                 </div>
+
+                {extModalError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{extModalError}</span>
+                  </div>
+                )}
 
                 {/* Submit Action */}
                 <div className="pt-2 flex items-center gap-2">

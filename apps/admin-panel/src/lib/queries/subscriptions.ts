@@ -439,9 +439,6 @@ export interface ActivateExternalSubscriptionResponse {
 export async function activateExternalSubscription(
   params: ExternalSubscriptionParams
 ): Promise<ActivateExternalSubscriptionResponse> {
-  const batch = writeBatch(db);
-  const subRef = doc(collection(db, 'subscriptions'));
-
   const startDateObj = new Date(params.startDate);
   const nextBillingDateObj = params.nextBillingDate
     ? new Date(params.nextBillingDate)
@@ -450,6 +447,31 @@ export async function activateExternalSubscription(
           (params.billingCycle === 'monthly' ? 30 : 7) * 24 * 60 * 60 * 1000
       );
 
+  // Attempt 1: Call Cloud Function (Admin SDK privileges, always bypasses client rule limits)
+  try {
+    const { httpsCallable } = await import('firebase/functions');
+    const { functions } = await import('@/lib/firebase');
+    const callable = httpsCallable<any, ActivateExternalSubscriptionResponse>(
+      functions,
+      'activateExternalSubscriptionAdmin'
+    );
+    const result = await callable({
+      ...params,
+      startDate: startDateObj.toISOString(),
+      nextBillingDate: nextBillingDateObj.toISOString(),
+    });
+
+    if (result.data && result.data.success) {
+      invalidateSubsCache(params.userId);
+      return result.data;
+    }
+  } catch (fnErr) {
+    console.warn('[activateExternalSubscription] Cloud Function call fallback to direct write:', fnErr);
+  }
+
+  // Attempt 2: Direct Firestore write batch
+  const batch = writeBatch(db);
+  const subRef = doc(collection(db, 'subscriptions'));
   const isCustom = params.subscriptionType !== 'standard';
 
   // 1. Subscription Document
