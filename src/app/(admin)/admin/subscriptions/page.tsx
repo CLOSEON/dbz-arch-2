@@ -5,10 +5,11 @@ import { getAllSubscriptions } from '@/lib/queries/subscriptions';
 import { getAllUsers } from '@/lib/queries/users';
 import { EnrichedSubscription, AppUser } from '@/types';
 import { useUiStore } from '@/store/uiStore';
-import { Search, Ticket, User, Store, Clock } from 'lucide-react';
+import { Search, Ticket, User, Store, Clock, IndianRupee } from 'lucide-react';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDate } from '@/lib/utils';
+import { MealPricingConfig } from '@/components/admin/MealPricingConfig';
 
 export default function AdminSubscriptions() {
   const addToast = useUiStore((s) => s.addToast);
@@ -17,6 +18,7 @@ export default function AdminSubscriptions() {
   const [subs, setSubs] = useState<EnrichedSubscription[]>([]);
   const [filter, setFilter] = useState<'active' | 'cancelled' | 'all'>('active');
   const [search, setSearch] = useState('');
+  const [showPricingConfig, setShowPricingConfig] = useState(false);
 
   useEffect(() => {
     loadSubscriptions();
@@ -66,10 +68,32 @@ export default function AdminSubscriptions() {
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Subscriptions</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Global subscription logs</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900">Subscriptions</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Global subscription logs & customer plans</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowPricingConfig(!showPricingConfig)}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 border ${
+            showPricingConfig
+              ? 'bg-brand text-white border-brand shadow-sm shadow-brand/20'
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-2xs'
+          }`}
+        >
+          <IndianRupee className="w-4 h-4" />
+          <span>{showPricingConfig ? 'Hide Pricing Engine' : 'Configure Meal Pricing'}</span>
+        </button>
       </div>
+
+      {/* Collapsible Meal Pricing Configuration Engine */}
+      {showPricingConfig && (
+        <div className="p-1 sm:p-2 bg-slate-50/70 rounded-3xl border border-slate-200/80 animate-slide-up-soft">
+          <MealPricingConfig />
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Search */}

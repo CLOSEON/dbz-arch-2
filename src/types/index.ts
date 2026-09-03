@@ -427,3 +427,17 @@ export type CreateOfferInput = Omit<Offer, 'id' | 'createdAt' | 'updatedAt'> & {
 };
 
 export type UpdateOfferInput = Partial<Omit<Offer, 'id' | 'createdAt' | 'createdBy'>>;
+
+// ─── Meal Pricing Configuration ───────────────────────────────────────────────
+
+export type PlanPricingType = 'weekly' | 'monthly';
+
+export interface MealPricingConfig {
+  id: string; // 'weekly_pricing' | 'monthly_pricing'
+  type: PlanPricingType;
+  pricePerMeal: number;
+  vendorCostPerMeal: number;
+  margin: number;
+  updatedAt?: FirestoreTimestamp;
+  updatedBy?: string;
+}
