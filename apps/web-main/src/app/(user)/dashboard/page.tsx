@@ -383,7 +383,7 @@ export default function UserDashboard() {
           </div>
 
           {/* ── Vendor Section Header ── */}
-          <div className="mb-4 flex items-center justify-between">
+          <div id="nearest-kitchens" className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-[18px] font-black tracking-tight text-slate-900">
                 Nearest Kitchens
