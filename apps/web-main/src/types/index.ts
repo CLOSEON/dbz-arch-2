@@ -37,6 +37,9 @@ export interface AppUser {
   location?: { lat: number; lng: number; updated_at: number };
   address?: string;
   deliveryPreference?: '8am' | '11am';
+  is_active_subscriber?: boolean;
+  membership_status?: 'active' | 'inactive' | 'pending';
+  active_subscription_id?: string;
   // Vendor-specific
   kitchen_name?: string;
   bio?: string;

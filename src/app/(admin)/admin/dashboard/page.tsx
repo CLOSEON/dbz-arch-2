@@ -52,6 +52,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { CustomPlanInsightsCard } from '@/components/admin/CustomPlanInsightsCard';
+import { UserManagementHub } from '@/components/admin/UserManagementHub';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
   ssr: false,
@@ -472,7 +473,7 @@ export default function AdminDashboard() {
           onClick={() => setActiveTab('impersonation')}
           className={`px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${activeTab === 'impersonation' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
         >
-          User Impersonation
+          Users & Subscriptions
         </button>
         <button 
           onClick={() => { setActiveTab('financials'); loadFinancialHealth(); }}
@@ -735,158 +736,7 @@ export default function AdminDashboard() {
       )}
 
       {activeTab === 'impersonation' && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-white rounded-[2rem] p-6 md:p-8 shadow-sm border border-slate-100 space-y-4">
-            <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
-              <Database className="w-5 h-5 text-brand" /> User impersonation & Ledger Adjustment
-            </h3>
-
-            <div className="flex gap-2 max-w-md">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input 
-                  type="text" 
-                  placeholder="Search user by name or phone..."
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-2xl focus:outline-none focus:border-brand/40 bg-white text-slate-900 font-medium placeholder-slate-400 shadow-sm"
-                />
-              </div>
-              <button onClick={searchUsers} className="btn-outline py-2.5 px-5">Search</button>
-            </div>
-
-            {searchedUsers.length > 0 && !selectedUser && (
-              <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-50 max-w-md">
-                {searchedUsers.map(u => (
-                  <div 
-                    key={u.id} 
-                    onClick={() => selectUser(u)}
-                    className="p-4 hover:bg-slate-50 cursor-pointer flex justify-between items-center"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-900 text-sm">{u.name || 'Anonymous'}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{u.phone}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {selectedUser && (
-              <div className="grid md:grid-cols-2 gap-6 pt-4">
-                {/* User Snapshot */}
-                <div className="space-y-4 bg-slate-50/50 border border-slate-100 p-6 rounded-3xl">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-black text-slate-900 text-base">{selectedUser.name || 'Anonymous'}</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">{selectedUser.phone}</p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-1">{selectedUser.id}</p>
-                    </div>
-                    <button 
-                      onClick={() => setSelectedUser(null)}
-                      className="px-2.5 py-1 text-[10px] border border-slate-200 rounded-xl bg-white font-bold text-slate-500 hover:bg-slate-50"
-                    >
-                      Clear Selection
-                    </button>
-                  </div>
-
-                  {/* Impersonated UI metrics */}
-                  <div className="space-y-3 pt-4 border-t border-slate-200/50">
-                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Subscriptions</h5>
-                    {selectedUserSubs.length === 0 ? (
-                      <p className="text-xs text-slate-400 font-medium">No active subscriptions found.</p>
-                    ) : (
-                      selectedUserSubs.map(sub => {
-                        const allowance = selectedUserAllowances.find(a => a.subscription_id === sub.id);
-                        return (
-                          <div key={sub.id} className="p-3.5 bg-white border border-slate-100 rounded-2xl flex flex-col gap-2 shadow-sm">
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="font-bold text-slate-800 uppercase">{sub.meal_type} Plan</span>
-                              <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded">{sub.status}</span>
-                            </div>
-                            {/* Allowance Adjustments */}
-                            <div className="flex justify-between items-center text-[11px] text-slate-500 pt-2 border-t border-slate-50">
-                              <span>Free Swaps remaining: <b>{allowance ? (allowance.free_swaps_total - allowance.free_swaps_used) : 0}</b></span>
-                              <div className="flex gap-1.5">
-                                <button 
-                                  onClick={() => handleAdjustSwaps(sub.id, 1)}
-                                  className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center active:scale-95"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                                <button 
-                                  onClick={() => handleAdjustSwaps(sub.id, -1)}
-                                  className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center active:scale-95"
-                                >
-                                  <Minus className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
-                {/* Ledger adjustments */}
-                <div className="space-y-4 bg-slate-50/50 border border-slate-100 p-6 rounded-3xl">
-                  <h4 className="font-black text-slate-900 text-sm">Credit Balance Adjustment</h4>
-                  
-                  {/* Current Balance */}
-                  <div className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <Coins className="w-5 h-5 text-brand" />
-                      <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Unredeemed Balance</p>
-                        <p className="text-xl font-black text-slate-900 mt-0.5">
-                          {selectedUserCredits.reduce((acc, curr) => acc + (curr.redeemed ? 0 : curr.credit_amount), 0).toFixed(1)} Credits
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleAdjustCredits(creditAdjustment)}
-                        className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider shadow-md hover:bg-emerald-700 active:scale-95"
-                      >
-                        Add {creditAdjustment} Credits
-                      </button>
-                      <button 
-                        onClick={() => handleAdjustCredits(-creditAdjustment)}
-                        className="flex-1 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-md hover:bg-rose-700 active:scale-95"
-                      >
-                        Deduct {creditAdjustment} Credits
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 justify-center">
-                      <span className="text-xs text-slate-500 font-bold uppercase">Adjustment Value:</span>
-                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1">
-                        <button 
-                          onClick={() => setCreditAdjustment(prev => Math.max(0.1, parseFloat((prev - 0.1).toFixed(1))))}
-                          className="w-5 h-5 rounded hover:bg-slate-100 flex items-center justify-center font-black"
-                        >
-                          -
-                        </button>
-                        <span className="text-xs font-black w-8 text-center">{creditAdjustment}</span>
-                        <button 
-                          onClick={() => setCreditAdjustment(prev => parseFloat((prev + 0.1).toFixed(1)))}
-                          className="w-5 h-5 rounded hover:bg-slate-100 flex items-center justify-center font-black"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <UserManagementHub />
       )}
 
       {activeTab === 'financials' && (

@@ -24,6 +24,8 @@ import {
   deleteDoc,
   type DocumentSnapshot,
   Timestamp,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon } from '@/types';
@@ -240,6 +242,26 @@ export async function cancelSubscription(
   else invalidateSubsCache();
 }
 
+// ─── Pause Subscription ───────────────────────────────────────────────────────
+export async function pauseSubscription(subId: string, userId?: string): Promise<void> {
+  await updateDoc(doc(db, 'subscriptions', subId), {
+    status: 'paused',
+    paused_at: Timestamp.now(),
+  });
+  if (userId) invalidateSubsCache(userId);
+  else invalidateSubsCache();
+}
+
+// ─── Resume Subscription ──────────────────────────────────────────────────────
+export async function resumeSubscription(subId: string, userId?: string): Promise<void> {
+  await updateDoc(doc(db, 'subscriptions', subId), {
+    status: 'active',
+    resumed_at: Timestamp.now(),
+  });
+  if (userId) invalidateSubsCache(userId);
+  else invalidateSubsCache();
+}
+
 // ─── One-time migration: old random-ID docs → deterministic IDs ───────────────
 /**
  * Run once after login for existing users to migrate legacy subscription docs
@@ -330,3 +352,232 @@ export async function getAllSubscriptions(
 // ─── Legacy alias kept so old purge import in login page still compiles ───────
 /** @deprecated Use migrateSubscriptions instead */
 export const purgeSubscriptionDuplicates = migrateSubscriptions;
+
+// ─── Custom Plan Subscription Caller ──────────────────────────────────────────
+export interface CreateCustomPlanParams {
+  userId: string;
+  planType: 'weekly' | 'monthly';
+  pattern: Record<string, any>;
+  totalMeals: number;
+  totalPrice: number;
+  planStartDate?: Date | string | number;
+  vendorId?: string;
+  paymentId?: string;
+  razorpayOrderId?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateCustomPlanResponse {
+  success: boolean;
+  subscriptionId: string;
+  confirmation: boolean;
+  message: string;
+  subscription: any;
+}
+
+/**
+ * Calls the "createCustomPlanSubscription" Cloud Function.
+ */
+export async function createCustomPlanSubscription(
+  params: CreateCustomPlanParams
+): Promise<CreateCustomPlanResponse> {
+  const { httpsCallable } = await import('firebase/functions');
+  const { functions } = await import('@/lib/firebase');
+
+  const fn = httpsCallable<CreateCustomPlanParams, CreateCustomPlanResponse>(
+    functions,
+    'createCustomPlanSubscription'
+  );
+
+  const res = await fn(params);
+  invalidateSubsCache(params.userId);
+  return res.data;
+}
+
+// ─── External Subscription & Payment Activation ──────────────────────────────
+export interface ExternalSubscriptionParams {
+  userId: string;
+  userName?: string;
+  userPhone?: string;
+  planType: 'weekly' | 'monthly' | 'standard';
+  planName?: string;
+  subscriptionType: 'custom_weekly' | 'custom_monthly' | 'standard';
+  billingCycle: 'weekly' | 'monthly';
+  mealType?: 'lunch' | 'dinner' | 'both';
+  dietary?: 'veg' | 'non_veg';
+  pattern?: Record<string, any>;
+  totalMeals: number;
+  totalPrice: number;
+  pricePerMeal?: number;
+  // External Payment
+  paymentMethod: 'upi' | 'bank_transfer' | 'cash' | 'cheque' | 'card_pos' | 'other';
+  transactionId?: string; // UTR or Ref ID
+  paymentNotes?: string;
+  // Vendor Attribution & Payout
+  vendorId?: string;
+  vendorName?: string;
+  vendorCostPerMeal?: number;
+  vendorTotalPayable?: number;
+  // Delivery Schedule
+  startDate: Date | string;
+  nextBillingDate?: Date | string;
+  deliveryAddress?: string;
+  deliverySlot?: string;
+  adminId?: string;
+}
+
+export interface ActivateExternalSubscriptionResponse {
+  success: boolean;
+  subscriptionId: string;
+  message: string;
+}
+
+/**
+ * Activates an external subscription in Firestore when offline payment (UPI, cash, bank transfer)
+ * has been collected, and automatically credits vendor payout obligation.
+ */
+export async function activateExternalSubscription(
+  params: ExternalSubscriptionParams
+): Promise<ActivateExternalSubscriptionResponse> {
+  const batch = writeBatch(db);
+  const subRef = doc(collection(db, 'subscriptions'));
+
+  const startDateObj = new Date(params.startDate);
+  const nextBillingDateObj = params.nextBillingDate
+    ? new Date(params.nextBillingDate)
+    : new Date(
+        startDateObj.getTime() +
+          (params.billingCycle === 'monthly' ? 30 : 7) * 24 * 60 * 60 * 1000
+      );
+
+  const isCustom = params.subscriptionType !== 'standard';
+
+  // 1. Subscription Document
+  batch.set(subRef, {
+    id: subRef.id,
+    user_id: params.userId,
+    status: 'active',
+    isCustomPlan: isCustom,
+    is_custom_plan: isCustom,
+    subscriptionType: params.subscriptionType,
+    billingCycle: params.billingCycle,
+    frequency: params.billingCycle,
+    plan_id: params.subscriptionType,
+    plan_name:
+      params.planName ||
+      (params.subscriptionType === 'custom_weekly'
+        ? 'Weekly Custom Plan'
+        : params.subscriptionType === 'custom_monthly'
+        ? 'Monthly Custom Plan'
+        : 'Standard Plan'),
+    meal_type: params.mealType || 'both',
+    dietary: params.dietary || 'veg',
+    deliveryPattern: params.pattern || {},
+    customPlan: isCustom
+      ? {
+          pattern: params.pattern || {},
+          totalMeals: params.totalMeals,
+          totalPrice: params.totalPrice,
+          pricePerMeal:
+            params.pricePerMeal ||
+            Math.round(params.totalPrice / Math.max(1, params.totalMeals)),
+          createdAt: Timestamp.now(),
+        }
+      : null,
+    total_meals: params.totalMeals,
+    totalMeals: params.totalMeals,
+    total_price: params.totalPrice,
+    price: params.totalPrice,
+    vendor_id: params.vendorId || '',
+    vendor_name: params.vendorName || '',
+    is_external_payment: true,
+    payment_method: `external_${params.paymentMethod}`,
+    transaction_id: params.transactionId || `EXT-${Date.now()}`,
+    payment_notes: params.paymentNotes || '',
+    delivery_status: 'ready_for_delivery',
+    start_date: Timestamp.fromDate(startDateObj),
+    startDate: Timestamp.fromDate(startDateObj),
+    next_billing_date: Timestamp.fromDate(nextBillingDateObj),
+    nextBillingDate: Timestamp.fromDate(nextBillingDateObj),
+    delivery_address: params.deliveryAddress || '',
+    delivery_slot: params.deliverySlot || 'lunch',
+    created_at: Timestamp.now(),
+    created_by_admin: params.adminId || 'admin',
+  });
+
+  // 2. Transaction Payment Record
+  const paymentRef = doc(collection(db, 'payments'));
+  batch.set(paymentRef, {
+    id: paymentRef.id,
+    user_id: params.userId,
+    subscription_id: subRef.id,
+    amount: params.totalPrice,
+    currency: 'INR',
+    status: 'success',
+    method: `external_${params.paymentMethod}`,
+    is_external: true,
+    transaction_id: params.transactionId || `EXT-${Date.now()}`,
+    notes: params.paymentNotes || 'External transaction recorded by admin',
+    created_at: Timestamp.now(),
+  });
+
+  // 3. Vendor Attribution & Earnings Record (if assigned)
+  if (params.vendorId) {
+    const vendorPayable =
+      params.vendorTotalPayable !== undefined
+        ? params.vendorTotalPayable
+        : (params.vendorCostPerMeal || 35) * params.totalMeals;
+
+    const vendorPayoutRef = doc(collection(db, 'vendor_payouts'));
+    batch.set(vendorPayoutRef, {
+      id: vendorPayoutRef.id,
+      vendor_id: params.vendorId,
+      vendor_name: params.vendorName || '',
+      subscription_id: subRef.id,
+      user_id: params.userId,
+      user_name: params.userName || '',
+      amount: vendorPayable,
+      cost_per_meal: params.vendorCostPerMeal || 35,
+      total_meals: params.totalMeals,
+      source: 'external_subscription',
+      status: 'credited',
+      reference_id: params.transactionId || '',
+      created_at: Timestamp.now(),
+    });
+
+    // Increment vendor user document earnings & pending payout balance
+    const vendorUserRef = doc(db, 'users', params.vendorId);
+    batch.set(
+      vendorUserRef,
+      {
+        total_earnings: increment(vendorPayable),
+        pending_payout: increment(vendorPayable),
+        last_payout_credit_at: Timestamp.now(),
+      },
+      { merge: true }
+    );
+  }
+
+  // 4. Update Customer User Profile to Active Subscriber
+  const customerUserRef = doc(db, 'users', params.userId);
+  batch.set(
+    customerUserRef,
+    {
+      is_active_subscriber: true,
+      membership_status: 'active',
+      active_subscription_id: subRef.id,
+      last_subscribed_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+    },
+    { merge: true }
+  );
+
+  await batch.commit();
+  invalidateSubsCache(params.userId);
+
+  return {
+    success: true,
+    subscriptionId: subRef.id,
+    message: `External subscription activated successfully! Assigned to vendor ${params.vendorName || params.vendorId || 'kitchen'}.`,
+  };
+}
