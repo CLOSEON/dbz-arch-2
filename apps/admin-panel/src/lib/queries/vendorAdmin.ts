@@ -1,6 +1,6 @@
 import { collection, getDocs, query, where, doc, updateDoc, getDoc, limit, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { AppUser, Vendor, Order } from '@/types';
+import type { AppUser, Vendor, Order, Subscription } from '@/types';
 import { invalidateUserCache } from './users';
 
 export interface VendorPerformance {
@@ -9,7 +9,6 @@ export interface VendorPerformance {
   deliveredOrders: number;
   failedOrders: number;
   activeSubscribers: number;
-  totalRevenue: number;
   totalSales: number;           // Actual gross customer sales (subscriptions + standalone orders + captured payments)
   totalRevenue: number;         // Net vendor earnings after commissions (what they get)
   netRevenue: number;           // Explicit alias for net vendor payout
@@ -22,7 +21,6 @@ export interface VendorPerformance {
 /**
  * Get detailed statistics for a specific vendor
  */
-export async function getVendorStats(vendorId: string): Promise<VendorPerformance> {
 export async function getVendorStats(vendorId: string, feePct?: number): Promise<VendorPerformance> {
   // 1. Determine platform commission percentage
   let commissionRate = feePct;
@@ -46,8 +44,6 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
   // 2. Fetch all subscriptions for this vendor
   const subscriptionsQ = query(
     collection(db, 'subscriptions'),
-    where('vendor_id', '==', vendorId),
-    where('status', '==', 'active')
     where('vendor_id', '==', vendorId)
   );
   
@@ -70,9 +66,6 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
     getDocs(ordersQ)
   ]);
 
-  const activeSubscribers = subsSnap.size;
-  const totalRevenue = paymentsSnap.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0);
-  
   // A. Subscriptions metrics & sales
   const subs = subsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Subscription));
   const activeSubscribers = subs.filter(s => s.status === 'active').length;
@@ -124,7 +117,6 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
     deliveredOrders,
     failedOrders,
     activeSubscribers,
-    totalRevenue
     totalSales,
     totalRevenue: netRevenue,
     netRevenue,
