@@ -1,3 +1,0 @@
-module.exports=[33483,a=>{"use strict";var b=a.i(31185),c=a.i(35517),d=a.i(38078);a.s(["default",0,function(){let a=(0,d.useRouter)();return(0,c.useEffect)(()=>{a.replace("/login")},[a]),(0,b.jsx)("div",{className:"flex items-center justify-center min-h-screen bg-slate-950",children:(0,b.jsxs)("div",{className:"flex flex-col items-center gap-3",children:[(0,b.jsx)("div",{className:"w-10 h-10 rounded-full border-2 border-brand border-t-transparent animate-spin"}),(0,b.jsx)("p",{className:"text-xs text-slate-400 font-bold tracking-widest uppercase",children:"Opening Mobile OTP Login…"})]})})}])}];
-
-//# sourceMappingURL=0c4p_Webapp_DBZARCH2_apps_admin-panel_src_app_%28auth%29_admin-login_page_tsx_0f7gf99._.js.map
