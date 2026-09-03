@@ -231,7 +231,7 @@ export default function VendorDetailClient(props: PageProps) {
       });
 
       const [vendorStats, vendorHistory, vendorSubs] = await Promise.all([
-        getVendorStats(vendorId),
+        getVendorStats(vendorId, vendorData.platform_fee_pct != null ? Number(vendorData.platform_fee_pct) : 10),
         getVendorOrderHistory(vendorId),
         getVendorSubscriptions(vendorId)
       ]);
@@ -501,6 +501,9 @@ export default function VendorDetailClient(props: PageProps) {
 
       await updateDoc(doc(db, 'users', vendor.id), updatedFields);
       setVendor(prev => prev ? ({ ...prev, ...updatedFields }) : null);
+      // Immediately refresh stats with updated platform fee
+      const refreshedStats = await getVendorStats(vendor.id, Number(editForm.platform_fee_pct || 10));
+      setStats(refreshedStats);
       addToast('Kitchen settings & rates saved successfully', 'success');
     } catch (err) {
       console.error(err);
@@ -672,15 +675,26 @@ export default function VendorDetailClient(props: PageProps) {
       {/* TAB 1: OVERVIEW & STATS */}
       {activeTab === 'overview' && (
         <div className="space-y-4 animate-fade-in">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* 1. Total Sales */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
-                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue
+                <TrendingUp className="w-3.5 h-3.5 text-indigo-600" /> Total Sales
               </div>
-              <div className="text-xl font-bold text-slate-900">₹{stats.totalRevenue.toLocaleString('en-IN')}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Processed total</div>
+              <div className="text-xl font-bold text-slate-900">₹{(stats.totalSales || 0).toLocaleString('en-IN')}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Gross customer sales</div>
             </div>
 
+            {/* 2. Net Revenue */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
+                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue (Net)
+              </div>
+              <div className="text-xl font-bold text-emerald-600">₹{(stats.netRevenue ?? stats.totalRevenue ?? 0).toLocaleString('en-IN')}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">After {stats.commissionRate || 10}% comm.</div>
+            </div>
+
+            {/* 3. Active Subscribers */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <Users className="w-3.5 h-3.5 text-brand" /> Active Subscribers
@@ -689,6 +703,7 @@ export default function VendorDetailClient(props: PageProps) {
               <div className="text-[10px] text-slate-400 mt-0.5">Recurring subscribers</div>
             </div>
 
+            {/* 4. Total Orders */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <ShoppingBag className="w-3.5 h-3.5 text-blue-600" /> Total Orders
@@ -699,12 +714,63 @@ export default function VendorDetailClient(props: PageProps) {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+            {/* 5. Punctuality */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs col-span-2 sm:col-span-1">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
                 <Award className="w-3.5 h-3.5 text-amber-600" /> Punctuality
               </div>
               <div className="text-xl font-bold text-slate-900">{stats.deliverySuccessRate}%</div>
               <div className="text-[10px] text-slate-400 mt-0.5">On-time fulfillment</div>
+            </div>
+          </div>
+
+          {/* Detailed Financial & Commission Breakdown Banner */}
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-2xl p-5 text-white shadow-xs border border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
+                    Settlement & Commission Engine
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Platform Fee: <strong className="text-white">{stats.commissionRate || 10}%</strong>
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-1">Total Sales & Vendor Revenue Breakdown</h3>
+                <p className="text-xs text-slate-400">
+                  Gross customer collections vs. net payout payable to {vendor.kitchen_name || vendor.name}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white border border-white/10 transition-colors flex items-center gap-1.5"
+              >
+                <Sliders className="w-3.5 h-3.5" /> Adjust Commission %
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-800">
+              <div className="bg-white/5 rounded-xl p-3.5 border border-white/5">
+                <div className="text-[11px] font-medium text-slate-400">1. Total Sales (Gross)</div>
+                <div className="text-xl font-black text-white mt-0.5">₹{(stats.totalSales || 0).toLocaleString('en-IN')}</div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  Subscriptions: ₹{(stats.subscriptionSales || 0).toLocaleString('en-IN')} {(stats.orderSales || 0) > 0 ? `• Direct Orders: ₹${stats.orderSales.toLocaleString('en-IN')}` : ''}
+                </div>
+              </div>
+
+              <div className="bg-white/5 rounded-xl p-3.5 border border-white/5">
+                <div className="text-[11px] font-medium text-slate-400">2. Dabzzo Commission ({stats.commissionRate || 10}%)</div>
+                <div className="text-xl font-black text-rose-400 mt-0.5">- ₹{(stats.commissionAmount || 0).toLocaleString('en-IN')}</div>
+                <div className="text-[10px] text-slate-400 mt-1">Platform fee deduction</div>
+              </div>
+
+              <div className="bg-emerald-500/10 rounded-xl p-3.5 border border-emerald-500/20">
+                <div className="text-[11px] font-medium text-emerald-400">3. Net Revenue (What Kitchen Gets)</div>
+                <div className="text-xl font-black text-emerald-400 mt-0.5">₹{(stats.netRevenue ?? stats.totalRevenue ?? 0).toLocaleString('en-IN')}</div>
+                <div className="text-[10px] text-emerald-300/80 mt-1">Net amount settled to vendor</div>
+              </div>
             </div>
           </div>
 
@@ -1299,9 +1365,14 @@ export default function VendorDetailClient(props: PageProps) {
               <h3 className="text-sm font-bold text-slate-900">Active Subscribers</h3>
               <p className="text-xs text-slate-500">Manage meal subscriptions, pause, or cancel schedules</p>
             </div>
-            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-              Total: {subscriptions.length}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                Subscription Sales: ₹{(stats?.subscriptionSales || 0).toLocaleString('en-IN')}
+              </span>
+              <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
+                Total: {subscriptions.length}
+              </span>
+            </div>
           </div>
 
           {subscriptions.length === 0 ? (
@@ -1413,43 +1484,53 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => (
-                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                        order.status === 'delivered' || order.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : order.status === 'dispatched'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
-                    </div>
-                  </div>
+              {history.map((order) => {
+                const addr = order.delivery_address || (order as any).address;
+                const displayAddress = typeof addr === 'object' && addr !== null
+                  ? (addr.full_address || addr.line1 || addr.street || addr.city || 'Address on file')
+                  : (typeof addr === 'string' && addr.trim().length > 0 ? addr : 'Address on file');
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="cooking">Cooking</option>
-                      <option value="ready">Ready for Pickup</option>
-                      <option value="dispatched">Dispatched</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                const orderAmount = Number(order.total_amount ?? order.amount ?? (order as any).price ?? 0) || 0;
+                const orderIdStr = String(order.id || '');
+
+                return (
+                  <div key={order.id || Math.random()} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 font-mono">#{orderIdStr ? orderIdStr.slice(0, 8) : 'N/A'}</span>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+                          order.status === 'delivered' || order.status === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : order.status === 'dispatched'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {String(order.status || 'pending')}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {String(displayAddress)} • ₹{orderAmount}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
+                      <select
+                        value={order.status || 'pending'}
+                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="cooking">Cooking</option>
+                        <option value="ready">Ready for Pickup</option>
+                        <option value="dispatched">Dispatched</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1662,6 +1743,27 @@ export default function VendorDetailClient(props: PageProps) {
                     />
                   </div>
                 </div>
+
+                {stats && (
+                  <div className="p-3 bg-white rounded-lg border border-slate-200/90 text-xs space-y-1.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Settlement & Commission Live Preview</span>
+                      <span className="text-[10px] font-semibold text-brand">Based on current Total Sales</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 text-[11px]">
+                      <span>Total Gross Sales:</span>
+                      <span className="font-bold text-slate-900 font-mono">₹{(stats.totalSales || 0).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-rose-600 text-[11px]">
+                      <span>Dabzzo Platform Fee ({Number(editForm.platform_fee_pct || 0)}%):</span>
+                      <span className="font-semibold font-mono">- ₹{(Math.round(((stats.totalSales || 0) * (Number(editForm.platform_fee_pct || 0) / 100)) * 100) / 100).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-emerald-700 text-[11px] font-bold pt-1.5 border-t border-slate-100">
+                      <span>Vendor Net Payable (Revenue):</span>
+                      <span className="font-mono text-xs">₹{(Math.max(0, Math.round(((stats.totalSales || 0) * (1 - (Number(editForm.platform_fee_pct || 0) / 100))) * 100) / 100)).toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
