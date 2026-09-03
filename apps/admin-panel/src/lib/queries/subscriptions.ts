@@ -474,6 +474,12 @@ export async function activateExternalSubscription(
   const subRef = doc(collection(db, 'subscriptions'));
   const isCustom = params.subscriptionType !== 'standard';
 
+  const vendorPayable = params.vendorId
+    ? (params.vendorTotalPayable !== undefined
+        ? params.vendorTotalPayable
+        : (params.vendorCostPerMeal || 35) * params.totalMeals)
+    : 0;
+
   // 1. Subscription Document
   batch.set(subRef, {
     id: subRef.id,
@@ -512,6 +518,9 @@ export async function activateExternalSubscription(
     price: params.totalPrice,
     vendor_id: params.vendorId || '',
     vendor_name: params.vendorName || '',
+    vendor_payable: vendorPayable,
+    vendorTotalPayable: vendorPayable,
+    vendor_cost_per_meal: params.vendorCostPerMeal || 35,
     is_external_payment: true,
     payment_method: `external_${params.paymentMethod}`,
     transaction_id: params.transactionId || `EXT-${Date.now()}`,
