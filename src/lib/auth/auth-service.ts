@@ -132,13 +132,28 @@ async function signInNativeFacebook(): Promise<SignInResult> {
   }
 }
 
-// ─── Web Social Auth (Popup) ─────────────────────────────────────────────────
+// ─── Web Social Auth (Popup with Redirect Fallback) ──────────────────────────
 
 async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider): Promise<SignInResult> {
   try {
     const result = await signInWithPopup(auth, provider);
     return { success: true, user: result.user };
   } catch (err: any) {
+    const code = err?.code || '';
+    if (
+      code === 'auth/popup-blocked' ||
+      code === 'auth/cancelled-popup-request' ||
+      code === 'auth/popup-closed-by-user'
+    ) {
+      console.warn('[Auth] Popup blocked or closed, falling back to signInWithRedirect...', code);
+      try {
+        const { signInWithRedirect } = await import('firebase/auth');
+        await signInWithRedirect(auth, provider);
+        return { success: false, error: 'Redirecting to sign-in...', code: 'redirecting' };
+      } catch (redirErr: any) {
+        return mapFirebaseError(redirErr);
+      }
+    }
     return mapFirebaseError(err);
   }
 }
