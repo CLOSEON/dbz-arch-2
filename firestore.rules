@@ -214,6 +214,12 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Public Platform Overview Stats — public read for landing page counters & stats, admin write
+    match /platform_stats/{statId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // ORDERS & SUBSCRIPTIONS (Customer + Vendor + Rider Shared)
     // ═══════════════════════════════════════════════════════════════════════

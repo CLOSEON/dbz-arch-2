@@ -1329,20 +1329,10 @@ export default function VendorDetailClient(props: PageProps) {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-[10px] text-slate-400 block font-medium">PLAN</span>
-                      <span className="font-semibold text-slate-900">
-                        {(sub as any).isCustomPlan || (sub as any).is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly'
-                          ? `Custom Plan (${(sub as any).total_meals || (sub as any).totalMeals || 9} Meals)`
-                          : ((sub as any).plan_name || (sub.plan_id ? String(sub.plan_id).replace(/_/g, ' ') : 'Standard Plan'))}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">MEAL TYPE</span>
-                      <span className="font-semibold text-slate-800 uppercase">
-                        {sub.meal_type === 'both' ? 'Lunch & Dinner' : sub.meal_type}
-                      </span>
+                      <span className="font-semibold text-slate-800 uppercase">{sub.meal_type}</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block font-medium">CATEGORY</span>
@@ -1351,17 +1341,6 @@ export default function VendorDetailClient(props: PageProps) {
                       </span>
                     </div>
                   </div>
-
-                  {((sub as any).isCustomPlan || (sub as any).is_custom_plan || sub.plan_id === 'custom_weekly') && (
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-200/60 text-[11px] text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="font-semibold text-slate-700">Delivery Schedule:</span>
-                      <span>Mon-Fri: 1 meal/day</span>
-                      <span>•</span>
-                      <span>Sat-Sun: 2 meals/day</span>
-                      <span>•</span>
-                      <span className="font-bold text-slate-900">{(sub as any).total_meals || (sub as any).totalMeals || 9} Total Meals</span>
-                    </div>
-                  )}
 
                   {sub.selected_addons && sub.selected_addons.length > 0 && (
                     <div>
@@ -1434,43 +1413,61 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => (
-                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                        order.status === 'delivered' || order.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : order.status === 'dispatched'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
-                    </div>
-                  </div>
+              {history.map((order, idx) => {
+                const rawAddr = (order as any).delivery_address || (order as any).address;
+                let addressText = 'Address on file';
+                if (typeof rawAddr === 'string' && rawAddr.trim().length > 0) {
+                  addressText = rawAddr;
+                } else if (typeof rawAddr === 'object' && rawAddr !== null) {
+                  addressText = rawAddr.line1 || rawAddr.full_address || rawAddr.street || rawAddr.city || (rawAddr.lat && rawAddr.lng ? `GPS: ${rawAddr.lat.toFixed(4)}, ${rawAddr.lng.toFixed(4)}` : 'Address on file');
+                }
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="cooking">Cooking</option>
-                      <option value="ready">Ready for Pickup</option>
-                      <option value="dispatched">Dispatched</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                const orderAmount = typeof (order as any).total_amount === 'number'
+                  ? (order as any).total_amount
+                  : (typeof (order as any).amount === 'number' ? (order as any).amount : Number((order as any).total_amount || (order as any).amount || (order as any).price || 0) || 0);
+
+                const orderId = String(order?.id || `ord-${idx}`);
+                const shortId = orderId.slice(0, 8);
+                const orderStatus = String(order?.status || 'pending');
+
+                return (
+                  <div key={orderId} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 font-mono">#{shortId}</span>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+                          orderStatus === 'delivered' || orderStatus === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : orderStatus === 'dispatched'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {orderStatus}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {addressText} • ₹{orderAmount}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
+                      <select
+                        value={orderStatus}
+                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="cooking">Cooking</option>
+                        <option value="ready">Ready for Pickup</option>
+                        <option value="dispatched">Dispatched</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
