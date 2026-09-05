@@ -78,12 +78,17 @@ service cloud.firestore {
     }
 
     function doesNotModifyRoles() {
-      return isAdmin() || !('roles' in request.resource.data) ||
-        (resource != null && request.resource.data.roles == resource.data.roles);
+      return isAdmin() || (
+        !('roles' in request.resource.data) && !('role' in request.resource.data)
+      ) || (
+        resource != null &&
+        request.resource.data.get('roles', null) == resource.data.get('roles', null) &&
+        request.resource.data.get('role', null) == resource.data.get('role', null)
+      );
     }
 
     function doesNotModifyRolesOnUpdate() {
-      return isAdmin() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roles', 'admin', 'permissions']);
+      return isAdmin() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roles', 'role', 'admin', 'permissions']);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -101,8 +106,8 @@ service cloud.firestore {
     //   }
     // }
     match /users/{userId} {
-      // Any logged-in user can read basic user profile info, or full access for own profile / admin
-      allow read: if request.auth != null;
+      allow get: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
 
       // User can create their own profile, but CANNOT set or modify the `roles` field
       allow create: if request.auth != null &&
@@ -242,10 +247,18 @@ service cloud.firestore {
       );
       allow update: if request.auth != null && (
         isAdmin() ||
-        (isVerifiedRider() && (resource.data.get('driverId', '') == request.auth.uid || resource.data.get('agentId', '') == request.auth.uid)) ||
-        (isVerifiedVendor() && (resource.data.get('vendor_id', '') == request.auth.uid || resource.data.get('vendorId', '') == request.auth.uid)) ||
-        resource.data.get('user_id', '') == request.auth.uid ||
-        resource.data.get('customerId', '') == request.auth.uid
+        (
+          isVerifiedRider() && (resource.data.get('driverId', '') == request.auth.uid || resource.data.get('agentId', '') == request.auth.uid) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'vendorId', 'vendor_id'])
+        ) ||
+        (
+          isVerifiedVendor() && (resource.data.get('vendor_id', '') == request.auth.uid || resource.data.get('vendorId', '') == request.auth.uid) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'driverId', 'agentId'])
+        ) ||
+        (
+          (resource.data.get('user_id', '') == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryPreference', 'deliveryAddress', 'delivery_address', 'instructions'])
+        )
       );
       allow delete: if isAdmin();
 
@@ -315,7 +328,10 @@ service cloud.firestore {
 
     match /subscription_swap_allowances/{docId} {
       allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+      // Users can initialize their own swap allowance doc on subscription creation
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
     }
 
     match /swap_requests/{requestId} {
@@ -362,11 +378,17 @@ service cloud.firestore {
     }
 
     match /vendor_payouts/{payoutId} {
-      allow read, write: if request.auth != null;
+      allow read: if isAdmin() || (request.auth != null && resource.data.vendor_id == request.auth.uid);
+      allow write: if isAdmin();
     }
 
     match /payments/{paymentId} {
-      allow read, write: if request.auth != null;
+      allow read: if isAdmin() || (request.auth != null && resource.data.vendor_id == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    match /system_settings/{docId} {
+      allow read, write: if isAdmin();
     }
   }
 }

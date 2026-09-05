@@ -2,7 +2,6 @@
 
 import { usePathname } from 'next/navigation';
 import { AuthGuard } from '@/lib/auth';
-import { UserNav } from '@/components/layout/UserNav';
 
 export function UserAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '';
@@ -26,7 +25,6 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
         >
           {children}
         </main>
-        <UserNav />
       </div>
     </AuthGuard>
   );

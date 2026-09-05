@@ -266,7 +266,117 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
       return;
     }
 
-    res.status(404).json({ error: `Endpoint /api/razorpay/${path} not found.` });
+    if (path === 'create-subscription' || path === 'create-subscription/') {
+      const data = req.body || {};
+      const { plan_id, customer_id, total_count, quantity } = data;
+
+      if (!plan_id) {
+        res.status(400).json({ error: 'Missing plan_id' });
+        return;
+      }
+
+      const rzp = getRazorpayInstance();
+      const payload: any = {
+        plan_id,
+        total_count: total_count || 12,
+        quantity: quantity || 1
+      };
+      if (customer_id) payload.customer_id = customer_id;
+
+      const subscription = await rzp.subscriptions.create(payload);
+
+      res.status(200).json({
+        subscription_id: subscription.id,
+        short_url: subscription.short_url,
+        status: subscription.status,
+      });
+      return;
+    }
+
+    if (path === 'create-vendor-account' || path === 'create-vendor-account/') {
+      const data = req.body || {};
+      const { name, email, phone, business_name, account_type } = data;
+
+      if (!name || !email || !phone) {
+        res.status(400).json({ error: 'Missing name, email, or phone' });
+        return;
+      }
+
+      const rzp = getRazorpayInstance();
+      const accountData = {
+        name,
+        email,
+        contact: phone,
+        type: account_type || 'route',
+        business_type: 'individual',
+        legal_business_name: business_name || name,
+        profile: {
+          category: 'food',
+          subcategory: 'catering',
+        },
+      };
+
+      const account = await (rzp as any).accounts.create(accountData);
+      res.status(200).json(account);
+      return;
+    }
+
+    if (path === 'webhook' || path === 'webhook/') {
+      const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.NEXT_PUBLIC_RAZORPAY_WEBHOOK_SECRET || 'dabzzo_webhook_secret';
+      const signature = req.headers['x-razorpay-signature'] as string;
+
+      if (!signature) {
+        res.status(400).json({ error: 'Missing signature.' });
+        return;
+      }
+
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(JSON.stringify(req.body))
+        .digest('hex');
+
+      if (expectedSignature !== signature) {
+        res.status(400).json({ error: 'Invalid signature.' });
+        return;
+      }
+
+      const event = req.body;
+      const db = admin.firestore();
+
+      try {
+        if (event.event === 'payment.captured') {
+          const payment = event.payload.payment.entity;
+          // You could update your database
+        } else if (event.event === 'subscription.activated') {
+          const subscription = event.payload.subscription.entity;
+          const rzpSubId = subscription.id;
+          const subsSnap = await db.collection('subscriptions').where('rzp_subscription_id', '==', rzpSubId).get();
+          if (!subsSnap.empty) {
+            const batch = db.batch();
+            subsSnap.docs.forEach(doc => {
+              batch.update(doc.ref, { status: 'active', updated_at: admin.firestore.FieldValue.serverTimestamp() });
+            });
+            await batch.commit();
+          }
+        } else if (event.event === 'subscription.halted') {
+          const subscription = event.payload.subscription.entity;
+          const rzpSubId = subscription.id;
+          const subsSnap = await db.collection('subscriptions').where('rzp_subscription_id', '==', rzpSubId).get();
+          if (!subsSnap.empty) {
+            const batch = db.batch();
+            subsSnap.docs.forEach(doc => {
+              batch.update(doc.ref, { status: 'cancelled', updated_at: admin.firestore.FieldValue.serverTimestamp() });
+            });
+            await batch.commit();
+          }
+        }
+      } catch (e) {
+        console.error('Error processing webhook event:', e);
+      }
+
+      res.status(200).json({ status: 'ok' });
+      return;
+    }
   } catch (err: any) {
     console.error('[razorpayApi] Error:', err);
     res.status(500).json({ error: err?.message || 'Payment server error' });

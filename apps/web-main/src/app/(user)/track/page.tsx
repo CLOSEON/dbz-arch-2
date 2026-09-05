@@ -265,8 +265,8 @@ function CustomerTrackContent() {
         address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
         scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
         status: data.status,
-        delivery_otp: data.delivery_otp || data.otp || '1234',
-        otp: data.delivery_otp || data.otp || '1234',
+        delivery_otp: data.delivery_otp || data.otp || null,
+        otp: data.delivery_otp || data.otp || null,
         timestamps: data.timestamps || {
           preparedAt: null,
           pickedAt: null,
@@ -571,7 +571,7 @@ function CustomerTrackContent() {
               <div className="flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 px-3 py-1 rounded-xl">
                 <span className="text-[10px] font-black uppercase tracking-wider">Doorstep PIN:</span>
                 <span className="font-mono text-sm font-black tracking-widest text-emerald-700 dark:text-emerald-300">
-                  {currentOrder.delivery_otp || currentOrder.otp || '1234'}
+                  {currentOrder.delivery_otp || currentOrder.otp || '----'}
                 </span>
               </div>
             )}
@@ -701,7 +701,7 @@ function CustomerTrackContent() {
               riderPhone={currentOrder.agentPhone}
               riderRating={4.8}
               vehicleNumber={currentOrder.vehicleNumber}
-              otp={currentOrder.delivery_otp || currentOrder.otp || '1234'}
+              otp={currentOrder.delivery_otp || currentOrder.otp || undefined}
               boxTag={generateBoxTag({
                 customerName: impersonatedCustomer?.name || currentOrder.customer_name || currentOrder.customerName || currentOrder.userName || user?.name || 'Customer',
                 vendorName: currentOrder.vendorName || currentOrder.vendor?.kitchen_name || currentOrder.vendor?.name || activeSubs.find((s: any) => s.id === (currentOrder.subscription_id || currentOrder.subscriptionId) || s.vendor_id === (currentOrder.vendor_id || currentOrder.vendorId))?.vendor_name || 'Kitchen',

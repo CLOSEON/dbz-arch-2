@@ -541,6 +541,64 @@ export const markBatchReady = onCall(async (request) => {
   return result;
 });
 
+export const verifyDeliveryOTP = onCall(async (request) => {
+  const { data, auth } = request;
+  
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const { orderId, otp } = data || {};
+  if (!orderId || !otp) {
+    throw new HttpsError('invalid-argument', 'Missing orderId or otp');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+
+  return await db.runTransaction(async (transaction) => {
+    const orderDoc = await transaction.get(orderRef);
+    
+    if (!orderDoc.exists) {
+      throw new HttpsError('not-found', 'Order not found');
+    }
+
+    const orderData = orderDoc.data()!;
+    
+    // Auth check: must be the assigned rider or admin
+    if (orderData.rider_id !== auth.uid && orderData.driverId !== auth.uid && auth.token.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
+    }
+
+    if (orderData.status === 'delivered') {
+      return { success: false, message: 'Order is already delivered' };
+    }
+
+    if (String(orderData.otp) !== String(otp)) {
+      return { success: false, message: 'Invalid OTP' };
+    }
+
+    // Update order status to 'delivered'
+    transaction.update(orderRef, {
+      status: 'delivered',
+      delivered_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    const logRef = db.collection('order_status_logs').doc();
+    transaction.set(logRef, {
+      id: logRef.id,
+      order_id: orderId,
+      from_status: orderData.status,
+      to_status: 'delivered',
+      actor: auth.uid,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: 'OTP verified successfully. Order delivered.' };
+  });
+});
+
 /**
  * Triggers when a subscription document is created OR re-activated.
  * Uses onDocumentWritten because setDoc with a deterministic ID overwrites

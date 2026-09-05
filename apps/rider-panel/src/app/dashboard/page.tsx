@@ -22,7 +22,8 @@ import { getImageUrl, uploadImage } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
 import toast from 'react-hot-toast';
 import { collection, getDocs, query, where, doc, getDoc, writeBatch, updateDoc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import dynamic from 'next/dynamic';
 import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
@@ -127,45 +128,7 @@ export default function RiderDashboard() {
     }
   };
 
-  // ── 1. Offline Sync Queue ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    async function syncOfflineQueue() {
-      if (!navigator.onLine) return;
-      const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-      if (queue.length === 0) return;
-
-      const successfulSyncs: string[] = [];
-
-      for (const item of queue) {
-        try {
-          await updateDoc(doc(db, 'orders', item.orderId), {
-            status: 'delivered',
-            updated_at: new Date(),
-            'timestamps.deliveredAt': new Date(),
-            delivery_method: 'otp_offline'
-          });
-          successfulSyncs.push(item.orderId);
-        } catch (err) {
-          console.error('[Offline Sync] Failed to sync order:', item.orderId, err);
-        }
-      }
-
-      const remaining = queue.filter((item: any) => !successfulSyncs.includes(item.orderId));
-      localStorage.setItem('offline_deliveries', JSON.stringify(remaining));
-      if (successfulSyncs.length > 0) {
-        toast.success(`Synced ${successfulSyncs.length} offline deliveries! 📶`);
-      }
-    }
-
-    const interval = setInterval(syncOfflineQueue, 15000);
-    window.addEventListener('online', syncOfflineQueue);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('online', syncOfflineQueue);
-    };
-  }, []);
+  // ── 1. Offline Sync Queue (Removed to prevent spoofing) ─────────────────────
 
   useEffect(() => {
     const timer = setTimeout(() => setIsMounting(false), 300);
@@ -474,47 +437,24 @@ export default function RiderDashboard() {
     }
     setVerifyingDropoffOTP(true);
     try {
-      const orderRef = doc(db, 'orders', currentDropOrder.id);
-      const orderSnap = await getDoc(orderRef);
-      if (!orderSnap.exists()) throw new Error('Order not found');
-      
-      const orderData = orderSnap.data();
-      const expectedOTP = orderData.delivery_otp || orderData.otp;
-
-      if (expectedOTP && String(expectedOTP) !== String(dropoffOTP)) {
-        toast.error('Invalid OTP. Please check the 4-digit PIN on customer tracking screen.');
+      const verifyFn = httpsCallable(functions, 'verifyDeliveryOTP');
+      const result = await verifyFn({ orderId: currentDropOrder.id, otp: dropoffOTP });
+      const data = result.data as { success: boolean; message: string };
+      if (!data.success) {
+        toast.error(data.message || 'Invalid OTP. Please check the 4-digit PIN on customer tracking screen.');
         return;
       }
-
-      try {
-        await updateDoc(orderRef, {
-          status: 'delivered',
-          updated_at: new Date(),
-          'timestamps.deliveredAt': new Date(),
-          delivery_method: 'otp'
-        });
-
-        const remaining = agentOrders.filter(o => o.id !== currentDropOrder.id && o.status !== 'delivered' && o.status !== 'failed');
-        if (remaining.length === 0) {
-          await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
-            status: 'completed',
-            completedAt: new Date(),
-            updatedAt: new Date()
-          });
-          toast.success('All Deliveries Completed! Excellent run! 🎉');
-        } else {
-          toast.success(`Delivery #${completedDropsCount + 1} completed! Proceeding to next stop.`);
-        }
-      } catch {
-        const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-        queue.push({ orderId: currentDropOrder.id, timestamp: Date.now() });
-        localStorage.setItem('offline_deliveries', JSON.stringify(queue));
-        toast.success('Offline: Delivery logged and queued for automatic sync! 📶');
+      // Cloud function already marked order delivered
+      // Just update local UI state
+      const remaining = agentOrders.filter(o => o.id !== currentDropOrder.id && o.status !== 'delivered' && o.status !== 'failed');
+      if (remaining.length === 0) {
+        toast.success('All Deliveries Completed! Excellent run! 🎉');
+      } else {
+        toast.success(`Delivery #${completedDropsCount + 1} completed! Proceeding to next stop.`);
       }
-
       setDropoffOTP('');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to complete delivery');
+      toast.error('OTP verification failed: ' + (err?.message || 'Unknown error'));
     } finally {
       setVerifyingDropoffOTP(false);
     }

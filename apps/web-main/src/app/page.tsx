@@ -7,10 +7,10 @@ import type { UserRole } from '@/types';
 import { Capacitor } from '@capacitor/core';
 import { DabzzoLoadingScreen } from '@/components/ui/loading';
 
-const ROLE_DASHBOARDS: Record<UserRole, string> = {
+const ROLE_DASHBOARDS: Record<string, string> = {
   admin: '/admin/dashboard',
-  vendor: '/vendor/dashboard',
-  delivery: '/delivery/dashboard',
+  vendor: 'https://vendor.panel.dabzzo.in',
+  delivery: 'https://rider.panel.dabzzo.in',
   user: '/dashboard',
 };
 
@@ -26,7 +26,11 @@ export default function RootRedirect() {
     if (user) {
       // If the user is logged in, redirect them to their dashboard
       const target = ROLE_DASHBOARDS[user.role] || '/dashboard';
-      router.replace(target);
+      if (user.role === 'vendor' || user.role === 'delivery') {
+        window.location.href = target;
+      } else {
+        router.replace(target);
+      }
     } else {
       // First-time users or logged-out users get redirected to the landing page
       // In native apps (APK/iOS), we skip the landing page and go straight to login

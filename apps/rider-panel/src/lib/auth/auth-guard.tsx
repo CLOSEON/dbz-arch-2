@@ -9,7 +9,7 @@ interface AuthGuardProps {
   allowedRoles?: string[];
 }
 
-export function AuthGuard({ children }: AuthGuardProps) {
+export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
@@ -21,7 +21,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
       router.replace('/login');
       return;
     }
-  }, [user, isHydrated, router]);
+
+    if (allowedRoles && allowedRoles.length > 0) {
+      const isSuper = user.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any).is_superadmin === true;
+      const userRole = (user.role as string) || '';
+      const hasDeliveryRole = userRole === 'delivery' || userRole === 'delivery_agent' || (user as any).roles?.delivery;
+      
+      const isAllowed = isSuper || allowedRoles.includes(userRole) || (allowedRoles.includes('delivery') && hasDeliveryRole);
+      
+      if (!isAllowed) {
+        router.replace('/login');
+        return;
+      }
+    }
+  }, [user, isHydrated, router, allowedRoles]);
 
   if (!isHydrated || !user) {
     return (
@@ -32,6 +45,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
         </div>
       </div>
     );
+  }
+
+  if (allowedRoles && allowedRoles.length > 0) {
+    const isSuper = user.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any).is_superadmin === true;
+    const userRole = (user.role as string) || '';
+    const hasDeliveryRole = userRole === 'delivery' || userRole === 'delivery_agent' || (user as any).roles?.delivery;
+    const isAllowed = isSuper || allowedRoles.includes(userRole) || (allowedRoles.includes('delivery') && hasDeliveryRole);
+    if (!isAllowed) return null;
   }
 
   return <>{children}</>;

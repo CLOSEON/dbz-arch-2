@@ -133,8 +133,16 @@ export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, ove
     // Remove rider from pool so they only get 1 batch
     activeRiders.splice(nearestRiderIdx, 1);
 
+    // Fetch batch to get existing OTP
+    const batchDocRef = db.collection('batches').doc(bId);
+    const batchSnap = await batchDocRef.get();
+    let pickupOTP = batchSnap.data()?.pickup_otp;
+    
+    if (!pickupOTP) {
+      pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
     const tripRef = db.collection('rider_trips').doc();
-    const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
 
     // Create pickup stop for this batch's vendor
     const pickupStops = [{
@@ -160,11 +168,11 @@ export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, ove
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    const batchDocRef = db.collection('batches').doc(bId);
     batch.update(batchDocRef, {
       trip_id: tripRef.id,
       rider_id: selectedRider.id,
       rider_name: selectedRider.name || 'Dabzzo Rider',
+      pickup_otp: pickupOTP,
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     });
 
