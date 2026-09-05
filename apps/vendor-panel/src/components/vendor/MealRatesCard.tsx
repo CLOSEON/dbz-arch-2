@@ -1,36 +1,39 @@
 'use client';
 
 import { useAuthStore } from '@/store/authStore';
+import { useVendorData } from './VendorDataProvider';
 import { IndianRupee, Clock, RotateCcw, Calendar, Tag, ShieldCheck, PhoneCall } from 'lucide-react';
 import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 export function MealRatesCard() {
   const user = useAuthStore((s) => s.user);
+  const { managedVendor } = useVendorData();
+  const currentVendor = managedVendor || user;
 
-  const hasVeg = !user?.dietary_categories || user.dietary_categories.includes('veg');
-  const hasNonVeg = user?.dietary_categories?.includes('non_veg');
+  const hasVeg = !currentVendor?.dietary_categories || currentVendor.dietary_categories.includes('veg');
+  const hasNonVeg = currentVendor?.dietary_categories?.includes('non_veg');
 
   const vegRates = {
-    onetime: user?.rate_veg_onetime || user?.rate_onetime || 0,
-    lunch_weekly: user?.rate_veg_lunch_weekly || user?.rate_lunch_weekly || 0,
-    lunch_monthly: user?.rate_veg_lunch_monthly || user?.rate_lunch_monthly || 0,
-    dinner_weekly: user?.rate_veg_dinner_weekly || user?.rate_dinner_weekly || 0,
-    dinner_monthly: user?.rate_veg_dinner_monthly || user?.rate_dinner_monthly || 0,
-    both_weekly: user?.rate_veg_both_weekly || user?.rate_both_weekly || 0,
-    both_monthly: user?.rate_veg_both_monthly || user?.rate_both_monthly || 0,
+    onetime: currentVendor?.rate_veg_onetime || currentVendor?.rate_onetime || 0,
+    lunch_weekly: currentVendor?.rate_veg_lunch_weekly || currentVendor?.rate_lunch_weekly || 0,
+    lunch_monthly: currentVendor?.rate_veg_lunch_monthly || currentVendor?.rate_lunch_monthly || 0,
+    dinner_weekly: currentVendor?.rate_veg_dinner_weekly || currentVendor?.rate_dinner_weekly || 0,
+    dinner_monthly: currentVendor?.rate_veg_dinner_monthly || currentVendor?.rate_dinner_monthly || 0,
+    both_weekly: currentVendor?.rate_veg_both_weekly || currentVendor?.rate_both_weekly || 0,
+    both_monthly: currentVendor?.rate_veg_both_monthly || currentVendor?.rate_both_monthly || 0,
   };
 
   const nonVegRates = {
-    onetime: user?.rate_nonveg_onetime || 0,
-    lunch_weekly: user?.rate_nonveg_lunch_weekly || 0,
-    lunch_monthly: user?.rate_nonveg_lunch_monthly || 0,
-    dinner_weekly: user?.rate_nonveg_dinner_weekly || 0,
-    dinner_monthly: user?.rate_nonveg_dinner_monthly || 0,
-    both_weekly: user?.rate_nonveg_both_weekly || 0,
-    both_monthly: user?.rate_nonveg_both_monthly || 0,
+    onetime: currentVendor?.rate_nonveg_onetime || 0,
+    lunch_weekly: currentVendor?.rate_nonveg_lunch_weekly || 0,
+    lunch_monthly: currentVendor?.rate_nonveg_lunch_monthly || 0,
+    dinner_weekly: currentVendor?.rate_nonveg_dinner_weekly || 0,
+    dinner_monthly: currentVendor?.rate_nonveg_dinner_monthly || 0,
+    both_weekly: currentVendor?.rate_nonveg_both_weekly || 0,
+    both_monthly: currentVendor?.rate_nonveg_both_monthly || 0,
   };
 
-  const activeAddons = (user?.addons || []).filter(a => a.active);
+  const activeAddons = (currentVendor?.addons || []).filter((a: any) => a.active);
 
   const subRows = [
     { label: 'Lunch Plan',         weekly: 'lunch_weekly',  monthly: 'lunch_monthly'  },
@@ -156,7 +159,7 @@ export function MealRatesCard() {
           <p className="text-xs text-slate-400 font-medium italic">No add-ons currently active for your kitchen.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-            {activeAddons.map(addon => (
+            {activeAddons.map((addon: any) => (
               <div key={addon.id} className="bg-white p-3 rounded-xl border border-amber-100/80 shadow-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900">{addon.name}</span>

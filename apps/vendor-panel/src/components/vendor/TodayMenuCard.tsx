@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
+import { useVendorData } from './VendorDataProvider';
 import { getDailyMenu, saveDailyMenu, getTodayStr } from '@/lib/queries/menu';
 import { DailyMenu, MenuItem, DietaryCategory } from '@/types';
 import { Utensils, Plus, Trash2, Calendar } from 'lucide-react';
@@ -10,10 +11,12 @@ import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 export function TodayMenuCard() {
   const user = useAuthStore((s) => s.user);
+  const { managedVendor } = useVendorData();
+  const currentVendor = managedVendor || user;
   const addToast = useUiStore((s) => s.addToast);
 
-  const hasVeg = !user?.dietary_categories || user.dietary_categories.includes('veg');
-  const hasNonVeg = user?.dietary_categories?.includes('non_veg');
+  const hasVeg = !currentVendor?.dietary_categories || currentVendor.dietary_categories.includes('veg');
+  const hasNonVeg = currentVendor?.dietary_categories?.includes('non_veg');
   const hasBoth = hasVeg && hasNonVeg;
 
   const [activeTab, setActiveTab] = useState<DietaryCategory>(hasVeg ? 'veg' : 'non_veg');
@@ -36,16 +39,16 @@ export function TodayMenuCard() {
   });
 
   useEffect(() => {
-    if (user?.id) {
+    if (currentVendor?.id) {
       loadMenu();
     }
-  }, [user?.id]);
+  }, [currentVendor?.id]);
 
   async function loadMenu() {
-    if (!user) return;
+    if (!currentVendor?.id) return;
     setLoading(true);
     try {
-      const data = await getDailyMenu(user.id, todayStr);
+      const data = await getDailyMenu(currentVendor.id, todayStr);
       setMenu(data);
       if (data) {
         const toMenuItems = (list?: (MenuItem | string)[]): MenuItem[] => 
@@ -131,7 +134,7 @@ export function TodayMenuCard() {
 
     setSaving(true);
     try {
-      await saveDailyMenu(user.id, todayStr, {
+      await saveDailyMenu(currentVendor.id, todayStr, {
         items_veg: cleanVeg,
         items_non_veg: cleanNonVeg,
         note_veg: vegNote.trim(),

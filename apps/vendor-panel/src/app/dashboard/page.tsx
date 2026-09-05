@@ -4,10 +4,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
 import { 
-  Users, CheckCircle, CheckCircle2, ChefHat, PackageCheck, Phone, 
+  Users, CheckCircle, ChefHat, PackageCheck, Phone, 
   CalendarClock, IndianRupee, UtensilsCrossed, Sliders, 
   Star, MapPin, Sparkles, Activity, ShieldCheck, Clock,
-  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check, Truck, Loader2
+  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
@@ -65,13 +65,17 @@ function formatBatchTitle(slot: string) {
 export default function VendorDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { batches, pickups, subscriptions, loading, managedVendor } = useVendorData();
+  const { batches, pickups, subscriptions, loading, managedVendor, allVendors, activeVendorId, setActiveVendorId } = useVendorData();
   const vendorProfile = managedVendor || user;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  const isVendorRole = user?.role === 'vendor' || user?.role === 'admin' || user?.is_superadmin === true;
-  const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified' || user?.is_superadmin === true) &&
+  const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
+                  user?.is_superadmin === true || 
+                  (user as any)?.roles?.admin === true || 
+                  user?.role === 'admin';
+  const isVendorRole = user?.role === 'vendor' || isSuper;
+  const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified' || isSuper) &&
     user?.is_rejected !== true && (user as any)?.is_suspended !== true &&
     user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
 
@@ -214,6 +218,7 @@ export default function VendorDashboard() {
       isOpen: true,
       title: 'Confirm Batch Ready?',
       message: `Are you sure you want to mark all ${batch.total_count} tiffins as ready for the ${bInfo.title} (${bInfo.deliveryTime})? This immediately notifies assigned dispatch riders.`,
+
       confirmLabel: 'Mark Ready',
       variant: 'primary',
       onConfirm: async () => {
@@ -245,30 +250,7 @@ export default function VendorDashboard() {
   const capacityPercent = Math.min(100, Math.round((subscriberCount / kitchenCapacity) * 100));
   const totalRevenue = subscriptions.reduce((sum, s: any) => sum + (s.total_price || s.base_price || s.price || 0), 0);
 
-  const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      return JSON.parse(localStorage.getItem(`packed_boxes_${localToday}`) || '{}');
-    } catch {
-      return {};
-    }
-  });
-
-  const toggleBoxPacked = (key: string, boxTag: string, slotType: string) => {
-    setPackedBoxes((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try {
-        localStorage.setItem(`packed_boxes_${localToday}`, JSON.stringify(next));
-      } catch (e) {
-        console.warn('Failed to persist packed boxes:', e);
-      }
-      if (!prev[key]) {
-        toast.success(`Box ${boxTag} (${slotType.toUpperCase()}) marked Tagged & Packed! ✨`);
-      }
-      return next;
-    });
-  };
-
+  const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>({});
   const [tagFilterSlot, setTagFilterSlot] = useState<'all' | 'lunch' | 'dinner'>('all');
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
@@ -299,32 +281,73 @@ export default function VendorDashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto px-2 sm:px-4">
 
+      {/* ── SUPERADMIN KITCHEN SWITCHER ───────────────────────────────────── */}
+      {isSuper && allVendors.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-3xl p-4 sm:px-6 text-white shadow-lg shadow-orange-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-amber-400/30">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shrink-0 border border-white/20">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-100 bg-black/20 px-2.5 py-0.5 rounded-full">
+                  Superadmin Control
+                </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+                <span className="text-xs font-bold text-white/90">Switch Active Kitchen</span>
+              </div>
+              <p className="text-xs text-white/90 font-medium truncate mt-0.5">
+                Overseeing {vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen'} operations, batches & dispatch.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0 bg-black/20 p-1.5 px-3 rounded-2xl border border-white/20">
+            <label htmlFor="kitchen-switch" className="text-[11px] font-black uppercase tracking-wider text-amber-100 shrink-0 flex items-center gap-1.5">
+              <ChefHat className="w-3.5 h-3.5" /> Select Kitchen:
+            </label>
+            <select
+              id="kitchen-switch"
+              value={activeVendorId || vendorProfile?.id || ''}
+              onChange={(e) => setActiveVendorId(e.target.value)}
+              className="bg-white text-slate-900 font-black text-xs rounded-xl py-2 pl-3 pr-8 shadow-xs border border-white/40 focus:ring-2 focus:ring-white outline-none cursor-pointer"
+            >
+              {allVendors.map((v) => (
+                <option key={v.id} value={v.id} className="text-slate-900 font-bold">
+                  {v.kitchen_name || v.name || 'Kitchen'} — {v.address?.split(',')?.[0] || v.city || 'Nagpur'} {v.id === 'kb4yMdXRFBR2AhZWnY2GloUbHxR2' ? '(Primary)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* ── TOP HERO KITCHEN CARD ────────────────────────────────────────── */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-brand flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-brand/20 shrink-0">
-              {user?.kitchen_name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || 'T'}
+              {vendorProfile?.kitchen_name?.[0]?.toUpperCase() || vendorProfile?.name?.[0]?.toUpperCase() || 'K'}
             </div>
 
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  {user?.kitchen_name || user?.name || 'Test Vendor'}
+                  {vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen Hub'}
                 </h1>
                 <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Verified Kitchen
                 </span>
                 <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-[10px] font-black border border-amber-200">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {Number(user?.rating_avg || user?.rating || 4.5).toFixed(1)}
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {Number(vendorProfile?.rating_avg || vendorProfile?.rating || 4.5).toFixed(1)}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
-                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {user?.address || 'Sector 62, Noida, Uttar Pradesh'}</span>
-                <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> {user?.phone || '+919900990022'}</span>
+                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {vendorProfile?.address || vendorProfile?.location?.address || 'Nagpur, Maharashtra'}</span>
+                <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> {vendorProfile?.phone || vendorProfile?.phone_number || '+919900990022'}</span>
                 <span className="text-slate-400">•</span>
-                <span className="text-brand font-bold">{user?.cuisine_type || 'Home Style'}</span>
+                <span className="text-brand font-bold">{vendorProfile?.cuisine_type || 'Home Style'}</span>
               </div>
             </div>
           </div>
@@ -525,7 +548,7 @@ export default function VendorDashboard() {
                               const tripOTP = pickups.find(p => 
                                 p.batch_ids?.includes(batch.id) || 
                                 p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
-                              )?.pickupStops?.find((s: any) => s.vendorId === user?.id)?.pickupOTP;
+                              )?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id))?.pickupOTP;
                               const displayOTP = batch.pickup_otp || tripOTP || '6721';
 
                               return (
@@ -552,7 +575,7 @@ export default function VendorDashboard() {
                   </h4>
 
                   {pickups.map((trip) => {
-                    const myStop = trip.pickupStops?.find((s: any) => s.vendorId === user?.id);
+                    const myStop = trip.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
                     if (!myStop || myStop.status === 'completed') return null;
 
                     return (
@@ -760,73 +783,6 @@ export default function VendorDashboard() {
                   <div className="text-xl font-black text-amber-900 mt-0.5">{totalPacked} / {boxItems.length}</div>
                 </div>
               </div>
-
-              {/* Batch Dispatch & Rider Alert Status Bar */}
-              {todayBatches.length > 0 && (
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  {todayBatches
-                    .filter(b => tagFilterSlot === 'all' || (tagFilterSlot === 'lunch' && (b.slot === '11am' || b.slot === 'lunch')) || (tagFilterSlot === 'dinner' && (b.slot === '8pm' || b.slot === 'dinner')))
-                    .map(b => {
-                      const bInfo = formatBatchTitle(b.slot);
-                      const isReady = b.status === 'ready' || b.status === 'dispatched' || b.status === 'completed';
-                      return (
-                        <div key={b.id} className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-                          isReady ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-amber-50/70 border-amber-200 text-amber-900'
-                        }`}>
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black shrink-0 ${
-                              isReady ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-500 text-white shadow-xs'
-                            }`}>
-                              {isReady ? <CheckCircle2 className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-black uppercase tracking-wider">{bInfo.title}</span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 border border-current/20">{bInfo.deliveryTime}</span>
-                              </div>
-                              <p className="text-xs opacity-80 mt-0.5">
-                                {isReady 
-                                  ? `✓ Batch Ready & Dispatched! Pickup OTP: ${b.pickup_otp || '----'}. Assigned to Riders.`
-                                  : `Meals currently packing. When finished, click to dispatch riders immediately.`}
-                              </p>
-                            </div>
-                          </div>
-
-                          {!isReady ? (
-                            <button
-                              onClick={() => handleMarkReady(b)}
-                              disabled={isMarkingReady === b.id}
-                              className="w-full sm:w-auto px-4 py-2.5 bg-brand hover:bg-[#C2410C] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
-                            >
-                              {isMarkingReady === b.id ? (
-                                <>
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Notifying Fleet…</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Truck className="w-3.5 h-3.5" />
-                                  <span>Mark Ready & Dispatch 🛵</span>
-                                </>
-                              )}
-                            </button>
-                          ) : (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs font-black bg-emerald-600 text-white px-3 py-1 rounded-xl shadow-xs flex items-center gap-1.5">
-                                <Check className="w-3.5 h-3.5" /> Dispatched to Rider
-                              </span>
-                              {b.pickup_otp && (
-                                <span className="text-xs font-mono font-black bg-white border border-emerald-300 text-emerald-800 px-2.5 py-1 rounded-xl">
-                                  OTP: {b.pickup_otp}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
             </div>
 
             {/* Digital Box Tag Cards Grid */}
@@ -903,7 +859,12 @@ export default function VendorDashboard() {
 
                       {/* Mark Packed Action Button */}
                       <button
-                        onClick={() => toggleBoxPacked(key, boxTag, slotType)}
+                        onClick={() => {
+                          setPackedBoxes(prev => ({ ...prev, [key]: !prev[key] }));
+                          if (!isPacked) {
+                            toast.success(`Box ${boxTag} (${slotType.toUpperCase()}) marked Tagged & Packed! ✨`);
+                          }
+                        }}
                         className={`w-full py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 ${
                           isPacked
                             ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { EnrichedSubscription, DailyMenu } from '@/types';
 import { getTodayStr } from '@/lib/queries/menu';
@@ -44,9 +44,14 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user?.id) return;
 
-    if (user.is_superadmin) {
+    const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
+                    user?.is_superadmin === true || 
+                    (user as any)?.roles?.admin === true ||
+                    user?.role === 'admin';
+
+    if (isSuper) {
       const qVendors = query(collection(db, 'users'), where('role', 'in', ['vendor', 'kitchen']));
-      getDocs(qVendors).then((snap) => {
+      const unsub = onSnapshot(qVendors, (snap) => {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setAllVendors(list);
 
@@ -60,15 +65,16 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
           const chosenId = defaultVendor ? defaultVendor.id : user.id;
           setActiveVendorIdState(chosenId);
         }
-      }).catch(err => {
+      }, (err) => {
         console.warn('Failed to fetch all vendors:', err);
         setActiveVendorIdState(user.id);
       });
+      return () => unsub();
     } else {
       setActiveVendorIdState(user.id);
       setManagedVendor(user);
     }
-  }, [user?.id, user?.is_superadmin]);
+  }, [user?.id, user?.email, user?.is_superadmin, (user as any)?.roles]);
 
   const setActiveVendorId = (id: string) => {
     setActiveVendorIdState(id);
@@ -82,16 +88,20 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
   // Sync managedVendor profile
   useEffect(() => {
     if (!targetVendorId) return;
-    if (targetVendorId === user?.id && !user?.is_superadmin) {
+    const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
+                    user?.is_superadmin === true || 
+                    (user as any)?.roles?.admin === true ||
+                    user?.role === 'admin';
+
+    if (targetVendorId === user?.id && !isSuper) {
       setManagedVendor(user);
     } else {
       const found = allVendors.find(v => v.id === targetVendorId);
       if (found) {
         setManagedVendor(found);
       } else {
-        const unsub = onSnapshot(collection(db, 'users'), (snap) => {
-          const docMatch = snap.docs.find(d => d.id === targetVendorId);
-          if (docMatch) setManagedVendor({ id: docMatch.id, ...docMatch.data() });
+        const unsub = onSnapshot(doc(db, 'users', targetVendorId), (snap) => {
+          if (snap.exists()) setManagedVendor({ id: snap.id, ...snap.data() });
         });
         return () => unsub();
       }
