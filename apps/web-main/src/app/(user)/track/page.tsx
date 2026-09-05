@@ -460,7 +460,7 @@ export default function CustomerTrackPage() {
               riderPhone={currentOrder.agentPhone}
               riderRating={4.8}
               vehicleNumber={currentOrder.vehicleNumber}
-              otp={currentOrder.otp || '1234'}
+              otp={currentOrder.delivery_otp || currentOrder.otp || '1234'}
               boxTag={generateBoxTag({
                 customerName: user?.name,
                 vendorName: currentOrder.vendorName || currentOrder.vendor?.kitchen_name || currentOrder.vendor?.name || activeSubs.find((s: any) => s.id === (currentOrder.subscription_id || currentOrder.subscriptionId) || s.vendor_id === (currentOrder.vendor_id || currentOrder.vendorId))?.vendor_name || 'Kitchen',

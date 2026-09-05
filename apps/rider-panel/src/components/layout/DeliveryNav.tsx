@@ -3,13 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Wallet, LifeBuoy } from 'lucide-react';
+import { Navigation, CalendarCheck } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/earnings', label: 'Earnings', icon: Wallet },
-  { href: '/support', label: 'Support', icon: LifeBuoy },
+  { href: '/dashboard', label: 'Live Run', icon: Navigation },
+  { href: '/earnings', label: 'Shifts & Pay', icon: CalendarCheck },
 ];
 
 interface DeliveryNavProps {

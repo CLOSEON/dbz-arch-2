@@ -28,7 +28,6 @@ export interface AppUser {
   name: string;
   phone: string;       // 10-digit, required for on-ground operations (set during onboarding)
   role: UserRole;
-  roles?: { [key: string]: boolean };
   email?: string;      // Provided from social auth (Google, Apple, Facebook)
   image?: string;      // Profile photo from social provider
   is_superadmin?: boolean; // Only closeon.st@gmail.com

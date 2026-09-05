@@ -191,6 +191,37 @@ class LocationTrackerService {
     }
   }
 
+  public async stopTripTracking(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    if (this.watchId !== null) {
+      try {
+        await Geolocation.clearWatch({ id: this.watchId });
+        console.log('[LocationTracker] Trip watch position cleared (battery saver).');
+      } catch (err) {
+        console.error('[LocationTracker] Failed to clear geolocation watch:', err);
+      } finally {
+        this.watchId = null;
+      }
+    }
+    this.lastWriteCoords = null;
+    this.lastWriteTime = 0;
+  }
+
+  public async setDriverOnlineStatus(driverId: string, isActive: boolean): Promise<void> {
+    try {
+      await setDoc(doc(db, 'driver_profiles', driverId), {
+        isActive,
+        uid: driverId,
+        lastActive: new Date()
+      }, { merge: true });
+      if (!isActive) {
+        await this.stopTripTracking();
+      }
+    } catch (err) {
+      console.error('[LocationTracker] Failed to update driver online status:', err);
+    }
+  }
+
   public async stopTracking(force: boolean = false): Promise<void> {
     if (typeof window === 'undefined') return;
 

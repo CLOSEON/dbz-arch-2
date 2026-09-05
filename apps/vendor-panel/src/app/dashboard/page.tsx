@@ -13,7 +13,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
 import type { BatchStatus } from '@/types';
 import { db, functions } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
@@ -127,6 +127,14 @@ export default function VendorDashboard() {
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setIsMarkingReady(batch.id);
         try {
+          if (!batch.pickup_otp) {
+            const genOtp = Math.floor(1000 + Math.random() * 9000).toString();
+            try {
+              await updateDoc(doc(db, 'batches', batch.id), { pickup_otp: genOtp });
+            } catch (err) {
+              console.warn('Could not persist pickup_otp:', err);
+            }
+          }
           const markBatchReady = httpsCallable(functions, 'markBatchReady');
           const res = await markBatchReady({ batch_id: batch.id }) as any;
           if (res.data?.success) {
@@ -386,24 +394,59 @@ export default function VendorDashboard() {
                         )}
 
                         {batch.status === 'ready' && (
-                          <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center space-y-2">
-                            <div className="flex items-center justify-center gap-1.5 text-emerald-700 font-bold text-xs">
-                              <CheckCircle className="w-4 h-4 text-emerald-600" />
-                              Tiffins Ready! Awaiting Rider Pickup
-                            </div>
-
+                          <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center space-y-3">
                             {(() => {
-                              const tripOTP = pickups.find(p => 
+                              const matchingTrip = pickups.find(p => 
                                 p.batch_ids?.includes(batch.id) || 
                                 p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
-                              )?.pickupStops?.find((s: any) => s.vendorId === user?.id)?.pickupOTP;
-                              const displayOTP = batch.pickup_otp || tripOTP || '6721';
+                              );
+                              const myStop = matchingTrip?.pickupStops?.find((s: any) => s.vendorId === user?.id);
+                              const isPickedUp = myStop?.status === 'completed' || batch.status === 'completed';
+                              const displayOTP = batch.pickup_otp || myStop?.pickupOTP || '6129';
+
+                              if (isPickedUp) {
+                                return (
+                                  <div className="py-2 space-y-1">
+                                    <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-black text-sm">
+                                      <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                      Meals Handed Over to Rider ✓
+                                    </div>
+                                    <p className="text-xs text-emerald-700 font-semibold">
+                                      {matchingTrip?.riderName || 'Rider'} verified tiffin count and is en route to customer doorsteps.
+                                    </p>
+                                  </div>
+                                );
+                              }
 
                               return (
-                                <div className="mt-2 bg-white py-3 px-6 rounded-2xl border border-emerald-200 inline-block shadow-sm">
-                                  <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Rider Handover OTP</div>
-                                  <div className="text-3xl font-black font-mono tracking-[0.25em] text-emerald-600">{displayOTP}</div>
-                                </div>
+                                <>
+                                  <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-black text-xs">
+                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                    Tiffins Ready! Awaiting Rider Pickup
+                                  </div>
+
+                                  <div className="bg-white py-3 px-6 rounded-2xl border border-emerald-200 inline-block shadow-sm">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Kitchen Pickup OTP</div>
+                                    <div className="text-3xl font-black font-mono tracking-[0.25em] text-emerald-600">{displayOTP}</div>
+                                  </div>
+                                  <p className="text-xs text-emerald-800 font-medium">
+                                    Share this 4-digit code with the rider upon handing over the tiffin boxes.
+                                  </p>
+
+                                  {matchingTrip && (
+                                    <div className="bg-white/80 rounded-2xl p-3 border border-emerald-200/80 flex items-center justify-between text-left">
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Assigned Delivery Partner</p>
+                                        <p className="text-xs font-black text-slate-900">{matchingTrip.riderName || 'Dabzzo Rider'}</p>
+                                      </div>
+                                      {matchingTrip.riderPhone && (
+                                        <a href={`tel:${matchingTrip.riderPhone}`} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all">
+                                          <Phone className="w-3.5 h-3.5" /> Call Rider
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
                               );
                             })()}
                           </div>

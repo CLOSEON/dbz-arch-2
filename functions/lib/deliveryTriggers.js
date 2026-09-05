@@ -175,6 +175,12 @@ async function processDailyDeliveries(force = false) {
     if (subsSnap.empty)
         return result;
     const existingSubIds = new Set();
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + istOffset);
+    const todayStr = istNow.toISOString().split('T')[0];
+    const todayDayName = istNow.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const existingSubOrderKeys = new Set();
     if (!force) {
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
@@ -183,11 +189,15 @@ async function processDailyDeliveries(force = false) {
         const existingSnap = await db.collection('orders')
             .where('created_at', '>=', admin.firestore.Timestamp.fromDate(todayStart))
             .where('created_at', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
+            .where('date', '==', todayStr)
             .get();
         existingSnap.forEach((d) => {
             const docData = d.data();
             if (docData.subscription_id)
                 existingSubIds.add(docData.subscription_id);
+            if (docData.subscription_id) {
+                existingSubOrderKeys.add(`${docData.subscription_id}_${docData.meal_type}`);
+            }
         });
     }
     const batch = db.batch();
@@ -195,9 +205,15 @@ async function processDailyDeliveries(force = false) {
     for (const subDoc of subsSnap.docs) {
         const sub = subDoc.data();
         const subId = subDoc.id;
-        if (existingSubIds.has(subId)) {
+        const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
+        const currentOrdersSnap = await db.collection('orders')
+            .where('subscription_id', '==', subId)
+            .where('status', 'in', ['created', 'vendor_notified', 'vendor_ready', 'picked_up', 'dispatched', 'delivered', 'completed', 'pending'])
+            .get();
+        if (currentOrdersSnap.size >= maxMeals) {
             result.skipped++;
             result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
+            result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: `All ${maxMeals} meals already scheduled` });
             continue;
         }
         try {
@@ -212,8 +228,6 @@ async function processDailyDeliveries(force = false) {
                 result.details.push({ subId, userName: sub.user_id, status: 'error', reason: 'User or vendor profile not found' });
                 continue;
             }
-            const todayStr = new Date().toISOString().split('T')[0];
-            const todayDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
             const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
             let mealTypesToGenerate = [];
             if (customPattern) {
@@ -235,7 +249,13 @@ async function processDailyDeliveries(force = false) {
                 continue;
             const userLat = user.location?.lat ?? 18.5204;
             const userLng = user.location?.lng ?? 73.8567;
+            const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMeals) : 91));
             for (const mealType of mealTypesToGenerate) {
+                if (!force && existingSubOrderKeys.has(`${subId}_${mealType}`)) {
+                    result.skipped++;
+                    result.details.push({ subId, status: 'skipped', reason: `Order already exists today for ${mealType}` });
+                    continue;
+                }
                 const mealName = mealType === 'dinner' ? 'Dinner' : 'Lunch';
                 const otp = String(Math.floor(1000 + Math.random() * 9000));
                 const assignedDriverId = driverIds.length > 0 ? driverIds[currentDriverIndex++ % driverIds.length] : null;
@@ -260,6 +280,8 @@ async function processDailyDeliveries(force = false) {
                     },
                     status: 'created',
                     otp: otp,
+                    total_amount: pricePerMeal,
+                    amount: pricePerMeal,
                     rider_trip_id: null,
                     swap_ref: null,
                     skip_ref: null,
@@ -409,11 +431,13 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
     }
     const driversSnap = await db.collection('users').where('role', 'in', ['delivery', 'delivery_agent']).get();
     const driverIds = driversSnap.docs.map(d => d.id);
+    const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
     const isCustom = sub.isCustomPlan || sub.is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly';
     const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
     const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || (isCustom ? 9 : 14));
     const userLat = user.location?.lat ?? 18.5204;
     const userLng = user.location?.lng ?? 73.8567;
+    const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMealsTotal) : 91));
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istNow = new Date(now.getTime() + istOffset);
@@ -460,6 +484,8 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
                     continue;
             }
             const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
+            const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+            const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
             const otp = String(Math.floor(1000 + Math.random() * 9000));
             const newOrderRef = db.collection('orders').doc();
             batch.set(newOrderRef, {
@@ -480,6 +506,8 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
                 },
                 status: 'created',
                 otp,
+                total_amount: pricePerMeal,
+                amount: pricePerMeal,
                 rider_trip_id: null,
                 swap_ref: null,
                 skip_ref: null,

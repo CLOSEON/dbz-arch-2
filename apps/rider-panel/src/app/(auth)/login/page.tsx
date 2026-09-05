@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
-import { signInWithGoogle, isSuperadminEmail, extractUserEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
+import { signInWithGoogle } from '@/lib/auth';
 import { resolveUserProfile, completeOnboarding } from '@/lib/queries/users';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
-import type { UserRole, AppUser } from '@/types';
+import type { UserRole } from '@/types';
 import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
 
@@ -27,8 +25,6 @@ const GoogleIcon = () => (
 export default function RiderLoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
-  const currentUser = useAuthStore((s) => s.user);
-  const isHydrated = useAuthStore((s) => s.isHydrated);
   const addToast = useUiStore((s) => s.addToast);
 
   const [step, setStep] = useState<AuthStep>('social');
@@ -42,91 +38,16 @@ export default function RiderLoginPage() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // If already authenticated as rider / admin / superadmin, redirect to dashboard immediately
-  useEffect(() => {
-    if (!isHydrated) return;
-    const email = currentUser?.email || auth.currentUser?.email || '';
-    const isSuper = isSuperadminEmail(email);
-    const hasRiderAccess =
-      currentUser &&
-      (currentUser.role === 'delivery' ||
-        currentUser.role === 'admin' ||
-        (currentUser as any)?.roles?.delivery ||
-        (currentUser as any)?.roles?.rider ||
-        isSuper);
-
-    if (hasRiderAccess) {
-      router.replace('/dashboard');
-    }
-  }, [currentUser, isHydrated, router]);
-
   const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
-      const email = extractUserEmail(firebaseUser);
-      const isSuper = isSuperadminEmail(email);
+      const { user: profile, isNewUser } = await resolveUserProfile(
+        firebaseUser.uid,
+        firebaseUser.email,
+        firebaseUser.displayName,
+        firebaseUser.photoURL,
+      );
 
-      // Superadmin auto-link to Test Rider profile
-      if (isSuper) {
-        const testRiderProfile: AppUser = {
-          id: firebaseUser.uid,
-          email: email || SUPERADMIN_EMAIL,
-          name: firebaseUser.displayName || 'Test Delivery',
-          phone: '+919900990044',
-          image: firebaseUser.photoURL || undefined,
-          role: 'delivery' as UserRole,
-          roles: { delivery: true, admin: true },
-          is_approved: true,
-          is_superadmin: true,
-          verification_status: 'verified',
-          vehicle_type: 'Motorcycle',
-          vehicle_number: 'DL-01-AB-1234',
-        };
-
-        try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), testRiderProfile, { merge: true });
-          await setDoc(doc(db, 'driver_profiles', firebaseUser.uid), {
-            id: firebaseUser.uid,
-            uid: firebaseUser.uid,
-            name: testRiderProfile.name,
-            phone: testRiderProfile.phone,
-            vehicle_type: 'Motorcycle',
-            vehicle_number: 'DL-01-AB-1234',
-            isActive: true,
-            updatedAt: Timestamp.now(),
-          }, { merge: true });
-        } catch (e) {
-          console.warn('[RiderLogin] Syncing superadmin rider profile:', e);
-        }
-
-        setUser(testRiderProfile);
-        addToast('Welcome back, Rider! 🛵', 'success');
-        router.replace('/dashboard');
-        return;
-      }
-
-      let profile: AppUser | null = null;
-      let isNewUser = false;
-      try {
-        const res = await resolveUserProfile(
-          firebaseUser.uid,
-          email || null,
-          firebaseUser.displayName,
-          firebaseUser.photoURL,
-        );
-        profile = res.user;
-        isNewUser = res.isNewUser;
-      } catch (err: any) {
-        console.warn('[RiderLogin] resolveUserProfile error:', err);
-      }
-
-      const hasRiderAccess =
-        profile &&
-        (profile.role === 'delivery' ||
-          profile.role === 'admin' ||
-          (profile as any)?.roles?.delivery ||
-          (profile as any)?.roles?.rider);
-
-      if (!isNewUser && hasRiderAccess && profile) {
+      if (!isNewUser && profile.role === 'delivery') {
         setUser(profile);
         addToast('Welcome back, Rider! 🛵', 'success');
         router.replace('/dashboard');
@@ -134,8 +55,8 @@ export default function RiderLoginPage() {
       }
 
       setPendingUser(firebaseUser);
-      setPrefillName(profile?.name || firebaseUser.displayName || '');
-      setPrefillEmail(email || null);
+      setPrefillName(profile.name || firebaseUser.displayName || '');
+      setPrefillEmail(firebaseUser.email || null);
       setPrefillPhoto(firebaseUser.photoURL || null);
       setStep('onboarding');
     } catch (err: any) {
@@ -143,49 +64,13 @@ export default function RiderLoginPage() {
     }
   }, [setUser, addToast, router]);
 
-  // Check redirect result and active Firebase session on mount
-  useEffect(() => {
-    let active = true;
-    import('firebase/auth').then(async ({ getRedirectResult }) => {
-      try {
-        const res = await getRedirectResult(auth);
-        if (res?.user && active) {
-          await handleAuthSuccess(res.user);
-        }
-      } catch (err: any) {
-        console.warn('[RiderLogin] getRedirectResult error:', err);
-      }
-    });
-
-    if (auth.currentUser) {
-      handleAuthSuccess(auth.currentUser);
-    }
-
-    return () => {
-      active = false;
-    };
-  }, [handleAuthSuccess]);
-
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      if (auth.currentUser) {
-        await handleAuthSuccess(auth.currentUser);
-        return;
-      }
       const result = await signInWithGoogle();
-      if (!result.success) {
-        if (result.code !== 'redirecting') {
-          addToast(result.error, 'error');
-        }
-        return;
-      }
+      if (!result.success) { addToast(result.error, 'error'); return; }
       await handleAuthSuccess(result.user);
-    } catch (err: any) {
-      addToast(err?.message || 'Login error occurred.', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleOnboarding = async (e: React.FormEvent) => {
@@ -205,23 +90,6 @@ export default function RiderLoginPage() {
         prefillPhoto,
         { vehicle_type: vehicleType, vehicle_number: vehicleNumber },
       );
-
-      // Also ensure driver_profiles doc exists
-      try {
-        await setDoc(doc(db, 'driver_profiles', pendingUser.uid), {
-          id: pendingUser.uid,
-          uid: pendingUser.uid,
-          name: prefillName || 'Rider',
-          phone: `+91${phone}`,
-          vehicle_type: vehicleType,
-          vehicle_number: vehicleNumber,
-          isActive: true,
-          updatedAt: Timestamp.now(),
-        }, { merge: true });
-      } catch (e) {
-        console.warn('[RiderLogin] driver_profiles error:', e);
-      }
-
       setUser(user);
       addToast('Application submitted! Awaiting admin approval.', 'success');
       router.replace('/dashboard');

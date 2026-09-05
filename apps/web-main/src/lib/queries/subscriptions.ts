@@ -107,6 +107,7 @@ export async function updateVendorSubscriptionRates(
 export async function createSubscription(data: {
   user_id: string;
   vendor_id: string;
+  vendor_name?: string;
   plan_id: string;
   meal_type: MealType;
   category?: DietaryCategory;
@@ -145,6 +146,7 @@ export async function createSubscription(data: {
   nextBilling.setDate(nextBilling.getDate() + daysToAdd);
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
 
+  if (data.vendor_name) payload.vendor_name = data.vendor_name;
   if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;
   if (data.selected_addons) payload.selected_addons = data.selected_addons;

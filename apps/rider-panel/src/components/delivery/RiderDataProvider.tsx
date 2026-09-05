@@ -6,7 +6,6 @@ import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/f
 import { db } from '@/lib/firebase';
 import type { DeliveryOrder, RiderTrip } from '@/types/delivery';
 import { useDeliveryStore } from '@/store/deliveryStore';
-import { isSuperadminEmail } from '@/lib/auth';
 
 export function RiderDataProvider({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -15,14 +14,8 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const setLastSynced = useDeliveryStore(s => s.setLastSynced);
 
   useEffect(() => {
-    const isSuper = isSuperadminEmail(user?.email);
-    const isRider =
-      user?.role === 'delivery' ||
-      (user?.role as string) === 'delivery_agent' ||
-      user?.role === 'admin' ||
-      (user as any)?.roles?.delivery ||
-      isSuper;
-
+    const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
+    const isRider = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || (user as any)?.roles?.delivery || user?.role === 'admin' || isSuper;
     if (!user?.id || !isRider) {
       return;
     }
