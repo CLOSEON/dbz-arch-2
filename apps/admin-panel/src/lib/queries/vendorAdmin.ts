@@ -22,15 +22,23 @@ export interface VendorPerformance {
  * Get detailed statistics for a specific vendor
  */
 export async function getVendorStats(vendorId: string, feePct?: number): Promise<VendorPerformance> {
-  // 1. Fetch vendor document
-  let vendorDocData: any = null;
-  try {
-    const vendorSnap = await getDoc(doc(db, 'users', vendorId));
-    if (vendorSnap.exists()) {
-      vendorDocData = vendorSnap.data();
+  // 1. Determine platform commission percentage
+  let commissionRate = feePct;
+  if (commissionRate === undefined || isNaN(commissionRate)) {
+    try {
+      const vendorSnap = await getDoc(doc(db, 'users', vendorId));
+      if (vendorSnap.exists()) {
+        const vData = vendorSnap.data();
+        commissionRate = typeof vData.platform_fee_pct === 'number'
+          ? vData.platform_fee_pct
+          : Number(vData.platform_fee_pct) || 10;
+      }
+    } catch (e) {
+      console.warn('[getVendorStats] Error fetching vendor fee pct:', e);
     }
-  } catch (e) {
-    console.warn('[getVendorStats] Error fetching vendor user doc:', e);
+  }
+  if (commissionRate === undefined || isNaN(commissionRate)) {
+    commissionRate = 10; // Default 10%
   }
 
   // 2. Fetch all subscriptions for this vendor
@@ -52,17 +60,10 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
     where('vendor_id', '==', vendorId)
   );
 
-  // 5. Fetch vendor_payouts records (from external subscription creation / payout obligations)
-  const vendorPayoutsQ = query(
-    collection(db, 'vendor_payouts'),
-    where('vendor_id', '==', vendorId)
-  );
-
-  const [subsSnap, paymentsSnap, ordersSnap, vendorPayoutsSnap] = await Promise.all([
+  const [subsSnap, paymentsSnap, ordersSnap] = await Promise.all([
     getDocs(subscriptionsQ),
     getDocs(paymentsQ),
-    getDocs(ordersQ),
-    getDocs(vendorPayoutsQ).catch(() => ({ empty: true, docs: [] } as any))
+    getDocs(ordersQ)
   ]);
 
   // A. Subscriptions metrics & sales
@@ -70,32 +71,11 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
   const activeSubscribers = subs.filter(s => s.status === 'active').length;
 
   let subscriptionSales = 0;
-  let subVendorObligation = 0;
   for (const s of subs) {
     const amt = Number(s.paid_amount ?? s.total_price ?? s.price ?? 0) ||
       (Number(s.base_price || 0) + Number(s.addons_price || 0));
     if (amt > 0) {
       subscriptionSales += amt;
-    }
-
-    const vObligation = Number(
-      (s as any).vendorTotalPayable ??
-      (s as any).vendor_payable ??
-      (s as any).vendor_payout ??
-      0
-    );
-    if (vObligation > 0) {
-      subVendorObligation += vObligation;
-    } else {
-      const costPerMeal = Number(
-        (s as any).vendorCostPerMeal ??
-        (s as any).vendor_cost_per_meal ??
-        0
-      );
-      const meals = Number((s as any).total_meals || (s as any).totalMeals || 0);
-      if (costPerMeal > 0 && meals > 0) {
-        subVendorObligation += costPerMeal * meals;
-      }
     }
   }
 
@@ -116,37 +96,16 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
     }
   }
 
-  // C. Captured payments from payment_history
+  // C. Captured payments from payment_history (if any)
   const capturedPayments = paymentsSnap.docs.reduce((sum, doc) => sum + (Number(doc.data().amount) || 0), 0);
 
-  // D. Compute Gross Total Sales (actual total sales paid by customers)
+  // D. Compute Gross Total Sales
   const calculatedSales = subscriptionSales + orderSales;
   const totalSales = Math.max(calculatedSales, capturedPayments);
 
-  // E. Determine Vendor Revenue (what they get after payout obligations / commissions)
-  // Check vendor_payouts collection first:
-  let payoutsSum = 0;
-  if (!vendorPayoutsSnap.empty) {
-    payoutsSum = (vendorPayoutsSnap.docs as any[]).reduce((sum: number, d: any) => sum + (Number(d.data().amount) || 0), 0);
-  }
-
-  let netRevenue = 0;
-  if (payoutsSum > 0) {
-    netRevenue = payoutsSum;
-  } else if (subVendorObligation > 0) {
-    netRevenue = subVendorObligation;
-  } else if (vendorDocData && (vendorDocData.total_earnings || vendorDocData.pending_payout)) {
-    netRevenue = Number(vendorDocData.total_earnings || vendorDocData.pending_payout || 0);
-  } else if (feePct !== undefined && !isNaN(feePct) && feePct > 0) {
-    // Only apply fee percentage if explicitly passed in
-    const commAmt = Math.round((totalSales * (feePct / 100)) * 100) / 100;
-    netRevenue = Math.max(0, totalSales - commAmt);
-  } else {
-    // Default: what customer paid is what vendor gets (no arbitrary deductions)
-    netRevenue = totalSales;
-  }
-
-  const commissionAmount = Math.max(0, Math.round((totalSales - netRevenue) * 100) / 100);
+  // E. Commission & Net Revenue (what vendor gets after all commissions etc.)
+  const commissionAmount = Math.round((totalSales * (commissionRate / 100)) * 100) / 100;
+  const netRevenue = Math.max(0, Math.round((totalSales - commissionAmount) * 100) / 100);
 
   const deliverySuccessRate = totalOrders > 0 
     ? parseFloat(((deliveredOrders / totalOrders) * 100).toFixed(1)) 
@@ -161,7 +120,7 @@ export async function getVendorStats(vendorId: string, feePct?: number): Promise
     totalSales,
     totalRevenue: netRevenue,
     netRevenue,
-    commissionRate: feePct || 0,
+    commissionRate,
     commissionAmount,
     subscriptionSales,
     orderSales

@@ -1416,43 +1416,6 @@ export default function VendorDetailClient(props: PageProps) {
               {history.map((order) => (
                 <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-              {history.map((order, idx) => {
-                const rawAddr = (order as any).delivery_address || (order as any).address;
-                let addressText = 'Address on file';
-                if (typeof rawAddr === 'string' && rawAddr.trim().length > 0) {
-                  addressText = rawAddr;
-                } else if (typeof rawAddr === 'object' && rawAddr !== null) {
-                  addressText = rawAddr.line1 || rawAddr.full_address || rawAddr.street || rawAddr.city || (rawAddr.lat && rawAddr.lng ? `GPS: ${rawAddr.lat.toFixed(4)}, ${rawAddr.lng.toFixed(4)}` : 'Address on file');
-                }
-
-                const orderAmount = typeof (order as any).total_amount === 'number'
-                  ? (order as any).total_amount
-                  : (typeof (order as any).amount === 'number' ? (order as any).amount : Number((order as any).total_amount || (order as any).amount || (order as any).price || 0) || 0);
-
-                const orderId = String(order?.id || `ord-${idx}`);
-                const shortId = orderId.slice(0, 8);
-                const orderStatus = String(order?.status || 'pending');
-
-                return (
-                  <div key={orderId} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900 font-mono">#{shortId}</span>
-                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                          orderStatus === 'delivered' || orderStatus === 'completed'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : orderStatus === 'dispatched'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {orderStatus}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {addressText} • ₹{orderAmount}
-                      </div>
-                    </div>
-
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
                       <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
@@ -1464,19 +1427,6 @@ export default function VendorDetailClient(props: PageProps) {
                       }`}>
                         {order.status}
                       </span>
-                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                      <select
-                        value={orderStatus}
-                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="cooking">Cooking</option>
-                        <option value="ready">Ready for Pickup</option>
-                        <option value="dispatched">Dispatched</option>
-                        <option value="delivered">Delivered</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
                       {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
@@ -1500,8 +1450,6 @@ export default function VendorDetailClient(props: PageProps) {
                   </div>
                 </div>
               ))}
-                );
-              })}
             </div>
           )}
         </div>
