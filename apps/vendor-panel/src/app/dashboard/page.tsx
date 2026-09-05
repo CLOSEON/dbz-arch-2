@@ -32,6 +32,36 @@ const BATCH_STATUS_DISPLAY: Record<BatchStatus, { label: string; color: string; 
   completed:          { label: 'Dispatched',        color: 'text-slate-500',  bg: 'bg-slate-100',   border: 'border-slate-200' },
 };
 
+function formatBatchTitle(slot: string) {
+  const s = (slot || "").toLowerCase().trim();
+  if (s === "11am" || s === "lunch" || s === "1pm") {
+    return {
+      title: "LUNCH PREP BATCH",
+      deliveryTime: "1:00 PM Delivery",
+      timeSlot: "11:00 AM Prep • 1:00 PM Delivery"
+    };
+  }
+  if (s === "8pm" || s === "dinner") {
+    return {
+      title: "DINNER PREP BATCH",
+      deliveryTime: "8:00 PM Delivery",
+      timeSlot: "7:30 PM Prep • 8:00 PM Delivery"
+    };
+  }
+  if (s === "8am" || s === "breakfast") {
+    return {
+      title: "BREAKFAST PREP BATCH",
+      deliveryTime: "8:00 AM Delivery",
+      timeSlot: "7:30 AM Prep • 8:00 AM Delivery"
+    };
+  }
+  return {
+    title: `${(slot || "DAILY").toUpperCase()} PREP BATCH`,
+    deliveryTime: slot || "Scheduled Slot",
+    timeSlot: slot || "Scheduled Slot"
+  };
+}
+
 export default function VendorDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -154,13 +184,23 @@ export default function VendorDashboard() {
           grouped[key].count++;
         };
 
-        if (mealsToday >= 2 || sub.meal_type === 'both') {
-          addProjected('lunch', sub.deliveryPreference || '11am');
-          addProjected('dinner', '8pm');
-        } else if (sub.delivery_slot === 'dinner' || sub.meal_type === 'dinner') {
-          addProjected('dinner', '8pm');
+        if (sub.deliveryPattern) {
+          if (mealsToday >= 2) {
+            addProjected("lunch", sub.deliveryPreference || "11am");
+            addProjected("dinner", "8pm");
+          } else {
+            const singleMeal = sub.delivery_slot === "dinner" ? "dinner" : "lunch";
+            addProjected(singleMeal, singleMeal === "dinner" ? "8pm" : (sub.deliveryPreference || "11am"));
+          }
         } else {
-          addProjected('lunch', sub.deliveryPreference || '11am');
+          if (sub.meal_type === "both") {
+            addProjected("lunch", sub.deliveryPreference || "11am");
+            addProjected("dinner", "8pm");
+          } else if (sub.delivery_slot === "dinner" || sub.meal_type === "dinner") {
+            addProjected("dinner", "8pm");
+          } else {
+            addProjected("lunch", sub.deliveryPreference || "11am");
+          }
         }
       });
     }
@@ -169,10 +209,11 @@ export default function VendorDashboard() {
   }, [subscriptions]);
 
   const handleMarkReady = async (batch: any) => {
+    const bInfo = formatBatchTitle(batch.slot);
     setConfirmConfig({
       isOpen: true,
       title: 'Confirm Batch Ready?',
-      message: `Are you sure you want to mark all ${batch.total_count} tiffins as ready for the ${batch.slot} batch? This immediately notifies assigned dispatch riders.`,
+      message: `Are you sure you want to mark all ${batch.total_count} tiffins as ready for the ${bInfo.title} (${bInfo.deliveryTime})? This immediately notifies assigned dispatch riders.`,
       confirmLabel: 'Mark Ready',
       variant: 'primary',
       onConfirm: async () => {
@@ -413,13 +454,25 @@ export default function VendorDashboard() {
                       <div key={batch.id} className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
                         <div className="flex items-start justify-between">
                           <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                              {batch.slot.toUpperCase()} PREP BATCH
-                            </span>
-                            <div className="flex items-baseline gap-2 mt-1">
-                              <span className="text-3xl font-black text-slate-900">{batch.total_count}</span>
-                              <span className="text-sm font-bold text-slate-500">Tiffins</span>
-                            </div>
+                            {(() => {
+                              const bInfo = formatBatchTitle(batch.slot);
+                              return (
+                                <>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/80">
+                                      {bInfo.title}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                      {bInfo.deliveryTime}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-baseline gap-2 mt-1.5">
+                                    <span className="text-3xl font-black text-slate-900">{batch.total_count}</span>
+                                    <span className="text-sm font-bold text-slate-500">Tiffins</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
 
                           <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full border ${disp.bg} ${disp.color} ${disp.border}`}>
@@ -876,7 +929,9 @@ export default function VendorDashboard() {
                         {prep.count} Tiffins Scheduled
                       </h4>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Slot: <span className="font-bold text-slate-700">{prep.slot}</span>
+                        Slot: <span className="font-bold text-slate-700">
+                          {prep.slot === "11am" || prep.mealType === "lunch" ? "Lunch (1:00 PM Delivery)" : prep.slot === "8pm" || prep.mealType === "dinner" ? "Dinner (8:00 PM Delivery)" : prep.slot}
+                        </span>
                       </p>
                     </div>
                   </div>

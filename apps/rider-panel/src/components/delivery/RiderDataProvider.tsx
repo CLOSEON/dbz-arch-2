@@ -14,7 +14,14 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const setLastSynced = useDeliveryStore(s => s.setLastSynced);
 
   useEffect(() => {
-    if (!user?.id || (user.role !== 'delivery' && (user.role as string) !== 'delivery_agent')) {
+    const isDelivery = user?.role === 'delivery' || 
+                       (user?.role as string) === 'delivery_agent' || 
+                       (user as any)?.roles?.delivery === true || 
+                       user?.role === 'admin' || 
+                       user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || 
+                       (user as any)?.is_superadmin === true;
+
+    if (!user?.id || !isDelivery) {
       return;
     }
 
@@ -48,6 +55,20 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as RiderTrip));
           docs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
           const tripData = docs[0];
+
+          // Guarantee assigned orders are loaded into agentOrders
+          if (tripData.assignedOrderIds && tripData.assignedOrderIds.length > 0) {
+            import('firebase/firestore').then(async ({ doc, getDoc }) => {
+              const orderPromises = tripData.assignedOrderIds.map(oid => getDoc(doc(db, 'orders', oid)));
+              const orderDocs = await Promise.all(orderPromises);
+              const loadedOrders = orderDocs
+                .filter(od => od.exists())
+                .map(od => ({ id: od.id, ...od.data() } as DeliveryOrder));
+              if (loadedOrders.length > 0) {
+                setAgentOrders(loadedOrders);
+              }
+            }).catch(e => console.warn('Failed to load trip orders:', e));
+          }
           
           // Enrich with Vendor phones for pickup stops
           const vendorIds = Array.from(new Set(tripData.pickupStops.map(s => s.vendorId))).filter(Boolean);
@@ -79,7 +100,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       if (unsubOrders) unsubOrders();
       if (unsubTrip) unsubTrip();
     };
-  }, [user?.id, user?.role, setAgentOrders, setActiveTrip, setLastSynced]);
+  }, [user?.id, user?.role, (user as any)?.roles, setAgentOrders, setActiveTrip, setLastSynced]);
 
   return <>{children}</>;
 }

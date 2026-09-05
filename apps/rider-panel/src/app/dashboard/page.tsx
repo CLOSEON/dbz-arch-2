@@ -528,12 +528,19 @@ export default function RiderDashboard() {
   }, [riderLocation, pickupStopsList, vendors, remainingDrops, totalPickupsCount, customerProfiles]);
 
   const shiftWindow = useMemo(() => {
+    const activeSlot = (activeTrip?.slot || (agentOrders[0] as any)?.delivery_slot || (agentOrders[0] as any)?.meal_type || '').toLowerCase();
+    if (activeSlot === '11am' || activeSlot === 'lunch' || activeSlot === '1pm') {
+      return { slot: 'Lunch Shift', time: '11:00 AM – 1:30 PM', active: true };
+    }
+    if (activeSlot === '8pm' || activeSlot === 'dinner') {
+      return { slot: 'Dinner Shift', time: '7:30 PM – 9:30 PM', active: true };
+    }
     const hour = new Date().getHours();
     if (hour < 15) {
       return { slot: 'Lunch Shift', time: '11:00 AM – 1:30 PM', active: hour >= 10 && hour <= 14 };
     }
     return { slot: 'Dinner Shift', time: '7:30 PM – 9:30 PM', active: hour >= 19 && hour <= 22 };
-  }, []);
+  }, [activeTrip?.slot, agentOrders]);
 
   if (isMounting) {
     return (

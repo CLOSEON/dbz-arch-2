@@ -153,6 +153,7 @@ export interface DropStop {
 export interface RiderTrip {
   id: string;
   riderId: string;
+  slot?: string;
   batch_ids?: string[];
   assignedOrderIds: string[];
   vendorIds: string[];

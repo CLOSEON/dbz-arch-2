@@ -250,6 +250,12 @@ async function processDailyDeliveries(force: boolean = false) {
     const sub = subDoc.data();
     const subId = subDoc.id;
 
+    if (existingSubIds.has(subId) && !sub.deliveryPattern && sub.meal_type !== 'both') {
+      result.skipped++;
+      result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
+      continue;
+    }
+
     // Check if subscription already has all scheduled meals
     const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
     const currentOrdersSnap = await db.collection('orders')
@@ -527,7 +533,7 @@ export const markBatchReady = onCall(async (request) => {
   // MUST BE AWAITED so the Cloud Function doesn't suspend before assignment finishes
   try {
     const m = await import('./matchingTriggers');
-    await m.coreAssignRiderTrips(actualVendorId || callerUid);
+    await m.coreAssignRiderTrips(actualVendorId || callerUid, undefined, 10.0, batch_id);
   } catch (e) {
     console.error('[markBatchReady] Auto-assign failed:', e);
   }

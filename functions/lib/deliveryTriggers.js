@@ -205,6 +205,11 @@ async function processDailyDeliveries(force = false) {
     for (const subDoc of subsSnap.docs) {
         const sub = subDoc.data();
         const subId = subDoc.id;
+        if (existingSubIds.has(subId) && !sub.deliveryPattern && sub.meal_type !== 'both') {
+            result.skipped++;
+            result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
+            continue;
+        }
         const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
         const currentOrdersSnap = await db.collection('orders')
             .where('subscription_id', '==', subId)
@@ -408,7 +413,7 @@ exports.markBatchReady = (0, https_1.onCall)(async (request) => {
     });
     try {
         const m = await Promise.resolve().then(() => __importStar(require('./matchingTriggers')));
-        await m.coreAssignRiderTrips(actualVendorId || callerUid);
+        await m.coreAssignRiderTrips(actualVendorId || callerUid, undefined, 10.0, batch_id);
     }
     catch (e) {
         console.error('[markBatchReady] Auto-assign failed:', e);

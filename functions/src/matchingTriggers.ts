@@ -5,7 +5,7 @@ import { publishEvent } from './utils/events';
 
 const db = admin.firestore();
 
-export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, overrideRadius: number = 2.0, batchId?: string) => {
+export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, overrideRadius: number = 10.0, batchId?: string) => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
 
@@ -64,6 +64,11 @@ export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, ove
     const data = doc.data() as any;
     if (data.location?.lat && data.location?.lng) {
       vendorLocations.set(doc.id, { lat: data.location.lat, lng: data.location.lng });
+    } else if (data.coordinates?.lat && data.coordinates?.lng) {
+      vendorLocations.set(doc.id, { lat: data.coordinates.lat, lng: data.coordinates.lng });
+    } else {
+      // Fallback coordinates for Central Nagpur so dispatch never drops unlocated vendors
+      vendorLocations.set(doc.id, { lat: 21.1458, lng: 79.0882 });
     }
   });
 
@@ -148,20 +153,31 @@ export const coreAssignRiderTrips = async (vendorId?: string, slot?: string, ove
       vendorIds: [batchInfo.vendorId],
       batch_ids: [bId],
       pickupStops,
+      slot: batchInfo.orders[0]?.delivery_slot || '11am',
       status: 'pickup_pending',
       isPartialLoad: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
+    const batchDocRef = db.collection('batches').doc(bId);
+    batch.update(batchDocRef, {
+      trip_id: tripRef.id,
+      rider_id: selectedRider.id,
+      rider_name: selectedRider.name || 'Dabzzo Rider',
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
     for (const order of batchInfo.orders) {
       const orderRef = db.collection('orders').doc(order.id);
       batch.update(orderRef, {
         rider_trip_id: tripRef.id,
+        trip_id: tripRef.id,
         driverId: selectedRider.id,
+        rider_id: selectedRider.id,
         agentName: selectedRider.name || 'Dabzzo Rider',
         agentPhone: selectedRider.phone || selectedRider.phoneNumber || '9999999999',
-        vehicleNumber: selectedRider.vehicleNumber || 'MH12 AB1234',
+        vehicleNumber: selectedRider.vehicle_number || selectedRider.vehicleNumber || 'MH12 AB1234',
         status: 'rider_assigned',
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
