@@ -7,7 +7,7 @@ import {
   Users, CheckCircle, ChefHat, PackageCheck, Phone, 
   CalendarClock, IndianRupee, UtensilsCrossed, Sliders, 
   Star, MapPin, Sparkles, Activity, ShieldCheck, Clock,
-  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check
+  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check, Pencil
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
@@ -17,6 +17,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
+import { UpdateVendorLocationModal } from '@/components/vendor/UpdateVendorLocationModal';
 import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
 import { generateBoxTag } from '@/lib/boxTag';
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
@@ -69,6 +70,7 @@ export default function VendorDashboard() {
   const vendorProfile = managedVendor || user;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
   const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
                   user?.is_superadmin === true || 
@@ -281,47 +283,6 @@ export default function VendorDashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto px-2 sm:px-4">
 
-      {/* ── SUPERADMIN KITCHEN SWITCHER ───────────────────────────────────── */}
-      {isSuper && allVendors.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-3xl p-4 sm:px-6 text-white shadow-lg shadow-orange-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-amber-400/30">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shrink-0 border border-white/20">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-100 bg-black/20 px-2.5 py-0.5 rounded-full">
-                  Superadmin Control
-                </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
-                <span className="text-xs font-bold text-white/90">Switch Active Kitchen</span>
-              </div>
-              <p className="text-xs text-white/90 font-medium truncate mt-0.5">
-                Overseeing {vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen'} operations, batches & dispatch.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 shrink-0 bg-black/20 p-1.5 px-3 rounded-2xl border border-white/20">
-            <label htmlFor="kitchen-switch" className="text-[11px] font-black uppercase tracking-wider text-amber-100 shrink-0 flex items-center gap-1.5">
-              <ChefHat className="w-3.5 h-3.5" /> Select Kitchen:
-            </label>
-            <select
-              id="kitchen-switch"
-              value={activeVendorId || vendorProfile?.id || ''}
-              onChange={(e) => setActiveVendorId(e.target.value)}
-              className="bg-white text-slate-900 font-black text-xs rounded-xl py-2 pl-3 pr-8 shadow-xs border border-white/40 focus:ring-2 focus:ring-white outline-none cursor-pointer"
-            >
-              {allVendors.map((v) => (
-                <option key={v.id} value={v.id} className="text-slate-900 font-bold">
-                  {v.kitchen_name || v.name || 'Kitchen'} — {v.address?.split(',')?.[0] || v.city || 'Nagpur'} {v.id === 'kb4yMdXRFBR2AhZWnY2GloUbHxR2' ? '(Primary)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-
       {/* ── TOP HERO KITCHEN CARD ────────────────────────────────────────── */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
@@ -343,12 +304,61 @@ export default function VendorDashboard() {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
-                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {vendorProfile?.address || vendorProfile?.location?.address || 'Nagpur, Maharashtra'}</span>
-                <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> {vendorProfile?.phone || vendorProfile?.phone_number || '+919900990022'}</span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 font-medium">
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{vendorProfile?.address || vendorProfile?.location?.address || 'Nagpur, Maharashtra'}</span>
+                  {isSuper && (
+                    <button
+                      type="button"
+                      onClick={() => setIsLocationModalOpen(true)}
+                      title="Superadmin: Update this vendor's address and GPS location"
+                      className="ml-1 text-[11px] font-black text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 px-2 py-0.5 rounded-lg border border-amber-200 transition-all inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                      <span>Edit Location</span>
+                    </button>
+                  )}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  {vendorProfile?.phone || vendorProfile?.phone_number || '+919900990022'}
+                </span>
                 <span className="text-slate-400">•</span>
                 <span className="text-brand font-bold">{vendorProfile?.cuisine_type || 'Home Style'}</span>
               </div>
+
+              {/* Superadmin Kitchen Switcher Toggle Under Location */}
+              {isSuper && allVendors.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
+                  <div className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 px-2.5 py-1 rounded-xl transition-all shadow-2xs">
+                    <ChefHat className="w-3.5 h-3.5 text-brand shrink-0" />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">Switch Kitchen:</span>
+                    <select
+                      id="kitchen-switch"
+                      value={activeVendorId || vendorProfile?.id || ''}
+                      onChange={(e) => setActiveVendorId(e.target.value)}
+                      className="bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer pr-1"
+                    >
+                      {allVendors.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.kitchen_name || v.name || 'Kitchen'} — {v.address?.split(',')?.[0] || v.city || 'Nagpur'} {v.id === 'kb4yMdXRFBR2AhZWnY2GloUbHxR2' ? '★' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-xl transition-all shadow-2xs active:scale-[0.98] cursor-pointer"
+                    title="Superadmin: Update this vendor's address and GPS location"
+                  >
+                    <MapPin className="w-3 h-3 text-amber-600" />
+                    <span>Update Location</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -987,6 +997,13 @@ export default function VendorDashboard() {
           </div>
         </div>
       )}
+
+      {/* Superadmin Location Update Modal */}
+      <UpdateVendorLocationModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        vendor={vendorProfile}
+      />
 
       {/* Custom Confirmation Dialog */}
       <ConfirmDialog

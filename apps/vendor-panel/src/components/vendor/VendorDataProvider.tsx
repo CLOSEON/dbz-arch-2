@@ -6,7 +6,7 @@ import { collection, doc, onSnapshot, query, where, getDocs } from 'firebase/fir
 import { db } from '@/lib/firebase';
 import type { EnrichedSubscription, DailyMenu } from '@/types';
 import { getTodayStr } from '@/lib/queries/menu';
-import { fetchEnrichedProfiles } from '@/lib/queries/users';
+import { fetchEnrichedProfiles, fetchEnrichedRiders } from '@/lib/queries/users';
 
 interface VendorDataContextType {
   batches: any[];
@@ -96,17 +96,12 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
     if (targetVendorId === user?.id && !isSuper) {
       setManagedVendor(user);
     } else {
-      const found = allVendors.find(v => v.id === targetVendorId);
-      if (found) {
-        setManagedVendor(found);
-      } else {
-        const unsub = onSnapshot(doc(db, 'users', targetVendorId), (snap) => {
-          if (snap.exists()) setManagedVendor({ id: snap.id, ...snap.data() });
-        });
-        return () => unsub();
-      }
+      const unsub = onSnapshot(doc(db, 'users', targetVendorId), (snap) => {
+        if (snap.exists()) setManagedVendor({ id: snap.id, ...snap.data() });
+      });
+      return () => unsub();
     }
-  }, [targetVendorId, allVendors, user]);
+  }, [targetVendorId, user]);
 
   useEffect(() => {
     if (!targetVendorId) {
@@ -145,11 +140,16 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         const rawTrips = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
         const riderIds = Array.from(new Set(rawTrips.map(t => t.riderId))).filter(Boolean);
         
-        const riderMap = await fetchEnrichedProfiles(riderIds);
+        const riderMap = await fetchEnrichedRiders(riderIds);
 
         const enriched = rawTrips.map(trip => {
           const r = riderMap.get(trip.riderId);
-          return { ...trip, riderName: r?.name || 'Rider', riderPhone: r?.phone_number || r?.phone || '' };
+          let riderName = trip.riderName || r?.name;
+          if (!riderName || riderName === 'Test Vendor') {
+            riderName = 'Test Rider';
+          }
+          const riderPhone = trip.riderPhone || r?.phone || '+919900990044';
+          return { ...trip, riderName, riderPhone };
         });
         setPickups(enriched);
       }, (err) => console.error("Pickups listener error:", err));

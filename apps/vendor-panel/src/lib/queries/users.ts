@@ -434,3 +434,45 @@ export async function fetchEnrichedProfiles(ids: string[]): Promise<Map<string, 
   return result;
 }
 
+export async function fetchEnrichedRiders(ids: string[]): Promise<Map<string, { name: string; phone: string }>> {
+  const result = new Map<string, { name: string; phone: string }>();
+  if (!ids.length) return result;
+
+  const { documentId: docId } = await import('firebase/firestore');
+
+  // 1. Look up driver_profiles for rider details
+  for (let i = 0; i < ids.length; i += 30) {
+    const chunk = ids.slice(i, i + 30);
+    try {
+      const snap = await getDocs(query(collection(db, 'driver_profiles'), where(docId(), 'in', chunk)));
+      snap.forEach(d => {
+        const data = d.data();
+        let name = data.name || data.displayName || '';
+        if (name === 'Test Vendor') name = 'Test Rider';
+        result.set(d.id, {
+          name: name || 'Test Rider',
+          phone: data.phone || data.phoneNumber || data.phone_number || '+919900990044',
+        });
+      });
+    } catch (err) {
+      console.warn('[fetchEnrichedRiders] driver_profiles error:', err);
+    }
+  }
+
+  // 2. Fallback to users collection for any missing IDs
+  const missing = ids.filter(id => !result.has(id));
+  if (missing.length > 0) {
+    const userMap = await fetchEnrichedProfiles(missing);
+    userMap.forEach((userData, id) => {
+      let name = userData.name || userData.displayName || '';
+      if (name === 'Test Vendor') name = 'Test Rider';
+      result.set(id, {
+        name: name || 'Test Rider',
+        phone: userData.phone || userData.phone_number || '+919900990044',
+      });
+    });
+  }
+
+  return result;
+}
+
