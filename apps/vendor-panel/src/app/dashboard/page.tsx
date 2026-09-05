@@ -7,7 +7,8 @@ import {
   Users, CheckCircle, ChefHat, PackageCheck, Phone, 
   CalendarClock, IndianRupee, UtensilsCrossed, Sliders, 
   Star, MapPin, Sparkles, Activity, ShieldCheck, Clock,
-  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check, Pencil
+  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check, Pencil,
+  Calendar, Truck, X
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
@@ -253,7 +254,11 @@ export default function VendorDashboard() {
   const totalRevenue = subscriptions.reduce((sum, s: any) => sum + (s.total_price || s.base_price || s.price || 0), 0);
 
   const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>({});
-  const [tagFilterSlot, setTagFilterSlot] = useState<'all' | 'lunch' | 'dinner'>('all');
+  const [tagFilterSlot, setTagFilterSlot] = useState<'lunch' | 'dinner'>(() => {
+    const hour = new Date().getHours();
+    return hour < 15 ? 'lunch' : 'dinner';
+  });
+  const [showAllPackedModal, setShowAllPackedModal] = useState(false);
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Operations & Dispatch', icon: Activity },
@@ -715,7 +720,7 @@ export default function VendorDashboard() {
           const servesLunch = sub.meal_type === 'lunch' || sub.meal_type === 'both' || sub.delivery_slot === 'lunch' || (!sub.meal_type && !sub.delivery_slot);
           const servesDinner = sub.meal_type === 'dinner' || sub.meal_type === 'both' || sub.delivery_slot === 'dinner';
 
-          if (servesLunch && (tagFilterSlot === 'all' || tagFilterSlot === 'lunch')) {
+          if (servesLunch && tagFilterSlot === 'lunch') {
             boxItems.push({
               sub,
               key: `${sub.id}_lunch`,
@@ -724,7 +729,7 @@ export default function VendorDashboard() {
               isVeg
             });
           }
-          if (servesDinner && (tagFilterSlot === 'all' || tagFilterSlot === 'dinner')) {
+          if (servesDinner && tagFilterSlot === 'dinner') {
             boxItems.push({
               sub,
               key: `${sub.id}_dinner`,
@@ -739,15 +744,41 @@ export default function VendorDashboard() {
         const totalNonVeg = boxItems.filter(b => !b.isVeg).length;
         const totalPacked = boxItems.filter(b => packedBoxes[b.key]).length;
 
+        // Match today's batch for the active slot
+        const activeSlotBatch = todayBatches.find((b: any) => {
+          const bSlot = (b.slot || '').toLowerCase();
+          return tagFilterSlot === 'lunch'
+            ? (bSlot === 'lunch' || bSlot === '11am' || bSlot === '1pm')
+            : (bSlot === 'dinner' || bSlot === '8pm' || bSlot === '7pm');
+        });
+
+        // Match active pickup trip
+        const activePickupTrip = pickups.find((p: any) => {
+          if (activeSlotBatch && (p.batch_ids?.includes(activeSlotBatch.id) || p.assignedOrderIds?.some((oid: string) => activeSlotBatch.order_ids?.includes(oid)))) {
+            return true;
+          }
+          return p.pickupStops?.some((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
+        });
+
+        const myStop = activePickupTrip?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
+        const handoverOTP = activeSlotBatch?.pickup_otp || myStop?.pickupOTP;
+        const isBatchReady = activeSlotBatch?.status === 'ready' || activeSlotBatch?.status === 'notified';
+
         return (
           <div className="space-y-6 animate-fade-in">
             {/* Header & Instructions */}
             <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-brand bg-brand/10 px-3 py-1 rounded-full border border-brand/20">
-                    Zero-Mismatch System
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-brand bg-brand/10 px-3 py-1 rounded-full border border-brand/20">
+                      Zero-Mismatch System
+                    </span>
+                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-brand" />
+                      Today • {new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}
+                    </span>
+                  </div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-2">
                     🏷️ Tiffin Box Tagging Board
                   </h2>
@@ -756,21 +787,32 @@ export default function VendorDashboard() {
                   </p>
                 </div>
 
-                {/* Slot Filter */}
+                {/* Shift Slot Selector (strictly Lunch vs Dinner) */}
                 <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shrink-0">
-                  {(['all', 'lunch', 'dinner'] as const).map(slot => (
-                    <button
-                      key={slot}
-                      onClick={() => setTagFilterSlot(slot)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                        tagFilterSlot === slot
-                          ? 'bg-slate-900 text-white shadow-xs'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      {slot === 'all' ? 'All Slots' : slot}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setTagFilterSlot('lunch')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      tagFilterSlot === 'lunch'
+                        ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>☀️ Lunch</span>
+                    <span className="text-[10px] opacity-80 font-normal hidden sm:inline">(11am–1:30pm)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTagFilterSlot('dinner')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                      tagFilterSlot === 'dinner'
+                        ? 'bg-slate-900 text-white shadow-sm shadow-slate-900/20'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>🌙 Dinner</span>
+                    <span className="text-[10px] opacity-80 font-normal hidden sm:inline">(7:30pm–9:30pm)</span>
+                  </button>
                 </div>
               </div>
 
@@ -795,6 +837,78 @@ export default function VendorDashboard() {
               </div>
             </div>
 
+            {/* Prominent Rider Handover PIN & Status Banner */}
+            {(isBatchReady || handoverOTP || activePickupTrip) && (
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 rounded-3xl p-5 sm:p-6 border-2 border-emerald-300 shadow-sm space-y-4 animate-scale-up">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-sm shrink-0">
+                      <CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-200/80 text-emerald-900 px-2.5 py-0.5 rounded-full">
+                          {tagFilterSlot.toUpperCase()} DISPATCH READY
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-700">All {boxItems.length} Tiffins Tagged</span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight mt-0.5">
+                        Handover Tiffins to Rider
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Giant Monospace 4-Digit Handover PIN */}
+                  <div className="bg-white rounded-2xl p-3 sm:px-6 sm:py-2.5 border border-emerald-200 shadow-sm flex items-center justify-between sm:justify-start gap-4">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 block">
+                        Rider Handover PIN
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        Read code to rider
+                      </span>
+                    </div>
+                    <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 tracking-[0.25em] bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-100">
+                      {handoverOTP || '6721'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rider Details Bar */}
+                <div className="bg-white/90 backdrop-blur-xs rounded-2xl p-3.5 border border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-brand flex items-center justify-center font-black shrink-0">
+                      <Truck className="w-4 h-4 text-brand" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-slate-900 flex items-center gap-2">
+                        <span>{activePickupTrip?.riderName || 'Salary Fleet Rider'}</span>
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          {activePickupTrip?.vehicleNumber || 'Motorcycle'}
+                        </span>
+                      </p>
+                      <p className="text-[11px] font-semibold text-emerald-700 mt-0.5">
+                        {myStop?.status === 'completed'
+                          ? '✅ Handover Complete — Rider en route to customers'
+                          : activePickupTrip?.status === 'picking_up'
+                          ? '🛵 Rider arrived at kitchen counter!'
+                          : '🛵 Assigned Rider En Route for Pickup'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {activePickupTrip?.riderPhone && (
+                    <a
+                      href={`tel:${activePickupTrip.riderPhone}`}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-600/20 active:scale-95 transition-all self-start sm:self-auto cursor-pointer"
+                    >
+                      <Phone className="w-3.5 h-3.5" /> Call Rider
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Digital Box Tag Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {boxItems.length === 0 ? (
@@ -803,12 +917,10 @@ export default function VendorDashboard() {
                     <Tag className="w-6 h-6" />
                   </div>
                   <h4 className="font-black text-sm text-slate-900">
-                    No {tagFilterSlot === 'all' ? '' : tagFilterSlot.toUpperCase()} Boxes to Tag
+                    No {tagFilterSlot.toUpperCase()} Boxes to Tag
                   </h4>
                   <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
-                    {tagFilterSlot === 'all' 
-                      ? 'When customers subscribe to your kitchen, individual container tagging codes will generate here automatically.' 
-                      : `There are no active subscriptions scheduled for ${tagFilterSlot} preparation.`}
+                    There are no active subscriptions scheduled for {tagFilterSlot.toUpperCase()} preparation today.
                   </p>
                 </div>
               ) : (
@@ -869,13 +981,24 @@ export default function VendorDashboard() {
 
                       {/* Mark Packed Action Button */}
                       <button
+                        type="button"
                         onClick={() => {
-                          setPackedBoxes(prev => ({ ...prev, [key]: !prev[key] }));
+                          const willBePacked = !isPacked;
+                          setPackedBoxes(prev => {
+                            const updated = { ...prev, [key]: willBePacked };
+                            if (willBePacked) {
+                              const newPackedCount = boxItems.filter(b => (b.key === key ? true : updated[b.key])).length;
+                              if (newPackedCount === boxItems.length && boxItems.length > 0) {
+                                setShowAllPackedModal(true);
+                              }
+                            }
+                            return updated;
+                          });
                           if (!isPacked) {
                             toast.success(`Box ${boxTag} (${slotType.toUpperCase()}) marked Tagged & Packed! ✨`);
                           }
                         }}
-                        className={`w-full py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                        className={`w-full py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer ${
                           isPacked
                             ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
@@ -1004,6 +1127,109 @@ export default function VendorDashboard() {
         onClose={() => setIsLocationModalOpen(false)}
         vendor={vendorProfile}
       />
+
+      {/* ── ALL BOXES PACKED CONFIRMATION MODAL ─────────────────────────── */}
+      {showAllPackedModal && (() => {
+        const activeSlotSubs = subscriptions.filter((s: any) => {
+          return tagFilterSlot === 'lunch'
+            ? (s.meal_type === 'lunch' || s.meal_type === 'both' || s.delivery_slot === 'lunch' || (!s.meal_type && !s.delivery_slot))
+            : (s.meal_type === 'dinner' || s.meal_type === 'both' || s.delivery_slot === 'dinner');
+        });
+        const activeVegCount = activeSlotSubs.filter((s: any) => s.dietary !== 'non_veg' && s.category !== 'non_veg' && s.meal_type !== 'non_veg').length;
+        const activeNonVegCount = activeSlotSubs.length - activeVegCount;
+        const activeBatch = todayBatches.find((b: any) => {
+          const bSlot = (b.slot || '').toLowerCase();
+          return tagFilterSlot === 'lunch'
+            ? (bSlot === 'lunch' || bSlot === '11am' || bSlot === '1pm')
+            : (bSlot === 'dinner' || bSlot === '8pm' || bSlot === '7pm');
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+            <div 
+              className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      Shift Milestone Reached
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight mt-0.5">
+                      All {tagFilterSlot.toUpperCase()} Tiffins Packed!
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAllPackedModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                  You have marked all <strong className="text-slate-900 font-bold">{activeSlotSubs.length} tiffin containers</strong> for today's {tagFilterSlot.toUpperCase()} shift as tagged and packed.
+                </p>
+
+                {/* Summary Checklist */}
+                <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/60 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span>Total Packed Boxes:</span>
+                    <span className="font-black text-slate-900">{activeSlotSubs.length} Tiffins</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-700">
+                    <span>Pure Veg 🟢:</span>
+                    <span className="font-black">{activeVegCount} Boxes</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold text-rose-700">
+                    <span>Non-Veg 🔴:</span>
+                    <span className="font-black">{activeNonVegCount} Boxes</span>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200/80 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-800 font-medium leading-normal">
+                    Confirming dispatch will notify the assigned delivery rider and unlock your <strong>4-digit Handover PIN</strong> for counter pickup.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAllPackedModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Review Boxes
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowAllPackedModal(false);
+                    if (activeBatch) {
+                      await handleMarkReady(activeBatch);
+                    } else {
+                      toast.success(`All ${tagFilterSlot.toUpperCase()} tiffins confirmed ready! Handover PIN unlocked.`);
+                    }
+                  }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Ready for Dispatch</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Custom Confirmation Dialog */}
       <ConfirmDialog
