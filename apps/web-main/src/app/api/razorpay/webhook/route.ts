@@ -3,8 +3,6 @@ import crypto from 'crypto';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
-export const dynamic = 'force-dynamic';
-
 // ── Idempotency guard ──────────────────────────────────────────────────────
 // Prevents duplicate webhook processing (Razorpay retries on 5xx)
 const MAX_PROCESSED_EVENTS = 5000;

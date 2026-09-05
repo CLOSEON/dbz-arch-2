@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { rateLimit } from '@/lib/server/rate-limit';
 
-export const dynamic = 'force-dynamic';
-
 export async function POST(req: NextRequest) {
   const limited = rateLimit(req, {
     keyPrefix: 'razorpay:create-vendor-account',

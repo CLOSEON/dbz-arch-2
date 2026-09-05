@@ -3,8 +3,6 @@ import Razorpay from 'razorpay';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import { rateLimit } from '@/lib/server/rate-limit';
 
-export const dynamic = 'force-dynamic';
-
 type RazorpayApiError = {
   statusCode?: number;
   message?: string;

@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/lib/firebase';
+import { isSuperadminEmail } from '@/lib/auth/auth-service';
 import {
-  collection, query, orderBy, onSnapshot, where, doc,
+  collection, query, orderBy, onSnapshot, where, doc, getDoc, limit,
   Timestamp,
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { Loader2, Clock, Bell, AlertTriangle, Package, ChevronRight, Navigation, CheckCircle2, MapPin } from 'lucide-react';
+import { Loader2, Clock, Bell, AlertTriangle, Package, ChevronRight, Navigation, CheckCircle2, MapPin, Crown, RotateCcw } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const LiveDeliveryMap = dynamic(() => import('@/components/delivery/LiveDeliveryMap'), {
@@ -119,8 +121,20 @@ const DONE_STATUSES = ['delivered', 'failed'];
 
 /* ─── component ─────────────────────────────────────────────────────────────── */
 
-export default function CustomerTrackPage() {
+function CustomerTrackContent() {
+  const searchParams = useSearchParams();
+  const urlOrderId = searchParams.get('orderId');
+  const urlUserId = searchParams.get('userId');
+
   const user = useAuthStore((s) => s.user);
+  const isSuper = isSuperadminEmail(user?.email) || user?.is_superadmin || user?.role === 'admin';
+
+  // Superadmin switcher states
+  const [superadminOrders, setSuperadminOrders] = useState<any[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(urlOrderId || null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(urlUserId || null);
+  const [impersonatedCustomer, setImpersonatedCustomer] = useState<any | null>(null);
+
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,9 +143,93 @@ export default function CustomerTrackPage() {
 
   const [activeSubs, setActiveSubs] = useState<any[]>([]);
 
+  // 1. Fetch active platform orders for superadmin switcher
+  useEffect(() => {
+    if (!isSuper) return;
+    const qAll = query(
+      collection(db, 'orders'),
+      where('status', 'in', [
+        'out_for_delivery',
+        'picked_up',
+        'rider_assigned',
+        'vendor_ready',
+        'preparing',
+        'delivered',
+        'created',
+      ]),
+      limit(30)
+    );
+
+    const unsub = onSnapshot(
+      qAll,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const orderWeight: Record<string, number> = {
+          out_for_delivery: 1,
+          picked_up: 2,
+          rider_assigned: 3,
+          vendor_ready: 4,
+          preparing: 5,
+          created: 6,
+          delivered: 7,
+        };
+        list.sort((a: any, b: any) => (orderWeight[a.status] || 99) - (orderWeight[b.status] || 99));
+        setSuperadminOrders(list);
+      },
+      (err) => console.warn('Superadmin active orders listener error:', err.message)
+    );
+
+    return () => unsub();
+  }, [isSuper]);
+
+  // 2. Superadmin auto-selection of active delivery
+  useEffect(() => {
+    if (!isSuper) return;
+    if (urlOrderId && selectedOrderId !== urlOrderId) {
+      setSelectedOrderId(urlOrderId);
+      return;
+    }
+    if (urlUserId && selectedCustomerId !== urlUserId) {
+      setSelectedCustomerId(urlUserId);
+      return;
+    }
+    // If no order/customer selected yet and we have active platform deliveries, auto-select the first in-flight order!
+    if (!selectedOrderId && !selectedCustomerId && superadminOrders.length > 0) {
+      const inFlight = superadminOrders.find((o) =>
+        ['out_for_delivery', 'picked_up', 'rider_assigned'].includes(o.status)
+      );
+      if (inFlight) {
+        setSelectedOrderId(inFlight.id);
+        const custId = inFlight.user_id || inFlight.customerId;
+        if (custId) setSelectedCustomerId(custId);
+      }
+    }
+  }, [isSuper, superadminOrders, selectedOrderId, selectedCustomerId, urlOrderId, urlUserId]);
+
+  // 3. Customer metadata hydration for selected customer
+  useEffect(() => {
+    if (!isSuper || !selectedCustomerId) {
+      setImpersonatedCustomer(null);
+      return;
+    }
+    getDoc(doc(db, 'users', selectedCustomerId))
+      .then((snap) => {
+        if (snap.exists()) {
+          setImpersonatedCustomer({ id: snap.id, ...snap.data() });
+        }
+      })
+      .catch((err) => console.warn('Fetch customer metadata error:', err.message));
+  }, [isSuper, selectedCustomerId]);
+
+  const effectiveUserId = (isSuper && selectedCustomerId) ? selectedCustomerId : user?.id;
+
   /* Fetch all today's delivery_orders and active subscriptions */
   useEffect(() => {
     if (!user?.id) return;
+    if (!effectiveUserId && !selectedOrderId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     const now = new Date();
@@ -156,6 +254,8 @@ export default function CustomerTrackPage() {
         ...data,
         // Map canonical fields to expected legacy fields
         customerId: data.user_id || data.customerId,
+        customerName: data.customer_name || data.userName || data.user_name || impersonatedCustomer?.name || 'Customer',
+        customerPhone: data.customer_phone || data.phone || impersonatedCustomer?.phone || '',
         vendorId: data.vendor_id || data.vendorId,
         driverId: data.driverId || data.rider_id || data.agentId || null,
         riderTripId: data.rider_trip_id || data.riderTripId || null,
@@ -165,6 +265,8 @@ export default function CustomerTrackPage() {
         address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
         scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
         status: data.status,
+        delivery_otp: data.delivery_otp || data.otp || '1234',
+        otp: data.delivery_otp || data.otp || '1234',
         timestamps: data.timestamps || {
           preparedAt: null,
           pickedAt: null,
@@ -191,27 +293,56 @@ export default function CustomerTrackPage() {
       collection(db, 'orders'),
       where('user_id', '==', user.id)
     );
+    let unsubOrders = () => {};
+    let unsubSubs = () => {};
 
-    const qSubs = query(
-      collection(db, 'subscriptions'),
-      where('user_id', '==', user.id),
-      where('status', '==', 'active')
-    );
+    if (effectiveUserId) {
+      const qOrders = query(
+        collection(db, 'orders'),
+        where('user_id', '==', effectiveUserId)
+      );
 
-    const unsubOrders = onSnapshot(qOrders, (snap) => {
-      fromOrders = snap.docs.map(mapOrderDoc);
-      mergeAndSortOrders();
-    }, err => console.warn("Track Orders listener error:", err.message));
+      const qSubs = query(
+        collection(db, 'subscriptions'),
+        where('user_id', '==', effectiveUserId),
+        where('status', '==', 'active')
+      );
 
-    const unsubSubs = onSnapshot(qSubs, (snap) => {
-      setActiveSubs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, err => console.warn("Track Subs listener error:", err.message));
+      unsubOrders = onSnapshot(qOrders, (snap) => {
+        fromOrders = snap.docs.map(mapOrderDoc);
+        mergeAndSortOrders();
+      }, (err) => console.warn("Track Orders listener error:", err.message));
+
+      unsubSubs = onSnapshot(qSubs, (snap) => {
+        setActiveSubs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, (err) => console.warn("Track Subs listener error:", err.message));
+    }
+
+    let unsubDirectOrder = () => {};
+    if (selectedOrderId) {
+      unsubDirectOrder = onSnapshot(doc(db, 'orders', selectedOrderId), (docSnap) => {
+        if (docSnap.exists()) {
+          const directMapped = mapOrderDoc(docSnap);
+          setAllOrders((prev) => {
+            const map = new Map<string, any>();
+            map.set(directMapped.id, directMapped);
+            prev.forEach((p) => map.set(p.id, p));
+            return Array.from(map.values());
+          });
+          if ((directMapped.customerId || (directMapped as any).user_id) && !selectedCustomerId) {
+            setSelectedCustomerId(directMapped.customerId || (directMapped as any).user_id);
+          }
+          setLoading(false);
+        }
+      }, (err) => console.warn("Direct Order listener error:", err.message));
+    }
 
     return () => {
       unsubOrders();
       unsubSubs();
+      unsubDirectOrder();
     };
-  }, [user?.id]);
+  }, [effectiveUserId, selectedOrderId, impersonatedCustomer?.name]);
 
   /* Derive current order */
   const liveOrder = allOrders.find((o) => LIVE_STATUSES.includes(o.status)) ?? null;
@@ -345,6 +476,111 @@ export default function CustomerTrackPage() {
     }
   }
 
+  const renderSuperadminBanner = () => {
+    if (!isSuper) return null;
+    return (
+      <div className="mb-6 rounded-3xl bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-orange-500/10 border-2 border-amber-500/30 p-4 shadow-lg shadow-amber-500/5 backdrop-blur-md animate-fade-in">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-3 w-3 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+            </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <Crown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                  Superadmin Live Customer Tracker
+                </span>
+              </div>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-300/80 font-medium mt-0.5">
+                Inspect any customer&apos;s real-time tracking screen, rider GPS &amp; doorstep PIN
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:max-w-xs">
+            <select
+              value={selectedOrderId || ''}
+              onChange={(e) => {
+                const ordId = e.target.value;
+                if (!ordId) {
+                  setSelectedOrderId(null);
+                  setSelectedCustomerId(null);
+                  setImpersonatedCustomer(null);
+                  return;
+                }
+                setSelectedOrderId(ordId);
+                const found = superadminOrders.find((o) => o.id === ordId);
+                if (found) {
+                  setSelectedCustomerId(found.user_id || found.customerId || null);
+                }
+              }}
+              className="w-full text-xs font-bold bg-white dark:bg-slate-900 border-2 border-amber-400/60 rounded-2xl px-3 py-2 text-slate-900 dark:text-slate-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="">-- Switch Active Customer / Delivery --</option>
+              {superadminOrders.map((o) => {
+                const custName = o.customer_name || o.userName || o.user_name || 'Customer';
+                const mType = (o.meal?.type || o.meal_type || 'meal').toUpperCase();
+                const st = (o.status || 'pending').replace(/_/g, ' ').toUpperCase();
+                return (
+                  <option key={o.id} value={o.id}>
+                    {custName} • {mType} • {st} ({o.id.slice(-6)})
+                  </option>
+                );
+              })}
+            </select>
+            {(selectedOrderId || selectedCustomerId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedOrderId(null);
+                  setSelectedCustomerId(null);
+                  setImpersonatedCustomer(null);
+                }}
+                className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 px-2.5 py-2 rounded-xl transition-colors shrink-0"
+                title="Reset to your personal account view"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(impersonatedCustomer || currentOrder) && (
+          <div className="mt-3 pt-3 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-lg">
+                Viewing
+              </span>
+              <strong className="font-black text-slate-900 dark:text-white text-sm">
+                {impersonatedCustomer?.name || currentOrder?.customer_name || currentOrder?.customerName || currentOrder?.userName || 'Customer'}
+              </strong>
+              {(impersonatedCustomer?.phone || currentOrder?.customer_phone || currentOrder?.customerPhone || currentOrder?.phone) && (
+                <a
+                  href={`tel:${impersonatedCustomer?.phone || currentOrder?.customer_phone || currentOrder?.customerPhone || currentOrder?.phone}`}
+                  className="text-xs font-mono font-bold text-amber-800 dark:text-amber-300 underline"
+                >
+                  {impersonatedCustomer?.phone || currentOrder?.customer_phone || currentOrder?.customerPhone || currentOrder?.phone}
+                </a>
+              )}
+            </div>
+
+            {currentOrder && (
+              <div className="flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 px-3 py-1 rounded-xl">
+                <span className="text-[10px] font-black uppercase tracking-wider">Doorstep PIN:</span>
+                <span className="font-mono text-sm font-black tracking-widest text-emerald-700 dark:text-emerald-300">
+                  {currentOrder.delivery_otp || currentOrder.otp || '1234'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /* ── loading ── */
   if (loading) {
     return (
@@ -360,13 +596,16 @@ export default function CustomerTrackPage() {
   /* ── empty state ── */
   if (!currentOrder && !nextOrder) {
     return (
-      <div className="pt-16 pb-24 px-6 max-w-md mx-auto animate-fade-in">
-        <div className="bg-white rounded-[2rem] p-10 text-center border border-slate-100 shadow-sm flex flex-col items-center gap-4">
+      <div className="pt-8 pb-24 px-6 max-w-md mx-auto animate-fade-in">
+        {isSuper && renderSuperadminBanner()}
+        <div className="bg-white rounded-[2rem] p-10 text-center border border-slate-100 shadow-sm flex flex-col items-center gap-4 mt-2">
           <div className="text-5xl">🍱</div>
           <div>
             <h2 className="font-black text-slate-900 text-lg">No Active Delivery</h2>
             <p className="text-xs text-slate-400 mt-2 max-w-[220px] mx-auto leading-relaxed">
-              Your tiffin hasn&apos;t been dispatched yet for today. Check back closer to meal time!
+              {isSuper
+                ? 'Select an active delivery or customer from the Superadmin selector above to inspect their live tracking screen.'
+                : 'Your tiffin hasn\'t been dispatched yet for today. Check back closer to meal time!'}
             </p>
           </div>
           <div className="flex gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -384,7 +623,9 @@ export default function CustomerTrackPage() {
   return (
     <div className="pb-28 animate-fade-in">
       {/* Header */}
-      <div className="pt-8 pb-4 px-6 max-w-md mx-auto">
+      <div className="pt-6 pb-4 px-6 max-w-md mx-auto">
+        {isSuper && renderSuperadminBanner()}
+
         <p className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full inline-block">
           {isLive ? '🟢 Live Tracking' : '📦 Delivery Status'}
         </p>
@@ -392,7 +633,7 @@ export default function CustomerTrackPage() {
           {currentOrder?.meal?.name ?? nextOrder?.meal?.name ?? 'Today\'s Tiffin'}
         </h1>
         <p className="text-sm text-slate-400 font-medium capitalize mt-1">
-          {currentOrder?.meal?.type ?? nextOrder?.meal?.type} · {currentOrder?.address?.line1 ?? nextOrder?.address?.line1 ?? ''}
+          {impersonatedCustomer?.name ? `${impersonatedCustomer.name} · ` : ''}{currentOrder?.meal?.type ?? nextOrder?.meal?.type} · {currentOrder?.address?.line1 ?? nextOrder?.address?.line1 ?? ''}
         </p>
       </div>
 
@@ -460,9 +701,9 @@ export default function CustomerTrackPage() {
               riderPhone={currentOrder.agentPhone}
               riderRating={4.8}
               vehicleNumber={currentOrder.vehicleNumber}
-              otp={currentOrder.otp || '1234'}
+              otp={currentOrder.delivery_otp || currentOrder.otp || '1234'}
               boxTag={generateBoxTag({
-                customerName: user?.name,
+                customerName: impersonatedCustomer?.name || currentOrder.customer_name || currentOrder.customerName || currentOrder.userName || user?.name || 'Customer',
                 vendorName: currentOrder.vendorName || currentOrder.vendor?.kitchen_name || currentOrder.vendor?.name || activeSubs.find((s: any) => s.id === (currentOrder.subscription_id || currentOrder.subscriptionId) || s.vendor_id === (currentOrder.vendor_id || currentOrder.vendorId))?.vendor_name || 'Kitchen',
                 sequenceNumber: 1,
                 planType: currentOrder.plan_type || currentOrder.planType || 'weekly',
@@ -638,3 +879,21 @@ export default function CustomerTrackPage() {
     </div>
   );
 }
+
+export default function CustomerTrackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-32 animate-fade-in">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Loader2 className="w-8 h-8 text-brand animate-spin" />
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Connecting live GPS…</p>
+          </div>
+        </div>
+      }
+    >
+      <CustomerTrackContent />
+    </Suspense>
+  );
+}
+

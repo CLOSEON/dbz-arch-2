@@ -107,6 +107,7 @@ export async function updateVendorSubscriptionRates(
 export async function createSubscription(data: {
   user_id: string;
   vendor_id: string;
+  vendor_name?: string;
   plan_id: string;
   meal_type: MealType;
   category?: DietaryCategory;
@@ -130,6 +131,7 @@ export async function createSubscription(data: {
   const payload: Record<string, any> = {
     user_id: data.user_id,
     vendor_id: data.vendor_id,
+    ...(data.vendor_name && { vendor_name: data.vendor_name }),
     plan_id: data.plan_id,
     meal_type: data.meal_type,
     status: 'active',

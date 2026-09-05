@@ -5,8 +5,6 @@ import { rateLimit } from '@/lib/server/rate-limit';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 
-export const dynamic = 'force-dynamic';
-
 type RazorpayApiError = {
   statusCode?: number;
   message?: string;

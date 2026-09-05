@@ -4,8 +4,6 @@ import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { checkRateLimit } from '@/lib/server/rate-limit';
 
-export const dynamic = 'force-dynamic';
-
 // Safely instantiate Razorpay — fail gracefully if env vars are missing
 let razorpay: Razorpay | null = null;
 try {

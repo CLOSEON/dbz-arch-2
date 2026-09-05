@@ -670,6 +670,16 @@ export function UserManagementHub() {
                         <Copy className="w-3 h-3" />
                         <span>{copiedUid ? 'Copied!' : selectedUser.id.slice(0, 12) + '...'}</span>
                       </button>
+                      <a
+                        href={`/track?userId=${selectedUser.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-lg transition-colors"
+                        title="Open customer's live delivery tracking screen"
+                      >
+                        <ExternalLink className="w-3 h-3 text-amber-600" />
+                        <span>🛵 Track Live Screen ↗</span>
+                      </a>
                     </div>
                   </div>
 
