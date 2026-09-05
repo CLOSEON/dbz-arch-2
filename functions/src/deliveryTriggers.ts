@@ -250,6 +250,7 @@ async function processDailyDeliveries(force: boolean = false) {
     const sub = subDoc.data();
     const subId = subDoc.id;
 
+    if (existingSubIds.has(subId)) {
     // Check if subscription already has all scheduled meals
     const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
     const currentOrdersSnap = await db.collection('orders')
@@ -279,6 +280,7 @@ async function processDailyDeliveries(force: boolean = false) {
         continue;
       }
 
+      const mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
       const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
       let mealTypesToGenerate: string[] = [];
       if (customPattern) {
@@ -586,6 +588,8 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   const batch = db.batch();
   let ordersCreated = 0;
 
+  for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
+    for (const mealType of mealTypes) {
   for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
     if (ordersCreated >= maxMealsTotal) break;
 

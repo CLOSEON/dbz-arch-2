@@ -147,6 +147,7 @@ export async function createSubscription(data: {
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
 
   if (data.vendor_name) payload.vendor_name = data.vendor_name;
+
   if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;
   if (data.selected_addons) payload.selected_addons = data.selected_addons;

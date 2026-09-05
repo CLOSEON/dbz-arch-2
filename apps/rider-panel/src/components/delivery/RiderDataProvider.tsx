@@ -14,9 +14,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const setLastSynced = useDeliveryStore(s => s.setLastSynced);
 
   useEffect(() => {
-    const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
-    const isRider = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || (user as any)?.roles?.delivery || user?.role === 'admin' || isSuper;
-    if (!user?.id || !isRider) {
+    if (!user?.id || (user.role !== 'delivery' && (user.role as string) !== 'delivery_agent')) {
       return;
     }
 

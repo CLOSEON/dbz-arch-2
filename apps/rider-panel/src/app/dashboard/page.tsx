@@ -578,6 +578,7 @@ export default function RiderDashboard() {
               </div>
               <p className="text-xs font-bold text-slate-500 mt-0.5 truncate flex items-center gap-1.5">
                 <Phone className="w-3 h-3 text-slate-400" /> {user?.phone || '+91 99009 90044'} • {user?.vehicle_type || 'Motorcycle'}
+                <Phone className="w-3 h-3 text-slate-400" /> {user?.phone || 'No phone'} • {user?.vehicle_type || 'Motorcycle'}
               </p>
             </div>
           </div>

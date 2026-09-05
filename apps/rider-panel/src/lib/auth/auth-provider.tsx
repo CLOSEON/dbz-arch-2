@@ -130,8 +130,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
               data.verification_status = 'verified';
               data.name = data.name || 'Test Rider';
               data.phone = data.phone || '+919900990044';
+              data.name = data.name || activeUser.displayName || 'Fleet Partner';
+              data.phone = data.phone || activeUser.phoneNumber || '';
               data.vehicle_type = data.vehicle_type || 'Motorcycle';
               data.vehicle_number = data.vehicle_number || 'DL-01-AB-1234';
+              data.vehicle_number = data.vehicle_number || '';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
@@ -144,14 +147,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
               name: 'Test Rider',
+              name: activeUser.displayName || 'Fleet Partner',
               image: activeUser.photoURL || undefined,
               phone: '+919900990044',
+              phone: activeUser.phoneNumber || '',
               role: 'delivery',
               is_superadmin: true,
               is_approved: true,
               verification_status: 'verified',
               vehicle_type: 'Motorcycle',
               vehicle_number: 'DL-01-AB-1234',
+              vehicle_number: '',
             };
             try {
               const { setDoc: setFirestoreDoc } = await import('firebase/firestore');

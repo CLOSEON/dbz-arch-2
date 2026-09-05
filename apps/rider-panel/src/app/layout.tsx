@@ -7,7 +7,7 @@ import { PageTransition } from '@/components/ui/PageTransition';
 import { RiderAppShell } from '@/components/RiderAppShell';
 
 export const viewport: Viewport = {
-  themeColor: '#EA580C',
+  themeColor: '#431407',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
@@ -32,7 +32,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#F8FAFC] text-slate-900 antialiased font-sans">
+      <body className="bg-[#FEFCE8] text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />
         <AuthProvider>

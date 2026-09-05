@@ -91,13 +91,8 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
         return { success: true, message: 'No active riders available for assignment.' };
     }
     let activeRiders = driversSnap.docs
-        .map(doc => {
-        const data = doc.data();
-        const currentLocation = (data.currentLocation?.lat != null && data.currentLocation?.lng != null)
-            ? data.currentLocation
-            : { lat: 18.5204, lng: 73.8567 };
-        return { id: doc.id, ...data, currentLocation };
-    });
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(rider => rider.currentLocation?.lat != null && rider.currentLocation?.lng != null);
     const activeTripsSnap = await db.collection('rider_trips')
         .where('status', 'in', ['pickup_pending', 'picking_up', 'pickup_complete', 'dropping'])
         .get();
@@ -115,13 +110,15 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
     for (const [bId, batchInfo] of batchesToAssign) {
         if (activeRiders.length === 0)
             break;
-        const vLoc = vendorLocations.get(batchInfo.vendorId) || { lat: 18.5204, lng: 73.8567 };
+        const vLoc = vendorLocations.get(batchInfo.vendorId);
+        if (!vLoc)
+            continue;
         let nearestRiderIdx = -1;
         let shortestDist = Infinity;
         for (let i = 0; i < activeRiders.length; i++) {
             const r = activeRiders[i];
             const d = (0, geo_1.getDistanceInKm)(r.currentLocation.lat, r.currentLocation.lng, vLoc.lat, vLoc.lng);
-            if (d < shortestDist && d <= Math.max(overrideRadius, 25.0)) {
+            if (d < shortestDist && d <= overrideRadius) {
                 shortestDist = d;
                 nearestRiderIdx = i;
             }
@@ -143,9 +140,6 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
             }];
         batch.set(tripRef, {
             riderId: selectedRider.id,
-            riderName: selectedRider.name || 'Dabzzo Rider',
-            riderPhone: selectedRider.phone || selectedRider.phoneNumber || '9900990044',
-            vehicleType: selectedRider.vehicleType || 'Motorcycle',
             assignedOrderIds: batchInfo.orders.map(o => o.id),
             vendorIds: [batchInfo.vendorId],
             batch_ids: [bId],
@@ -155,25 +149,14 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        const batchRef = db.collection('batches').doc(bId);
-        batch.update(batchRef, {
-            pickup_otp: pickupOTP,
-            status: 'ready',
-            rider_id: selectedRider.id,
-            trip_id: tripRef.id,
-            updated_at: admin.firestore.FieldValue.serverTimestamp()
-        });
         for (const order of batchInfo.orders) {
             const orderRef = db.collection('orders').doc(order.id);
-            const deliveryOtp = order.delivery_otp || order.otp || Math.floor(1000 + Math.random() * 9000).toString();
             batch.update(orderRef, {
                 rider_trip_id: tripRef.id,
                 driverId: selectedRider.id,
                 agentName: selectedRider.name || 'Dabzzo Rider',
-                agentPhone: selectedRider.phone || selectedRider.phoneNumber || '9900990044',
+                agentPhone: selectedRider.phone || selectedRider.phoneNumber || '9999999999',
                 vehicleNumber: selectedRider.vehicleNumber || 'MH12 AB1234',
-                delivery_otp: deliveryOtp,
-                otp: deliveryOtp,
                 status: 'rider_assigned',
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
             });

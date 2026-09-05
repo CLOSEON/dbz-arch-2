@@ -212,7 +212,6 @@ async function processDailyDeliveries(force = false) {
             .get();
         if (currentOrdersSnap.size >= maxMeals) {
             result.skipped++;
-            result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
             result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: `All ${maxMeals} meals already scheduled` });
             continue;
         }

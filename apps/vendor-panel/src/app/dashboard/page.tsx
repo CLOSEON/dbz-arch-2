@@ -13,7 +13,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
 import type { BatchStatus } from '@/types';
 import { db, functions } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
 import { MealRatesCard } from '@/components/vendor/MealRatesCard';
@@ -127,14 +127,6 @@ export default function VendorDashboard() {
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setIsMarkingReady(batch.id);
         try {
-          if (!batch.pickup_otp) {
-            const genOtp = Math.floor(1000 + Math.random() * 9000).toString();
-            try {
-              await updateDoc(doc(db, 'batches', batch.id), { pickup_otp: genOtp });
-            } catch (err) {
-              console.warn('Could not persist pickup_otp:', err);
-            }
-          }
           const markBatchReady = httpsCallable(functions, 'markBatchReady');
           const res = await markBatchReady({ batch_id: batch.id }) as any;
           if (res.data?.success) {
@@ -208,12 +200,15 @@ export default function VendorDashboard() {
                 </span>
                 <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-[10px] font-black border border-amber-200">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {Number(user?.rating_avg || user?.rating || 4.5).toFixed(1)}
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {user?.rating_avg || user?.rating ? Number(user?.rating_avg || user?.rating).toFixed(1) : '—'}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
                 <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {user?.address || 'Sector 62, Noida, Uttar Pradesh'}</span>
                 <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> {user?.phone || '+919900990022'}</span>
+                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {user?.address || 'Location on profile'}</span>
+                <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" /> {user?.phone || 'No phone'}</span>
                 <span className="text-slate-400">•</span>
                 <span className="text-brand font-bold">{user?.cuisine_type || 'Home Style'}</span>
               </div>
@@ -394,59 +389,24 @@ export default function VendorDashboard() {
                         )}
 
                         {batch.status === 'ready' && (
-                          <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center space-y-3">
+                          <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center space-y-2">
+                            <div className="flex items-center justify-center gap-1.5 text-emerald-700 font-bold text-xs">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              Tiffins Ready! Awaiting Rider Pickup
+                            </div>
+
                             {(() => {
-                              const matchingTrip = pickups.find(p => 
+                              const tripOTP = pickups.find(p => 
                                 p.batch_ids?.includes(batch.id) || 
                                 p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
-                              );
-                              const myStop = matchingTrip?.pickupStops?.find((s: any) => s.vendorId === user?.id);
-                              const isPickedUp = myStop?.status === 'completed' || batch.status === 'completed';
-                              const displayOTP = batch.pickup_otp || myStop?.pickupOTP || '6129';
-
-                              if (isPickedUp) {
-                                return (
-                                  <div className="py-2 space-y-1">
-                                    <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-black text-sm">
-                                      <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                      Meals Handed Over to Rider ✓
-                                    </div>
-                                    <p className="text-xs text-emerald-700 font-semibold">
-                                      {matchingTrip?.riderName || 'Rider'} verified tiffin count and is en route to customer doorsteps.
-                                    </p>
-                                  </div>
-                                );
-                              }
+                              )?.pickupStops?.find((s: any) => s.vendorId === user?.id)?.pickupOTP;
+                              const displayOTP = batch.pickup_otp || tripOTP || '6721';
 
                               return (
-                                <>
-                                  <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-black text-xs">
-                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                    Tiffins Ready! Awaiting Rider Pickup
-                                  </div>
-
-                                  <div className="bg-white py-3 px-6 rounded-2xl border border-emerald-200 inline-block shadow-sm">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Kitchen Pickup OTP</div>
-                                    <div className="text-3xl font-black font-mono tracking-[0.25em] text-emerald-600">{displayOTP}</div>
-                                  </div>
-                                  <p className="text-xs text-emerald-800 font-medium">
-                                    Share this 4-digit code with the rider upon handing over the tiffin boxes.
-                                  </p>
-
-                                  {matchingTrip && (
-                                    <div className="bg-white/80 rounded-2xl p-3 border border-emerald-200/80 flex items-center justify-between text-left">
-                                      <div>
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Assigned Delivery Partner</p>
-                                        <p className="text-xs font-black text-slate-900">{matchingTrip.riderName || 'Dabzzo Rider'}</p>
-                                      </div>
-                                      {matchingTrip.riderPhone && (
-                                        <a href={`tel:${matchingTrip.riderPhone}`} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all">
-                                          <Phone className="w-3.5 h-3.5" /> Call Rider
-                                        </a>
-                                      )}
-                                    </div>
-                                  )}
-                                </>
+                                <div className="mt-2 bg-white py-3 px-6 rounded-2xl border border-emerald-200 inline-block shadow-sm">
+                                  <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Rider Handover OTP</div>
+                                  <div className="text-3xl font-black font-mono tracking-[0.25em] text-emerald-600">{displayOTP}</div>
+                                </div>
                               );
                             })()}
                           </div>
@@ -696,6 +656,7 @@ export default function VendorDashboard() {
                       </div>
                       <p className="text-xs text-slate-500 font-medium flex items-center gap-1">
                         <Phone className="w-3 h-3 text-slate-400" /> {sub.userPhone || sub.phone || '+91 9900990022'}
+                        <Phone className="w-3 h-3 text-slate-400" /> {sub.userPhone || sub.phone || 'No phone'}
                       </p>
                       <p className="text-xs text-brand font-bold">
                         Slot: {sub.deliveryPreference || 'Lunch (1:00 PM)'}
