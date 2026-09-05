@@ -75,13 +75,28 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           
           if (vendorIds.length > 0) {
             import('@/lib/queries/users').then(async ({ fetchEnrichedProfiles }) => {
-              const uMap = await fetchEnrichedProfiles(vendorIds);
-              const enrichedPickups = tripData.pickupStops.map(s => ({
-                ...s,
-                vendorPhone: uMap.get(s.vendorId)?.phone_number || uMap.get(s.vendorId)?.phone || ''
-              }));
+              const uMap = await fetchEnrichedProfiles(vendorIds, true);
+              const enrichedPickups = tripData.pickupStops.map(s => {
+                const u = uMap.get(s.vendorId);
+                const freshLat = u?.location?.lat ?? u?.lat;
+                const freshLng = u?.location?.lng ?? u?.lng;
+                const freshAddress = u?.address || u?.location?.address;
+                return {
+                  ...s,
+                  vendorPhone: u?.phone_number || u?.phone || '',
+                  location: (typeof freshLat === 'number' && typeof freshLng === 'number') ? {
+                    ...(s.location || {}),
+                    lat: freshLat,
+                    lng: freshLng,
+                    address: freshAddress || s.location?.address || ''
+                  } : s.location
+                };
+              });
               
               setActiveTrip({ ...tripData, pickupStops: enrichedPickups } as RiderTrip);
+            }).catch(e => {
+              console.warn('Failed to enrich vendor locations:', e);
+              setActiveTrip(tripData);
             });
           } else {
             setActiveTrip(tripData);

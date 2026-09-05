@@ -376,9 +376,9 @@ export async function seedTestAccounts(): Promise<void> {
 }
 
 
-export async function getApprovedVendors(): Promise<Vendor[]> {
+export async function getApprovedVendors(forceFresh = false): Promise<Vendor[]> {
   const now = Date.now();
-  if (_vendorsCache && now - _vendorsCache.ts < CACHE_TTL_MS) {
+  if (!forceFresh && _vendorsCache && now - _vendorsCache.ts < 20_000) {
     return _vendorsCache.data;
   }
 
@@ -395,18 +395,26 @@ export async function getApprovedVendors(): Promise<Vendor[]> {
 }
 
 // ─── Individual Profile Cache for Real-time Listeners ───────────────────────
-// Caches profiles for 5 minutes. Prevents repetitive reads on frequent updates.
+// Caches profiles for 20 seconds. Non-realtime yet fast enough to catch updates.
 const _profileCache = new Map<string, { data: any; ts: number }>();
-const PROFILE_CACHE_TTL = 300_000;
+const PROFILE_CACHE_TTL = 20_000;
 
-export async function fetchEnrichedProfiles(ids: string[]): Promise<Map<string, any>> {
+export function invalidateProfileCache(id?: string) {
+  if (id) {
+    _profileCache.delete(id);
+  } else {
+    _profileCache.clear();
+  }
+}
+
+export async function fetchEnrichedProfiles(ids: string[], forceFresh = false): Promise<Map<string, any>> {
   const result = new Map<string, any>();
   const missingIds: string[] = [];
   const now = Date.now();
 
   ids.forEach(id => {
     const cached = _profileCache.get(id);
-    if (cached && now - cached.ts < PROFILE_CACHE_TTL) {
+    if (!forceFresh && cached && now - cached.ts < PROFILE_CACHE_TTL) {
       result.set(id, cached.data);
     } else {
       missingIds.push(id);

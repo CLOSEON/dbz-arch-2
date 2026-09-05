@@ -126,7 +126,7 @@ export interface DeliveryNotification {
 export interface PickupStop {
   vendorId: string;
   vendorPhone?: string;
-  location: { lat: number; lng: number };
+  location: { lat: number; lng: number; address?: string };
   /** 1-indexed order in the optimised route */
   sequence: number;
   /** Straight-line distance from the previous stop (or rider start), in km */

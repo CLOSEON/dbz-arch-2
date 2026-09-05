@@ -68,6 +68,64 @@ export default function RiderDashboard() {
   const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [vendors, setVendors] = useState<any[]>([]);
   const [customerProfiles, setCustomerProfiles] = useState<Record<string, { name: string; phone?: string; image?: string; address?: string }>>({});
+  const [navigatingVendorId, setNavigatingVendorId] = useState<string | null>(null);
+
+  // ── Kitchen Navigation with Instant Fresh Coordinates Check ────────────────
+  const handleNavigateToKitchen = async (
+    vendorId: string,
+    fallbackLat?: number,
+    fallbackLng?: number,
+    fallbackAddress?: string
+  ) => {
+    let targetLat = fallbackLat;
+    let targetLng = fallbackLng;
+    let targetAddress = fallbackAddress;
+
+    if (vendorId) {
+      setNavigatingVendorId(vendorId);
+      try {
+        const snap = await getDoc(doc(db, 'users', vendorId));
+        if (snap.exists()) {
+          const freshData = snap.data();
+          const liveLat = freshData.location?.lat ?? freshData.lat;
+          const liveLng = freshData.location?.lng ?? freshData.lng;
+          const liveAddr = freshData.address || freshData.location?.address;
+          if (typeof liveLat === 'number' && typeof liveLng === 'number') {
+            targetLat = liveLat;
+            targetLng = liveLng;
+          }
+          if (liveAddr) {
+            targetAddress = liveAddr;
+          }
+          // Immediately sync local state so card and map reflect the fresh position
+          setVendors(prev => {
+            const exists = prev.some(v => v.id === vendorId);
+            if (exists) {
+              return prev.map(v => (v.id === vendorId ? { ...v, ...freshData } : v));
+            }
+            return [...prev, { id: vendorId, ...freshData }];
+          });
+        }
+      } catch (err) {
+        console.warn('[handleNavigateToKitchen] Fresh lookup failed, using cached coords:', err);
+      } finally {
+        setNavigatingVendorId(null);
+      }
+    }
+
+    let url = '';
+    if (typeof targetLat === 'number' && typeof targetLng === 'number') {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}`;
+    } else if (targetAddress) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(targetAddress)}`;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error('Kitchen location is not available yet');
+    }
+  };
 
   // ── 1. Offline Sync Queue ───────────────────────────────────────────────────
   useEffect(() => {
@@ -189,19 +247,45 @@ export default function RiderDashboard() {
     };
   }, [isOnline, activeTrip?.id, activeTrip?.status, user?.id]);
 
-  // ── 4. Fetch Vendors & Customer Profiles ──────────────────────────────────
+  // ── 4. Fetch Vendors & Customer Profiles (Lightweight 20s Polling Sync) ────
+  const fetchVendors = useCallback(async () => {
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
+      const snap = await getDocs(q);
+      setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error('[RiderDashboard] Failed to fetch vendors:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    const fetchVendors = async () => {
-      try {
-        const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
-        const snap = await getDocs(q);
-        setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error('[RiderDashboard] Failed to fetch vendors:', err);
+    if (!user?.id) return;
+    
+    // Initial fetch
+    fetchVendors();
+
+    // Periodic sync every 20s (within 10-30s, zero realtime listener burden)
+    const interval = setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        fetchVendors();
+      }
+    }, 20_000);
+
+    // Sync immediately whenever rider returns to or focuses this window/tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchVendors();
       }
     };
-    if (user?.id) fetchVendors();
-  }, [user?.id]);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', fetchVendors);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', fetchVendors);
+    };
+  }, [user?.id, fetchVendors]);
 
   useEffect(() => {
     if (!agentOrders.length) return;
@@ -496,15 +580,15 @@ export default function RiderDashboard() {
 
     pickupStopsList.forEach((stop: any, idx: number) => {
       const v = vendors.find(ven => ven.id === stop.vendorId);
-      const lat = stop.location?.lat || v?.location?.lat;
-      const lng = stop.location?.lng || v?.location?.lng;
+      const lat = v?.location?.lat ?? v?.lat ?? stop.location?.lat;
+      const lng = v?.location?.lng ?? v?.lng ?? stop.location?.lng;
       if (lat && lng) {
         markers.push({
           id: `pickup-${stop.vendorId || idx}`,
           lat,
           lng,
           title: `Stop ${idx + 1} (Kitchen): ${v?.kitchen_name || v?.name || 'Kitchen'}`,
-          subtitle: stop.status === 'completed' ? 'Picked Up ✓' : 'Kitchen Pickup'
+          subtitle: stop.status === 'completed' ? 'Picked Up ✓' : (v?.address || v?.location?.address || stop.location?.address || 'Kitchen Pickup')
         });
       }
     });
@@ -571,13 +655,13 @@ export default function RiderDashboard() {
               {user?.image ? (
                 <Image src={getImageUrl(user.image)} alt={user.name || ''} fill className="object-cover" />
               ) : (
-                <span>{(user?.name || 'DR').slice(0, 2).toUpperCase()}</span>
+                <span>{((user?.name === 'Test Vendor' ? 'Test Rider' : user?.name) || 'DR').slice(0, 2).toUpperCase()}</span>
               )}
             </button>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="font-black text-base text-slate-900 leading-tight truncate">
-                  {user?.name || 'Dabzzo Rider'}
+                  {user?.name === 'Test Vendor' ? 'Test Rider' : (user?.name || 'Dabzzo Rider')}
                 </h1>
                 <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 shrink-0">
                   <ShieldCheck className="w-3 h-3" /> Salary Fleet
@@ -730,9 +814,11 @@ export default function RiderDashboard() {
               const v = vendors.find(ven => ven.id === stop.vendorId);
               const isDone = stop.status === 'completed';
               const isCurrent = currentState === 'PICKUP' && nextPickup?.vendorId === stop.vendorId;
-              const lat = stop.location?.lat || v?.location?.lat;
-              const lng = stop.location?.lng || v?.location?.lng;
+              const lat = v?.location?.lat ?? v?.lat ?? stop.location?.lat;
+              const lng = v?.location?.lng ?? v?.lng ?? stop.location?.lng;
+              const kitchenAddress = v?.address || v?.location?.address || stop.location?.address || 'Kitchen Address on record';
               const phone = stop.vendorPhone || v?.phone;
+              const isNavigatingThis = navigatingVendorId === stop.vendorId;
 
               return (
                 <div 
@@ -761,7 +847,7 @@ export default function RiderDashboard() {
                           {v?.kitchen_name || v?.name || `Kitchen ${stop.vendorId?.slice(-4)}`}
                         </h4>
                         <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                          {v?.address || 'Kitchen Address on record'}
+                          {kitchenAddress}
                         </p>
                       </div>
                     </div>
@@ -776,27 +862,19 @@ export default function RiderDashboard() {
                           <Phone className="w-4 h-4" />
                         </a>
                       )}
-                      {lat && lng ? (
-                        <a 
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
-                          title="Navigate"
-                        >
+                      <button
+                        type="button"
+                        onClick={() => handleNavigateToKitchen(stop.vendorId, lat, lng, kitchenAddress)}
+                        disabled={isNavigatingThis}
+                        className="w-9 h-9 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs cursor-pointer disabled:opacity-75"
+                        title="Navigate to Kitchen"
+                      >
+                        {isNavigatingThis ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        ) : (
                           <Navigation className="w-4 h-4" />
-                        </a>
-                      ) : (v?.address) ? (
-                        <a 
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(v.address)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
-                          title="Navigate"
-                        >
-                          <Navigation className="w-4 h-4" />
-                        </a>
-                      ) : null}
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -898,11 +976,12 @@ export default function RiderDashboard() {
         (() => {
           const v = vendors.find(ven => ven.id === nextPickup.vendorId);
           const kitchenName = v?.kitchen_name || v?.name || `Kitchen ${nextPickup.vendorId?.slice(-4)}`;
-          const kitchenAddress = v?.address || 'Address on record with Dabzzo';
-          const lat = nextPickup.location?.lat || v?.location?.lat;
-          const lng = nextPickup.location?.lng || v?.location?.lng;
+          const kitchenAddress = v?.address || v?.location?.address || nextPickup.location?.address || 'Address on record with Dabzzo';
+          const lat = v?.location?.lat ?? v?.lat ?? nextPickup.location?.lat;
+          const lng = v?.location?.lng ?? v?.lng ?? nextPickup.location?.lng;
           const phone = nextPickup.vendorPhone || v?.phone;
           const expectedCount = nextPickup.expectedTiffinCount || agentOrders.length || 1;
+          const isNavigatingThis = navigatingVendorId === nextPickup.vendorId;
 
           return (
             <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)] space-y-4 animate-fade-in">
@@ -953,25 +1032,19 @@ export default function RiderDashboard() {
                   </button>
                 )}
 
-                {lat && lng ? (
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
-                  >
-                    <Navigation size={16} /> Navigate
-                  </a>
-                ) : kitchenAddress ? (
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(kitchenAddress)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
-                  >
-                    <Navigation size={16} /> Navigate
-                  </a>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => handleNavigateToKitchen(nextPickup.vendorId, lat, lng, kitchenAddress)}
+                  disabled={isNavigatingThis}
+                  className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all cursor-pointer disabled:opacity-80"
+                >
+                  {isNavigatingThis ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Navigation size={16} />
+                  )}
+                  <span>Navigate</span>
+                </button>
               </div>
 
               <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-3">
