@@ -4,10 +4,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
 import { 
-  Users, CheckCircle, ChefHat, PackageCheck, Phone, 
+  Users, CheckCircle, CheckCircle2, ChefHat, PackageCheck, Phone, 
   CalendarClock, IndianRupee, UtensilsCrossed, Sliders, 
   Star, MapPin, Sparkles, Activity, ShieldCheck, Clock,
-  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check
+  ArrowUpRight, AlertTriangle, RefreshCw, Tag, Check, Truck, Loader2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from '@/components/vendor/VendorDataProvider';
@@ -245,7 +245,30 @@ export default function VendorDashboard() {
   const capacityPercent = Math.min(100, Math.round((subscriberCount / kitchenCapacity) * 100));
   const totalRevenue = subscriptions.reduce((sum, s: any) => sum + (s.total_price || s.base_price || s.price || 0), 0);
 
-  const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>({});
+  const [packedBoxes, setPackedBoxes] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      return JSON.parse(localStorage.getItem(`packed_boxes_${localToday}`) || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleBoxPacked = (key: string, boxTag: string, slotType: string) => {
+    setPackedBoxes((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(`packed_boxes_${localToday}`, JSON.stringify(next));
+      } catch (e) {
+        console.warn('Failed to persist packed boxes:', e);
+      }
+      if (!prev[key]) {
+        toast.success(`Box ${boxTag} (${slotType.toUpperCase()}) marked Tagged & Packed! ✨`);
+      }
+      return next;
+    });
+  };
+
   const [tagFilterSlot, setTagFilterSlot] = useState<'all' | 'lunch' | 'dinner'>('all');
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
@@ -737,6 +760,73 @@ export default function VendorDashboard() {
                   <div className="text-xl font-black text-amber-900 mt-0.5">{totalPacked} / {boxItems.length}</div>
                 </div>
               </div>
+
+              {/* Batch Dispatch & Rider Alert Status Bar */}
+              {todayBatches.length > 0 && (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  {todayBatches
+                    .filter(b => tagFilterSlot === 'all' || (tagFilterSlot === 'lunch' && (b.slot === '11am' || b.slot === 'lunch')) || (tagFilterSlot === 'dinner' && (b.slot === '8pm' || b.slot === 'dinner')))
+                    .map(b => {
+                      const bInfo = formatBatchTitle(b.slot);
+                      const isReady = b.status === 'ready' || b.status === 'dispatched' || b.status === 'completed';
+                      return (
+                        <div key={b.id} className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                          isReady ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-amber-50/70 border-amber-200 text-amber-900'
+                        }`}>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black shrink-0 ${
+                              isReady ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-500 text-white shadow-xs'
+                            }`}>
+                              {isReady ? <CheckCircle2 className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black uppercase tracking-wider">{bInfo.title}</span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 border border-current/20">{bInfo.deliveryTime}</span>
+                              </div>
+                              <p className="text-xs opacity-80 mt-0.5">
+                                {isReady 
+                                  ? `✓ Batch Ready & Dispatched! Pickup OTP: ${b.pickup_otp || '----'}. Assigned to Riders.`
+                                  : `Meals currently packing. When finished, click to dispatch riders immediately.`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {!isReady ? (
+                            <button
+                              onClick={() => handleMarkReady(b)}
+                              disabled={isMarkingReady === b.id}
+                              className="w-full sm:w-auto px-4 py-2.5 bg-brand hover:bg-[#C2410C] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
+                            >
+                              {isMarkingReady === b.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Notifying Fleet…</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Truck className="w-3.5 h-3.5" />
+                                  <span>Mark Ready & Dispatch 🛵</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs font-black bg-emerald-600 text-white px-3 py-1 rounded-xl shadow-xs flex items-center gap-1.5">
+                                <Check className="w-3.5 h-3.5" /> Dispatched to Rider
+                              </span>
+                              {b.pickup_otp && (
+                                <span className="text-xs font-mono font-black bg-white border border-emerald-300 text-emerald-800 px-2.5 py-1 rounded-xl">
+                                  OTP: {b.pickup_otp}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
 
             {/* Digital Box Tag Cards Grid */}
@@ -813,12 +903,7 @@ export default function VendorDashboard() {
 
                       {/* Mark Packed Action Button */}
                       <button
-                        onClick={() => {
-                          setPackedBoxes(prev => ({ ...prev, [key]: !prev[key] }));
-                          if (!isPacked) {
-                            toast.success(`Box ${boxTag} (${slotType.toUpperCase()}) marked Tagged & Packed! ✨`);
-                          }
-                        }}
+                        onClick={() => toggleBoxPacked(key, boxTag, slotType)}
                         className={`w-full py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 ${
                           isPacked
                             ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
