@@ -373,7 +373,7 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
     const tripData = tripSnap.data();
     
     // Auth check: Must be the assigned rider or an admin
-    if (tripData?.riderId !== context.auth!.uid && context.auth!.token.role !== 'admin') {
+    if (tripData?.riderId !== context.auth!.uid && context.auth!.token?.role !== 'admin') {
       throw new functions.https.HttpsError('permission-denied', 'Only the assigned rider or admin can verify the pickup OTP.');
     }
 
@@ -462,7 +462,7 @@ export const regeneratePickupOTP = functions.https.onCall(async (data, context) 
   }
 
   // Auth check: Must be the vendor associated with this stop or an admin
-  if (vendorId !== context.auth!.uid && context.auth!.token.role !== 'admin') {
+  if (vendorId !== context.auth!.uid && context.auth!.token?.role !== 'admin') {
     throw new functions.https.HttpsError('permission-denied', 'Only the vendor associated with this stop or an admin can regenerate the OTP.');
   }
 

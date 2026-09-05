@@ -332,7 +332,7 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
 
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(JSON.stringify(req.body))
+        .update((req as any).rawBody || JSON.stringify(req.body))
         .digest('hex');
 
       if (expectedSignature !== signature) {

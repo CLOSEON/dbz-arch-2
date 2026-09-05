@@ -566,7 +566,7 @@ export const verifyDeliveryOTP = onCall(async (request) => {
     const orderData = orderDoc.data()!;
     
     // Auth check: must be the assigned rider or admin
-    if (orderData.rider_id !== auth.uid && orderData.driverId !== auth.uid && auth.token.role !== 'admin') {
+    if (orderData.rider_id !== auth.uid && orderData.driverId !== auth.uid && auth.token?.role !== 'admin') {
       throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
     }
 
