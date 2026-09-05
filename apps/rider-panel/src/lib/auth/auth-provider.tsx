@@ -128,12 +128,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
               data.is_superadmin = true;
               data.is_approved = true;
               data.verification_status = 'verified';
-              data.name = data.name || 'Test Rider';
-              data.phone = data.phone || '+919900990044';
               data.name = data.name || activeUser.displayName || 'Delivery Partner';
               data.phone = data.phone || activeUser.phoneNumber || '';
               data.vehicle_type = data.vehicle_type || 'Motorcycle';
-              data.vehicle_number = data.vehicle_number || 'DL-01-AB-1234';
               data.vehicle_number = data.vehicle_number || '';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
@@ -146,17 +143,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const superProfile: AppUser = {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
-              name: 'Test Rider',
               name: activeUser.displayName || 'Delivery Partner',
               image: activeUser.photoURL || undefined,
-              phone: '+919900990044',
               phone: activeUser.phoneNumber || '',
               role: 'delivery',
               is_superadmin: true,
               is_approved: true,
               verification_status: 'verified',
               vehicle_type: 'Motorcycle',
-              vehicle_number: 'DL-01-AB-1234',
               vehicle_number: '',
             };
             try {

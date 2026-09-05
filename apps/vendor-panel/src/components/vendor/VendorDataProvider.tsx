@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { EnrichedSubscription, DailyMenu } from '@/types';
@@ -43,7 +42,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
 
   // 1. Fetch available vendors for superadmin
   useEffect(() => {
-    if (!user?.id || user.role !== 'vendor') {
     if (!user?.id) return;
 
     if (user.is_superadmin) {
@@ -117,7 +115,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       // 1. Batches
       const qBatches = query(
         collection(db, 'batches'),
-        where('vendor_id', '==', user.id),
         where('vendor_id', '==', targetVendorId),
         where('status', 'in', ['pending', 'preparing', 'ready', 'notified'])
       );
@@ -131,7 +128,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       // 2. Incoming Pickups (Rider Trips)
       const qPickups = query(
         collection(db, 'rider_trips'),
-        where('vendorIds', 'array-contains', user.id),
         where('vendorIds', 'array-contains', targetVendorId),
         where('status', 'in', ['assigned', 'accepted', 'at_vendor', 'pickup_pending', 'picking_up'])
       );
@@ -151,7 +147,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       // 3. Live Deliveries
       const qDel = query(
         collection(db, 'deliveries'),
-        where('vendor_id', '==', user.id),
         where('vendor_id', '==', targetVendorId),
         where('status', 'in', ['out_for_delivery', 'picked_up'])
       );
@@ -162,7 +157,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       // 4. Subscriptions (with user enrichment)
       const qSubs = query(
         collection(db, 'subscriptions'),
-        where('vendor_id', '==', user.id),
         where('vendor_id', '==', targetVendorId),
         where('status', '==', 'active')
       );
@@ -174,7 +168,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         
         const enriched = rawSubs.map(sub => {
           const u = userMap.get(sub.user_id);
-          return { ...sub, userName: u?.name || 'Unknown', userPhone: u?.phone || '' };
           return { ...sub, userName: u?.name || 'Customer', userPhone: u?.phone || '' };
         });
         setSubscriptions(enriched);
@@ -184,7 +177,6 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       const todayStr = getTodayStr();
       const qMenu = query(
         collection(db, 'daily_menus'),
-        where('vendor_id', '==', user.id),
         where('vendor_id', '==', targetVendorId),
         where('date', '==', todayStr)
       );
@@ -209,11 +201,9 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       if (unsubSubscriptions) unsubSubscriptions();
       if (unsubMenu) unsubMenu();
     };
-  }, [user?.id, user?.role]);
   }, [targetVendorId]);
 
   return (
-    <VendorDataContext.Provider value={{ batches, pickups, deliveries, subscriptions, dailyMenu, loading, error }}>
     <VendorDataContext.Provider value={{ 
       batches, 
       pickups, 

@@ -107,7 +107,6 @@ export async function updateVendorSubscriptionRates(
 export async function createSubscription(data: {
   user_id: string;
   vendor_id: string;
-  vendor_name?: string;
   plan_id: string;
   meal_type: MealType;
   category?: DietaryCategory;
@@ -139,8 +138,6 @@ export async function createSubscription(data: {
     cancelled_at: null,
     cancelled_by: null,
   };
-
-  if (data.vendor_name) payload.vendor_name = data.vendor_name;
 
   // Calculate and store next billing date
   const daysToAdd = data.frequency === 'monthly' ? 30 : data.frequency === 'weekly' ? 7 : 1;

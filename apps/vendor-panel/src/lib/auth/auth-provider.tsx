@@ -93,11 +93,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
               email: activeUser.email || undefined,
               name: activeUser.displayName || (isSuper ? 'Test Vendor' : ''),
               phone: activeUser.phoneNumber || (isSuper ? '+919900990022' : ''),
-              name: activeUser.displayName || (isSuper ? 'Dabzzo Admin' : ''),
-              phone: activeUser.phoneNumber || '',
               role: isSuper ? 'vendor' : 'user',
               kitchen_name: isSuper ? 'Test Vendor' : undefined,
-              kitchen_name: isSuper ? 'Dabzzo Central Kitchen' : undefined,
               is_superadmin: isSuper ? true : undefined,
               is_approved: isSuper ? true : undefined,
               verification_status: isSuper ? 'verified' : undefined,
@@ -133,16 +130,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
               data.name = data.name || 'Test Vendor';
               data.kitchen_name = data.kitchen_name || 'Test Vendor';
               data.phone = data.phone || '+919900990022';
-              data.name = data.name || activeUser.displayName || 'Dabzzo Admin';
-              data.kitchen_name = data.kitchen_name || 'Dabzzo Central Kitchen';
-              data.phone = data.phone || activeUser.phoneNumber || '+919850277099';
               data.is_approved = true;
               data.is_superadmin = true;
               data.verification_status = 'verified';
               data.capacity = data.capacity || 10;
               data.subscriberCount = data.subscriberCount || 2;
               data.rate_onetime = data.rate_onetime || 150;
-              data.address = data.address || 'Nagpur, Maharashtra';
               data.cuisine_type = data.cuisine_type || 'Home Style';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
@@ -153,16 +146,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             });
           } else if (isSuper && mounted.current) {
             const testVendorProfile: AppUser = {
-            const superVendorProfile: AppUser = {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
               name: 'Test Vendor',
               kitchen_name: 'Test Vendor',
-              name: activeUser.displayName || 'Dabzzo Admin',
-              kitchen_name: 'Dabzzo Central Kitchen',
               image: activeUser.photoURL || undefined,
               phone: '+919900990022',
-              phone: activeUser.phoneNumber || '+919850277099',
               role: 'vendor',
               is_superadmin: true,
               is_approved: true,
@@ -178,7 +167,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
               rate_dinner_monthly: 3600,
               rate_both_weekly: 1750,
               rate_both_monthly: 6800,
-              address: 'Nagpur, Maharashtra',
               cuisine_type: 'Home Style',
               bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
               rating: 4.5,
@@ -188,13 +176,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             try {
               const { setDoc: setFirestoreDoc } = await import('firebase/firestore');
               await setFirestoreDoc(doc(db, 'users', activeUser.uid), testVendorProfile, { merge: true });
-              await setFirestoreDoc(doc(db, 'users', activeUser.uid), superVendorProfile, { merge: true });
             } catch (e) {
               console.warn('[AuthProvider] setDoc testVendorProfile fallback:', e);
-              console.warn('[AuthProvider] setDoc superVendorProfile fallback:', e);
             }
             setUser(testVendorProfile);
-            setUser(superVendorProfile);
           }
         } else {
           logout();

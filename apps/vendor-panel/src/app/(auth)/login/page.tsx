@@ -8,7 +8,6 @@ import { useUiStore } from '@/store/uiStore';
 import { signInWithGoogle, isSuperadminEmail, extractUserEmail } from '@/lib/auth';
 import { resolveUserProfile, completeOnboarding } from '@/lib/queries/users';
 import { doc, setDoc } from 'firebase/firestore';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { UserRole, AppUser } from '@/types';
 import type { User } from 'firebase/auth';
@@ -54,22 +53,13 @@ export default function VendorLoginPage() {
       const isSuper = isSuperadminEmail(email);
 
       // Superadmin auto-link to the exact Test Vendor account (+919900990022)
-      // Superadmin auto-verification for vendor panel access
       if (isSuper) {
         const testVendorProfile: AppUser = {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        const existingData = userDocSnap.exists() ? userDocSnap.data() : {};
-
-        const superVendorProfile: AppUser = {
           id: firebaseUser.uid,
           email: email,
           name: 'Test Vendor',
           kitchen_name: 'Test Vendor',
           phone: '+919900990022',
-          name: existingData.name || firebaseUser.displayName || 'Dabzzo Admin',
-          kitchen_name: existingData.kitchen_name || 'Dabzzo Central Kitchen',
-          phone: existingData.phone || firebaseUser.phoneNumber || '+919850277099',
           image: firebaseUser.photoURL || undefined,
           role: 'vendor' as UserRole,
           is_approved: true,
@@ -91,23 +81,16 @@ export default function VendorLoginPage() {
           rating: 4.5,
           rating_avg: 4.5,
           review_count: 14,
-          address: existingData.address || 'Nagpur, Maharashtra',
-          cuisine_type: existingData.cuisine_type || 'Home Style',
-          ...existingData,
         };
 
         try {
           await setDoc(doc(db, 'users', firebaseUser.uid), testVendorProfile, { merge: true });
-          await setDoc(userDocRef, superVendorProfile, { merge: true });
         } catch (e) {
           console.warn('[VendorLogin] Syncing test vendor profile:', e);
-          console.warn('[VendorLogin] Syncing vendor profile:', e);
         }
 
         setUser(testVendorProfile);
         addToast('Connected to Test Vendor! 🎉', 'success');
-        setUser(superVendorProfile);
-        addToast('Welcome to Vendor Operations! 🍛', 'success');
         router.replace('/dashboard');
         return;
       }

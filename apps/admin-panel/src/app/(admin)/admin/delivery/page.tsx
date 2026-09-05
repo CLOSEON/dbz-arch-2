@@ -104,6 +104,7 @@ export default function AdminDeliveryOversightPage() {
 
       for (const r of sorted) {
         const key = r.phone || r.email || r.id;
+        const key = r.id;
         if (!seen.has(key)) {
           seen.add(key);
           deduped.push(r);

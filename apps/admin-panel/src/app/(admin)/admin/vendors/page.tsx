@@ -37,6 +37,7 @@ export default function AdminVendors() {
       const rawVendors = list.filter(u => u.role === 'vendor' || (u as any).roles?.vendor);
       
       // Deduplicate vendors by unique phone or unique kitchen name (prioritizing profile with logo/banner)
+      // Deduplicate vendors by unique account ID (each vendor is a distinct kitchen)
       const seen = new Set<string>();
       const deduped: AppUser[] = [];
       const sorted = [...rawVendors].sort((a, b) => {
@@ -47,6 +48,7 @@ export default function AdminVendors() {
 
       for (const v of sorted) {
         const key = v.phone || v.kitchen_name || v.id;
+        const key = v.id;
         if (!seen.has(key)) {
           seen.add(key);
           deduped.push(v);
