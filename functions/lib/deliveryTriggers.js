@@ -337,20 +337,31 @@ exports.markBatchReady = (0, https_1.onCall)(async (request) => {
     if (!auth) {
         throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
     }
-    const vendorId = auth.uid;
+    const callerUid = auth.uid;
     const { batch_id } = data;
     if (!batch_id) {
         throw new https_1.HttpsError('invalid-argument', 'Missing batch_id');
     }
     const db = admin.firestore();
     const batchRef = db.collection('batches').doc(batch_id);
+    const callerEmail = (auth.token?.email || '').toLowerCase().trim();
+    let isAdmin = callerEmail === 'closeon.st@gmail.com' || auth.token?.admin === true || auth.token?.role === 'admin';
+    if (!isAdmin) {
+        const callerDoc = await db.collection('users').doc(callerUid).get();
+        if (callerDoc.exists) {
+            const udata = callerDoc.data() || {};
+            isAdmin = udata.role === 'admin' || udata.is_superadmin === true || udata.roles?.admin === true;
+        }
+    }
+    let actualVendorId = '';
     const result = await db.runTransaction(async (t) => {
         const batchDoc = await t.get(batchRef);
         if (!batchDoc.exists) {
             throw new https_1.HttpsError('not-found', `Batch ${batch_id} not found`);
         }
         const batch = batchDoc.data();
-        if (batch.vendor_id !== vendorId) {
+        actualVendorId = batch.vendor_id;
+        if (!isAdmin && batch.vendor_id !== callerUid) {
             throw new https_1.HttpsError('permission-denied', 'This batch does not belong to you');
         }
         if (batch.status === 'ready' || batch.status === 'completed') {
@@ -387,7 +398,7 @@ exports.markBatchReady = (0, https_1.onCall)(async (request) => {
                 order_id: orderDoc.id,
                 from_status: order.status,
                 to_status: 'vendor_ready',
-                actor: vendorId,
+                actor: callerUid,
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
             });
             (0, events_1.publishEvent)('meal_prep_started', order.user_id, 'customer', `meal_prep_${orderDoc.id}`, { mealType: order.meal_type || 'meal' }).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
@@ -397,7 +408,7 @@ exports.markBatchReady = (0, https_1.onCall)(async (request) => {
     });
     try {
         const m = await Promise.resolve().then(() => __importStar(require('./matchingTriggers')));
-        await m.coreAssignRiderTrips(vendorId);
+        await m.coreAssignRiderTrips(actualVendorId || callerUid);
     }
     catch (e) {
         console.error('[markBatchReady] Auto-assign failed:', e);

@@ -250,7 +250,6 @@ async function processDailyDeliveries(force: boolean = false) {
     const sub = subDoc.data();
     const subId = subDoc.id;
 
-    if (existingSubIds.has(subId)) {
     // Check if subscription already has all scheduled meals
     const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
     const currentOrdersSnap = await db.collection('orders')
@@ -260,7 +259,6 @@ async function processDailyDeliveries(force: boolean = false) {
 
     if (currentOrdersSnap.size >= maxMeals) {
       result.skipped++;
-      result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
       result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: `All ${maxMeals} meals already scheduled` });
       continue;
     }
@@ -280,7 +278,6 @@ async function processDailyDeliveries(force: boolean = false) {
         continue;
       }
 
-      const mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
       const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
       let mealTypesToGenerate: string[] = [];
       if (customPattern) {
@@ -425,7 +422,7 @@ export const markBatchReady = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Must be authenticated');
   }
   
-  const vendorId = auth.uid;
+  const callerUid = auth.uid;
   const { batch_id } = data as any;
   if (!batch_id) {
     throw new HttpsError('invalid-argument', 'Missing batch_id');
@@ -434,6 +431,19 @@ export const markBatchReady = onCall(async (request) => {
   const db = admin.firestore();
   const batchRef = db.collection('batches').doc(batch_id);
 
+  // Admin / Superadmin check
+  const callerEmail = (auth.token?.email || '').toLowerCase().trim();
+  let isAdmin = callerEmail === 'closeon.st@gmail.com' || (auth.token as any)?.admin === true || (auth.token as any)?.role === 'admin';
+  if (!isAdmin) {
+    const callerDoc = await db.collection('users').doc(callerUid).get();
+    if (callerDoc.exists) {
+      const udata = callerDoc.data() || {};
+      isAdmin = udata.role === 'admin' || udata.is_superadmin === true || udata.roles?.admin === true;
+    }
+  }
+
+  let actualVendorId = '';
+
   const result = await db.runTransaction(async (t) => {
     const batchDoc = await t.get(batchRef);
     if (!batchDoc.exists) {
@@ -441,9 +451,10 @@ export const markBatchReady = onCall(async (request) => {
     }
 
     const batch = batchDoc.data()!;
+    actualVendorId = batch.vendor_id;
 
-    // Auth check: ensure the calling vendor owns this batch
-    if (batch.vendor_id !== vendorId) {
+    // Auth check: ensure the calling vendor owns this batch (or is admin/superadmin)
+    if (!isAdmin && batch.vendor_id !== callerUid) {
       throw new HttpsError('permission-denied', 'This batch does not belong to you');
     }
     
@@ -493,7 +504,7 @@ export const markBatchReady = onCall(async (request) => {
         order_id: orderDoc.id,
         from_status: order.status,
         to_status: 'vendor_ready',
-        actor: vendorId,
+        actor: callerUid,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
 
@@ -516,7 +527,7 @@ export const markBatchReady = onCall(async (request) => {
   // MUST BE AWAITED so the Cloud Function doesn't suspend before assignment finishes
   try {
     const m = await import('./matchingTriggers');
-    await m.coreAssignRiderTrips(vendorId);
+    await m.coreAssignRiderTrips(actualVendorId || callerUid);
   } catch (e) {
     console.error('[markBatchReady] Auto-assign failed:', e);
   }
@@ -588,8 +599,6 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   const batch = db.batch();
   let ordersCreated = 0;
 
-  for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
-    for (const mealType of mealTypes) {
   for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
     if (ordersCreated >= maxMealsTotal) break;
 
