@@ -140,13 +140,13 @@ export async function createSubscription(data: {
     cancelled_by: null,
   };
 
+  if (data.vendor_name) payload.vendor_name = data.vendor_name;
+
   // Calculate and store next billing date
   const daysToAdd = data.frequency === 'monthly' ? 30 : data.frequency === 'weekly' ? 7 : 1;
   const nextBilling = new Date();
   nextBilling.setDate(nextBilling.getDate() + daysToAdd);
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
-
-  if (data.vendor_name) payload.vendor_name = data.vendor_name;
 
   if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;
