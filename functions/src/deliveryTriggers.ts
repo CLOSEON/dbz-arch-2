@@ -543,7 +543,7 @@ export const markBatchReady = onCall(async (request) => {
 
 export const verifyDeliveryOTP = onCall(async (request) => {
   const { data, auth } = request;
-  
+
   if (!auth) {
     throw new HttpsError('unauthenticated', 'Must be authenticated');
   }
@@ -553,50 +553,63 @@ export const verifyDeliveryOTP = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Missing orderId or otp');
   }
 
-  const db = admin.firestore();
-  const orderRef = db.collection('orders').doc(orderId);
+  // Use module-level db (admin already initialized at top of file)
+  const orderRef = admin.firestore().collection('orders').doc(orderId);
+  const orderDoc = await orderRef.get();
 
-  return await db.runTransaction(async (transaction) => {
-    const orderDoc = await transaction.get(orderRef);
-    
-    if (!orderDoc.exists) {
-      throw new HttpsError('not-found', 'Order not found');
-    }
+  if (!orderDoc.exists) {
+    throw new HttpsError('not-found', 'Order not found');
+  }
 
-    const orderData = orderDoc.data()!;
-    
-    // Auth check: must be the assigned rider or admin
-    if (orderData.rider_id !== auth.uid && orderData.driverId !== auth.uid && auth.token?.role !== 'admin') {
-      throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
-    }
+  const orderData = orderDoc.data()!;
 
-    if (orderData.status === 'delivered') {
-      return { success: false, message: 'Order is already delivered' };
-    }
+  // Broad auth check — cover all rider ID field names used across the platform
+  const isAssignedRider =
+    orderData.rider_id === auth.uid ||
+    orderData.driverId === auth.uid ||
+    orderData.agentId === auth.uid ||
+    orderData.agent_id === auth.uid;
+  const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true;
 
-    if (String(orderData.otp) !== String(otp)) {
-      return { success: false, message: 'Invalid OTP' };
-    }
+  if (!isAssignedRider && !isAdmin) {
+    throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
+  }
 
-    // Update order status to 'delivered'
-    transaction.update(orderRef, {
-      status: 'delivered',
-      delivered_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp()
-    });
+  if (orderData.status === 'delivered') {
+    return { success: false, message: 'Order is already delivered' };
+  }
 
-    const logRef = db.collection('order_status_logs').doc();
-    transaction.set(logRef, {
-      id: logRef.id,
-      order_id: orderId,
-      from_status: orderData.status,
-      to_status: 'delivered',
-      actor: auth.uid,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
-    });
+  // Check both possible OTP field names
+  const storedOtp = orderData.otp ?? orderData.delivery_otp;
+  if (storedOtp === undefined || storedOtp === null) {
+    throw new HttpsError('failed-precondition', 'No OTP is set for this order. Contact support.');
+  }
+  if (String(storedOtp) !== String(otp)) {
+    return { success: false, message: 'Invalid OTP. Please ask the customer for the PIN shown on their screen.' };
+  }
 
-    return { success: true, message: 'OTP verified successfully. Order delivered.' };
+  // Atomic batch write — update order + write log in one call
+  const batch = admin.firestore().batch();
+
+  batch.update(orderRef, {
+    status: 'delivered',
+    delivered_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
   });
+
+  const logRef = admin.firestore().collection('order_status_logs').doc();
+  batch.set(logRef, {
+    id: logRef.id,
+    order_id: orderId,
+    from_status: orderData.status,
+    to_status: 'delivered',
+    actor: auth.uid,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return { success: true, message: 'OTP verified successfully. Order delivered.' };
 });
 
 /**
