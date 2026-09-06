@@ -560,11 +560,11 @@ export default function VendorDashboard() {
                             </div>
 
                             {(() => {
-                              const tripOTP = pickups.find(p => 
-                                p.batch_ids?.includes(batch.id) || 
+                              const tripOTP = pickups.find(p =>
+                                p.batch_ids?.includes(batch.id) ||
                                 p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
                               )?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id))?.pickupOTP;
-                              const displayOTP = batch.pickup_otp || tripOTP || '6721';
+                              const displayOTP = batch.pickup_otp || tripOTP || '----';
 
                               return (
                                 <div className="mt-2 bg-white py-3 px-6 rounded-2xl border border-emerald-200 inline-block shadow-sm">
@@ -573,6 +573,16 @@ export default function VendorDashboard() {
                                 </div>
                               );
                             })()}
+                          </div>
+                        )}
+
+                        {(batch.status === 'picked_up' || batch.status === 'completed') && (
+                          <div className="p-4 bg-blue-50/80 rounded-2xl border border-blue-200 text-center space-y-1">
+                            <div className="flex items-center justify-center gap-1.5 text-blue-700 font-bold text-xs">
+                              <CheckCircle className="w-4 h-4 text-blue-600" />
+                              Rider Has Picked Up ✓
+                            </div>
+                            <p className="text-[10px] text-blue-600">Tiffins are on their way to the customer.</p>
                           </div>
                         )}
                       </div>

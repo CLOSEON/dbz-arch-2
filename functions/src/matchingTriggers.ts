@@ -401,21 +401,24 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
 
     // Mark stop completed
     pickupStops[stopIndex].status = 'completed';
-    
+
     const allDone = pickupStops.every((s: any) => s.status === 'completed');
-    t.update(tripRef, { 
-      pickupStops, 
+    t.update(tripRef, {
+      pickupStops,
       status: allDone ? 'pickup_complete' : 'picking_up',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    const batchIds = new Set<string>();
+    // Always update batch status directly from trip's batch_ids — this is the source of truth.
+    // Do NOT rely solely on finding orders, since the order query may miss docs in edge cases.
+    const tripBatchIds: string[] = tripData?.batch_ids || [];
+    const batchIds = new Set<string>(tripBatchIds);
 
     ordersSnap.forEach((doc) => {
       const order = doc.data();
       t.update(doc.ref, { status: 'picked_up', updated_at: admin.firestore.FieldValue.serverTimestamp() });
       if (order.batch_id) batchIds.add(order.batch_id);
-      
+
       const logRef = db.collection('order_status_logs').doc();
       t.set(logRef, {
         id: logRef.id,
@@ -427,10 +430,12 @@ export const verifyPickupOTP = functions.https.onCall(async (data, context) => {
       });
     });
 
+    // Update ALL associated batches to 'picked_up' so vendor panel reflects the correct state
     batchIds.forEach(batchId => {
       const batchRef = db.collection('batches').doc(batchId);
       t.update(batchRef, {
-        status: 'completed',
+        status: 'picked_up',
+        picked_up_at: admin.firestore.FieldValue.serverTimestamp(),
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
     });
