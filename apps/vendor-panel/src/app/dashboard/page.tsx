@@ -200,10 +200,13 @@ export default function VendorDashboard() {
             addProjected(singleMeal, singleMeal === "dinner" ? "8pm" : (sub.deliveryPreference || "11am"));
           }
         } else {
-          if (sub.meal_type === "both") {
-            addProjected("lunch", sub.deliveryPreference || "11am");
+          const effSlot = sub.delivery_slot || sub.deliverySlot || null;
+          if (effSlot === "dinner" || (!effSlot && sub.meal_type === "dinner")) {
             addProjected("dinner", "8pm");
-          } else if (sub.delivery_slot === "dinner" || sub.meal_type === "dinner") {
+          } else if (effSlot === "lunch" || (!effSlot && sub.meal_type === "lunch")) {
+            addProjected("lunch", sub.deliveryPreference || "11am");
+          } else if (!effSlot && sub.meal_type === "both") {
+            addProjected("lunch", sub.deliveryPreference || "11am");
             addProjected("dinner", "8pm");
           } else {
             addProjected("lunch", sub.deliveryPreference || "11am");
@@ -440,8 +443,29 @@ export default function VendorDashboard() {
                 </div>
               </div>
               <div>
-                <div className="text-3xl font-black text-slate-900">{totalTodayTiffins > 0 ? totalTodayTiffins : subscriberCount * 2} <span className="text-base font-bold text-slate-400">Tiffins</span></div>
-                <div className="text-[11px] font-semibold text-slate-500 mt-1">Lunch & Dinner batches</div>
+                <div className="text-3xl font-black text-slate-900">
+                  {totalTodayTiffins > 0
+                    ? totalTodayTiffins
+                    : subscriptions.reduce((acc: number, sub: any) => {
+                        const effSlot = sub.delivery_slot || sub.deliverySlot || null;
+                        const hasBoth = !effSlot && sub.meal_type === 'both';
+                        return acc + (hasBoth ? 2 : 1);
+                      }, 0)
+                  } <span className="text-base font-bold text-slate-400">Tiffins</span>
+                </div>
+                <div className="text-[11px] font-semibold text-slate-500 mt-1">
+                  {(() => {
+                    const hasLunch = subscriptions.some((s: any) => {
+                      const effSlot = s.delivery_slot || s.deliverySlot || null;
+                      return effSlot === 'lunch' || (!effSlot && (s.meal_type === 'lunch' || s.meal_type === 'both' || !s.meal_type));
+                    });
+                    const hasDinner = subscriptions.some((s: any) => {
+                      const effSlot = s.delivery_slot || s.deliverySlot || null;
+                      return effSlot === 'dinner' || (!effSlot && (s.meal_type === 'dinner' || s.meal_type === 'both'));
+                    });
+                    return hasLunch && hasDinner ? 'Lunch & Dinner batches' : hasLunch ? 'Lunch batch only' : 'Dinner batch only';
+                  })()}
+                </div>
               </div>
             </div>
 
@@ -1059,7 +1083,14 @@ export default function VendorDashboard() {
             ) : (
               subscriptions.map((sub: any) => {
                 const isNonVeg = sub.dietary === 'non_veg' || sub.category === 'non_veg' || (sub.meal_type as any) === 'non_veg';
-                const slotText = sub.meal_type === 'both' ? 'Lunch & Dinner' : (sub.delivery_slot === 'dinner' || sub.meal_type === 'dinner' ? 'Dinner (8:00 PM)' : (sub.deliveryPreference || 'Lunch (1:00 PM)'));
+                const effSlot = sub.delivery_slot || sub.deliverySlot || null;
+                const slotText = effSlot === 'dinner' || (!effSlot && sub.meal_type === 'dinner')
+                  ? 'Dinner (8:00 PM)'
+                  : effSlot === 'lunch' || (!effSlot && sub.meal_type === 'lunch')
+                  ? 'Lunch (1:00 PM)'
+                  : (!effSlot && sub.meal_type === 'both')
+                  ? 'Lunch & Dinner'
+                  : (sub.deliveryPreference || 'Dinner (8:00 PM)');
                 return (
                   <div key={sub.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
                     <div className="space-y-1">
