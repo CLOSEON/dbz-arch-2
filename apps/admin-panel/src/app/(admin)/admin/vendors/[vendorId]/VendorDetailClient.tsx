@@ -1413,43 +1413,74 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => (
-                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                        order.status === 'delivered' || order.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : order.status === 'dispatched'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
-                    </div>
-                  </div>
+              {history.map((order) => {
+                // Safely extract address — can be string or Firestore map object
+                const rawAddr = (order as any).delivery_address ?? (order as any).address ?? '';
+                const addrStr = typeof rawAddr === 'string'
+                  ? rawAddr
+                  : rawAddr?.full_address ?? rawAddr?.line1 ?? rawAddr?.street ?? 'Address on file';
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="cooking">Cooking</option>
-                      <option value="ready">Ready for Pickup</option>
-                      <option value="dispatched">Dispatched</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                // Safely get amount
+                const amount = (order as any).total_amount ?? (order as any).amount ?? (order as any).total ?? 0;
+
+                // Safely get date
+                const createdAt = (order as any).created_at;
+                const dateStr = createdAt?.toDate
+                  ? createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                  : createdAt
+                  ? new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                  : '—';
+
+                // Safely get order id
+                const orderId = order.id ?? '';
+
+                return (
+                  <div key={orderId || Math.random()} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900 font-mono">
+                          #{orderId.slice(0, 8) || '—'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">{dateStr}</span>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+                          order.status === 'delivered' || order.status === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : order.status === 'dispatched' || order.status === 'picked_up' || order.status === 'out_for_delivery'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : order.status === 'cancelled' || order.status === 'failed'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {order.status ?? 'unknown'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {addrStr} • ₹{Number(amount).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
+                      <select
+                        value={order.status ?? 'pending'}
+                        onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value as any)}
+                        disabled={!orderId}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 disabled:opacity-40"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="preparing">Preparing</option>
+                        <option value="vendor_ready">Ready for Pickup</option>
+                        <option value="rider_assigned">Rider Assigned</option>
+                        <option value="picked_up">Picked Up</option>
+                        <option value="out_for_delivery">Out for Delivery</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="failed">Failed</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
