@@ -727,8 +727,10 @@ export default function VendorDashboard() {
         subscriptions.forEach((sub: any) => {
           const isNonVeg = sub.dietary === 'non_veg' || sub.category === 'non_veg' || (sub.meal_type as any) === 'non_veg';
           const isVeg = !isNonVeg;
-          const servesLunch = sub.meal_type === 'lunch' || sub.meal_type === 'both' || sub.delivery_slot === 'lunch' || (!sub.meal_type && !sub.delivery_slot);
-          const servesDinner = sub.meal_type === 'dinner' || sub.meal_type === 'both' || sub.delivery_slot === 'dinner';
+          // delivery_slot is authoritative — meal_type='both' only applies when no delivery_slot is set
+          const effectiveSlot = sub.delivery_slot || sub.deliverySlot || null;
+          const servesLunch = effectiveSlot === 'lunch' || (!effectiveSlot && (sub.meal_type === 'lunch' || sub.meal_type === 'both' || !sub.meal_type));
+          const servesDinner = effectiveSlot === 'dinner' || (!effectiveSlot && (sub.meal_type === 'dinner' || sub.meal_type === 'both'));
 
           if (servesLunch && tagFilterSlot === 'lunch') {
             boxItems.push({
@@ -1141,9 +1143,10 @@ export default function VendorDashboard() {
       {/* ── ALL BOXES PACKED CONFIRMATION MODAL ─────────────────────────── */}
       {showAllPackedModal && (() => {
         const activeSlotSubs = subscriptions.filter((s: any) => {
+          const effSlot = s.delivery_slot || s.deliverySlot || null;
           return tagFilterSlot === 'lunch'
-            ? (s.meal_type === 'lunch' || s.meal_type === 'both' || s.delivery_slot === 'lunch' || (!s.meal_type && !s.delivery_slot))
-            : (s.meal_type === 'dinner' || s.meal_type === 'both' || s.delivery_slot === 'dinner');
+            ? (effSlot === 'lunch' || (!effSlot && (s.meal_type === 'lunch' || s.meal_type === 'both' || !s.meal_type)))
+            : (effSlot === 'dinner' || (!effSlot && (s.meal_type === 'dinner' || s.meal_type === 'both')));
         });
         const activeVegCount = activeSlotSubs.filter((s: any) => s.dietary !== 'non_veg' && s.category !== 'non_veg' && s.meal_type !== 'non_veg').length;
         const activeNonVegCount = activeSlotSubs.length - activeVegCount;
