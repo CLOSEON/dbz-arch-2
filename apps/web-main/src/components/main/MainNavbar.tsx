@@ -5,8 +5,11 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { Logo } from '@/components/shared/Logo';
+import { useAuthStore } from '@/store/authStore';
 
 export function MainNavbar() {
+  const user = useAuthStore((s) => s.user);
+  const isHydrated = useAuthStore((s) => s.isHydrated);
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -57,18 +60,33 @@ export function MainNavbar() {
 
         {/* Action Buttons */}
         <div className="hidden lg:flex items-center gap-4">
-          <Link
-            href="/login"
-            className={`text-sm font-bold hover:text-brand transition-colors ${isScrolled ? 'text-slate-700' : 'text-white'}`}
-          >
-            Login
-          </Link>
-          <Link
-            href="/login"
-            className={`px-5 py-2.5 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95 ${isScrolled ? 'bg-brand text-white shadow-brand/25 hover:bg-brand-600 hover:scale-105' : 'bg-white text-brand shadow-black/10 hover:bg-slate-50 hover:scale-105'}`}
-          >
-            Sign Up
-          </Link>
+          {isHydrated && user ? (
+            <Link
+              href={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95 ${
+                isScrolled
+                  ? 'bg-brand text-white shadow-brand/25 hover:bg-brand-600 hover:scale-105'
+                  : 'bg-white text-brand shadow-black/10 hover:bg-slate-50 hover:scale-105'
+              }`}
+            >
+              Dashboard →
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className={`text-sm font-bold hover:text-brand transition-colors ${isScrolled ? 'text-slate-700' : 'text-white'}`}
+              >
+                Login
+              </Link>
+              <Link
+                href="/login"
+                className={`px-5 py-2.5 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95 ${isScrolled ? 'bg-brand text-white shadow-brand/25 hover:bg-brand-600 hover:scale-105' : 'bg-white text-brand shadow-black/10 hover:bg-slate-50 hover:scale-105'}`}
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Toggle */}
@@ -96,18 +114,32 @@ export function MainNavbar() {
             <Link href="#faq" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-3 rounded-xl text-base font-bold text-slate-700 hover:bg-brand/5 hover:text-brand">FAQ</Link>
             
             <div className="border-t border-slate-100 mt-4 pt-4 flex flex-col gap-3 px-3">
-              <Link
-                href="/login"
-                className="block w-full text-center text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-50"
-              >
-                Login
-              </Link>
-              <Link
-                href="/login"
-                className="block w-full text-center bg-brand text-white font-bold py-3 rounded-xl shadow-md"
-              >
-                Sign Up
-              </Link>
+              {isHydrated && user ? (
+                <Link
+                  href={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block w-full text-center bg-brand text-white font-bold py-3 rounded-xl shadow-md"
+                >
+                  Dashboard →
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block w-full text-center text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-50"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block w-full text-center bg-brand text-white font-bold py-3 rounded-xl shadow-md"
+                  >
+                    Sign Up
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </motion.div>
