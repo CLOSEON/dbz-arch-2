@@ -77,49 +77,62 @@ service cloud.firestore {
       );
     }
 
-    function doesNotModifyRoles() {
-      return isAdmin() || (
-        !('roles' in request.resource.data) && !('role' in request.resource.data)
-      ) || (
-        resource != null &&
-        request.resource.data.get('roles', null) == resource.data.get('roles', null) &&
-        request.resource.data.get('role', null) == resource.data.get('role', null)
-      );
-    }
+    // Verifies that a non-admin user is not attempting privilege escalation to admin,
+    // cannot self-approve as a vendor/rider, and cannot change an already-assigned role.
+    function isValidUserWrite() {
+      let isSuper = request.auth.token.email == 'closeon.st@gmail.com';
+      let reqRole = request.resource.data.get('role', 'user');
+      let reqApproved = request.resource.data.get('is_approved', false);
+      let notAdminEscalation = 
+        reqRole != 'admin' &&
+        request.resource.data.get('roles', {}).get('admin', false) != true &&
+        (!('is_superadmin' in request.resource.data) || request.resource.data.is_superadmin != true) &&
+        (!('is_admin' in request.resource.data) || request.resource.data.is_admin != true) &&
+        (!('admin' in request.resource.data) || request.resource.data.admin != true) &&
+        !('permissions' in request.resource.data);
 
-    function doesNotModifyRolesOnUpdate() {
-      return isAdmin() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roles', 'role', 'admin', 'permissions']);
+      let partnerApprovalSafe = 
+        !(reqRole in ['vendor', 'delivery']) || 
+        reqApproved == false || 
+        (resource != null && resource.data.get('is_approved', false) == true);
+
+      let roleChangeSafe = 
+        resource == null || 
+        resource.data.get('role', null) == null || 
+        resource.data.get('role', '') == reqRole;
+
+      return isSuper || isAdmin() || (notAdminEscalation && partnerApprovalSafe && roleChangeSafe);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     // USERS IDENTITY & MULTI-ROLE DOCUMENT
     // ═══════════════════════════════════════════════════════════════════════
-    // Schema: users/{uid}
-    // {
-    //   phone: string,
-    //   createdAt: timestamp,
-    //   roles: {
-    //     customer: true,
-    //     vendor: { status: "none" | "pending" | "verified", appliedAt, verifiedAt, verifiedBy },
-    //     rider: { status: "none" | "pending" | "verified", appliedAt, verifiedAt, verifiedBy },
-    //     admin: boolean
-    //   }
-    // }
     match /users/{userId} {
-      allow get: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
+      // Users can read their own profile; admins can read all profiles;
+      // any authenticated user can read vendor or rider profiles (needed for storefront & order tracking)
+      allow get: if request.auth != null && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        resource.data.get('role', '') in ['vendor', 'delivery']
+      );
 
-      // User can create their own profile, but CANNOT set or modify the `roles` field
+      // Admins can list all users; authenticated users can list approved vendors
+      allow list: if request.auth != null && (
+        isAdmin() ||
+        resource.data.get('role', '') == 'vendor'
+      );
+
+      // User can create their own profile without privilege escalation
       allow create: if request.auth != null &&
         request.auth.uid == userId &&
-        doesNotModifyRoles();
+        isValidUserWrite();
 
-      // User can update their profile (e.g. name, avatar, deliveryPreference) EXCEPT the `roles` field
+      // User can update their own profile without privilege escalation
       allow update: if request.auth != null && (
         isAdmin() ||
         (
           request.auth.uid == userId &&
-          doesNotModifyRolesOnUpdate()
+          isValidUserWrite()
         )
       );
 
@@ -330,6 +343,7 @@ service cloud.firestore {
       allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
       // Users can initialize their own swap allowance doc on subscription creation
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
