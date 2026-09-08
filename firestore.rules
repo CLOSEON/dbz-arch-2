@@ -18,6 +18,8 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && (
         request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'superadmin' ||
         request.auth.token.email == 'closeon.st@gmail.com' ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
@@ -30,14 +32,14 @@ service cloud.firestore {
 
     // Verified Vendor Check:
     // User must be authenticated and have roles.vendor.status == "verified" in their users/{uid} document.
-    // Includes fallback to legacy role == "vendor" for smooth migration.
+    // Includes fallback to legacy role == "vendor" or "kitchen" for smooth migration.
     function isVerifiedVendor() {
       return request.auth != null && (
         isAdmin() ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', {}).get('vendor', {}).get('status', '') == "verified" ||
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == "vendor"
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['vendor', 'kitchen']
           )
         )
       );
@@ -45,14 +47,14 @@ service cloud.firestore {
 
     // Verified Rider Check:
     // User must be authenticated and have roles.rider.status == "verified" in their users/{uid} document.
-    // Includes fallback to legacy role == "delivery" for smooth migration.
+    // Includes fallback to role in ['delivery', 'delivery_agent', 'rider'] for smooth migration.
     function isVerifiedRider() {
       return request.auth != null && (
         isAdmin() ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', {}).get('rider', {}).get('status', '') == "verified" ||
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == "delivery"
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['delivery', 'delivery_agent', 'rider']
           )
         )
       );
@@ -67,13 +69,18 @@ service cloud.firestore {
     // Check if caller is a participant in an order/delivery
     function isDeliveryOrderParticipant(order) {
       return request.auth != null && (
-        order.get('customerId', '') == request.auth.uid ||
-        order.get('user_id', '') == request.auth.uid ||
-        order.get('vendorId', '') == request.auth.uid ||
-        order.get('vendor_id', '') == request.auth.uid ||
-        order.get('driverId', '') == request.auth.uid ||
-        order.get('agentId', '') == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        (order != null && (
+          order.get('customerId', '') == request.auth.uid ||
+          order.get('user_id', '') == request.auth.uid ||
+          order.get('vendorId', '') == request.auth.uid ||
+          order.get('vendor_id', '') == request.auth.uid ||
+          order.get('driverId', '') == request.auth.uid ||
+          order.get('agentId', '') == request.auth.uid ||
+          order.get('rider_id', '') == request.auth.uid ||
+          order.get('riderId', '') == request.auth.uid ||
+          order.get('assigned_to', '') == request.auth.uid
+        ))
       );
     }
 
@@ -92,13 +99,14 @@ service cloud.firestore {
         !('permissions' in request.resource.data);
 
       let partnerApprovalSafe = 
-        !(reqRole in ['vendor', 'delivery']) || 
+        !(reqRole in ['vendor', 'delivery', 'kitchen', 'delivery_agent', 'rider']) || 
         reqApproved == false || 
         (resource != null && resource.data.get('is_approved', false) == true);
 
       let roleChangeSafe = 
         resource == null || 
         resource.data.get('role', null) == null || 
+        resource.data.get('role', '') == '' ||
         resource.data.get('role', '') == reqRole;
 
       return isSuper || isAdmin() || (notAdminEscalation && partnerApprovalSafe && roleChangeSafe);
@@ -110,16 +118,19 @@ service cloud.firestore {
     match /users/{userId} {
       // Users can read their own profile; admins can read all profiles;
       // any authenticated user can read vendor or rider profiles (needed for storefront & order tracking)
-      allow get: if request.auth != null && (
-        request.auth.uid == userId ||
-        isAdmin() ||
-        resource.data.get('role', '') in ['vendor', 'delivery']
+      allow get: if (
+        request.auth != null && (
+          request.auth.uid == userId ||
+          isAdmin() ||
+          resource.data.get('role', '') in ['vendor', 'delivery', 'kitchen', 'delivery_agent', 'rider']
+        )
+      ) || (
+        resource.data.get('role', '') in ['vendor', 'kitchen']
       );
 
-      // Admins can list all users; authenticated users can list approved vendors
-      allow list: if request.auth != null && (
-        isAdmin() ||
-        resource.data.get('role', '') == 'vendor'
+      // Admins can list all users; authenticated users can list approved vendors (for storefront)
+      allow list: if isAdmin() || (
+        resource.data.get('role', '') in ['vendor', 'kitchen']
       );
 
       // User can create their own profile without privilege escalation
@@ -137,28 +148,49 @@ service cloud.firestore {
       );
 
       allow delete: if isAdmin();
+
+      // User saved delivery addresses
+      match /addresses/{addressId} {
+        allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      }
+
+      // User in-app notifications
+      match /notifications/{notifId} {
+        allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     // VENDOR-ONLY COLLECTIONS
     // ═══════════════════════════════════════════════════════════════════════
 
-    // Daily Menus — readable by authenticated users, writable only by verified vendors or admins
+    // Daily Menus — readable by all (for storefront & menu discovery), writable only by verified vendors or admins
     match /daily_menus/{menuId} {
-      allow read: if request.auth != null;
-      allow write: if isVerifiedVendor() && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
+      allow read: if true;
+      allow write: if isVerifiedVendor() && (
+        request.resource.data.get('vendor_id', '') == request.auth.uid ||
+        request.resource.data.get('vendorId', '') == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Discount Codes — readable by authenticated users, writable only by verified vendors or admins
     match /discount_codes/{codeId} {
       allow read: if request.auth != null;
-      allow write: if isVerifiedVendor() && (request.resource.data.vendor_id == request.auth.uid || isAdmin());
+      allow write: if isVerifiedVendor() && (
+        request.resource.data.get('vendor_id', '') == request.auth.uid ||
+        request.resource.data.get('vendorId', '') == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Batches — order grouping managed by verified vendors or admins
     match /batches/{batchId} {
       allow list, get: if request.auth != null && (isAdmin() || isVerifiedRider() || isVerifiedVendor());
-      allow create: if isVerifiedVendor() && request.resource.data.vendor_id == request.auth.uid;
+      allow create: if (isVerifiedVendor() && (
+        request.resource.data.get('vendor_id', '') == request.auth.uid ||
+        request.resource.data.get('vendorId', '') == request.auth.uid
+      )) || isAdmin();
       allow update: if isVerifiedVendor() || isVerifiedRider() || isAdmin();
       allow delete: if isAdmin();
     }
@@ -180,7 +212,10 @@ service cloud.firestore {
       allow get: if request.auth != null;
       allow list: if isVerifiedRider() || isVerifiedVendor() || isAdmin();
       allow create: if isVerifiedRider() || isAdmin();
-      allow update: if isVerifiedRider() || (request.auth.uid in resource.data.vendorIds) || isAdmin();
+      allow update: if isVerifiedRider() ||
+        (request.auth.uid in resource.data.get('vendorIds', [])) ||
+        (request.auth.uid in resource.data.get('vendor_ids', [])) ||
+        isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -243,15 +278,16 @@ service cloud.firestore {
     // ═══════════════════════════════════════════════════════════════════════
 
     match /orders/{orderId} {
-      allow list: if request.auth != null && (
+      allow list, get: if request.auth != null && (
         isAdmin() || isVerifiedRider() || isVerifiedVendor() ||
         resource.data.get('user_id', '') == request.auth.uid ||
-        resource.data.get('customerId', '') == request.auth.uid
-      );
-      allow get: if request.auth != null && (
-        isAdmin() || isVerifiedRider() || isVerifiedVendor() ||
-        resource.data.get('user_id', '') == request.auth.uid ||
-        resource.data.get('customerId', '') == request.auth.uid
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
+        resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('rider_id', '') == request.auth.uid ||
+        resource.data.get('riderId', '') == request.auth.uid ||
+        resource.data.get('driverId', '') == request.auth.uid ||
+        resource.data.get('agentId', '') == request.auth.uid
       );
       allow create: if request.auth != null && (
         request.resource.data.get('user_id', '') == request.auth.uid ||
@@ -261,23 +297,35 @@ service cloud.firestore {
       allow update: if request.auth != null && (
         isAdmin() ||
         (
-          isVerifiedRider() && (resource.data.get('driverId', '') == request.auth.uid || resource.data.get('agentId', '') == request.auth.uid) &&
+          isVerifiedRider() && (
+            resource.data.get('driverId', '') == request.auth.uid ||
+            resource.data.get('agentId', '') == request.auth.uid ||
+            resource.data.get('rider_id', '') == request.auth.uid ||
+            resource.data.get('riderId', '') == request.auth.uid ||
+            resource.data.get('assigned_to', '') == request.auth.uid
+          ) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'vendorId', 'vendor_id'])
         ) ||
         (
           isVerifiedVendor() && (resource.data.get('vendor_id', '') == request.auth.uid || resource.data.get('vendorId', '') == request.auth.uid) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'driverId', 'agentId'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'driverId', 'agentId', 'rider_id', 'riderId'])
         ) ||
         (
           (resource.data.get('user_id', '') == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryPreference', 'deliveryAddress', 'delivery_address', 'instructions'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryPreference', 'deliveryAddress', 'delivery_address', 'instructions', 'status', 'updatedAt', 'updated_at']) &&
+          (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
+            request.resource.data.status in ['skipped', 'cancelled', 'pending', 'vendor_ready']
+          )
         )
       );
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
-        allow read: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/orders/$(orderId)).data);
-        allow create: if isDeliveryOrderParticipant(get(/databases/$(database)/documents/orders/$(orderId)).data);
+        allow read, create: if isAdmin() || (
+          exists(/databases/$(database)/documents/orders/$(orderId)) &&
+          isDeliveryOrderParticipant(get(/databases/$(database)/documents/orders/$(orderId)).data)
+        );
         allow update, delete: if isAdmin();
       }
     }
@@ -287,14 +335,28 @@ service cloud.firestore {
       allow get: if isAdmin() ||
                   (isCustomer() && (resource.data.get('customerId', '') == request.auth.uid || resource.data.get('user_id', '') == request.auth.uid)) ||
                   (isVerifiedVendor() && (resource.data.get('vendorId', '') == request.auth.uid || resource.data.get('vendor_id', '') == request.auth.uid)) ||
-                  (isVerifiedRider() && (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid));
+                  (isVerifiedRider() && (
+                    resource.data.get('agentId', '') == request.auth.uid ||
+                    resource.data.get('driverId', '') == request.auth.uid ||
+                    resource.data.get('rider_id', '') == request.auth.uid ||
+                    resource.data.get('riderId', '') == request.auth.uid
+                  ));
       allow list: if request.auth != null && (
         isAdmin() || isVerifiedRider() || isVerifiedVendor() ||
         resource.data.get('customerId', '') == request.auth.uid ||
-        resource.data.get('user_id', '') == request.auth.uid
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('vendorId', '') == request.auth.uid ||
+        resource.data.get('vendor_id', '') == request.auth.uid ||
+        resource.data.get('rider_id', '') == request.auth.uid ||
+        resource.data.get('riderId', '') == request.auth.uid
       );
       allow update: if isAdmin() || (
-        isVerifiedRider() && (resource.data.get('agentId', '') == request.auth.uid || resource.data.get('driverId', '') == request.auth.uid)
+        isVerifiedRider() && (
+          resource.data.get('agentId', '') == request.auth.uid ||
+          resource.data.get('driverId', '') == request.auth.uid ||
+          resource.data.get('rider_id', '') == request.auth.uid ||
+          resource.data.get('riderId', '') == request.auth.uid
+        )
       );
     }
 
@@ -319,10 +381,19 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
-      allow update: if request.auth != null && resource.data.user_id == request.auth.uid;
-      allow delete: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow read: if true;
+      allow create: if request.auth != null && (
+        request.resource.data.user_id == request.auth.uid ||
+        request.resource.data.get('customerId', '') == request.auth.uid
+      );
+      allow update: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid
+      );
+      allow delete: if request.auth != null && (
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     match /support_tickets/{ticketId} {
@@ -333,19 +404,25 @@ service cloud.firestore {
     }
 
     match /order_status_logs/{logId} {
-      allow list, get: if request.auth != null && (isAdmin() || isVerifiedRider() || isVerifiedVendor());
-      allow create: if request.auth != null && (isAdmin() || isVerifiedRider() || isVerifiedVendor());
+      allow list, get: if request.auth != null;
+      allow create: if request.auth != null && (
+        isAdmin() || isVerifiedRider() || isVerifiedVendor() ||
+        request.resource.data.get('actor', '') == request.auth.uid
+      );
       allow update, delete: if isAdmin();
     }
 
+    match /skip_requests/{reqId} {
+      allow read: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if request.auth != null && (request.resource.data.user_id == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
+    }
 
     match /subscription_swap_allowances/{docId} {
       allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
       // Users can initialize their own swap allowance doc on subscription creation
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
     }
 
     match /swap_requests/{requestId} {
@@ -368,7 +445,12 @@ service cloud.firestore {
 
     match /user_credits/{creditId} {
       allow get, list: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+      allow create: if request.auth != null && (request.resource.data.user_id == request.auth.uid || isAdmin());
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (resource.data.user_id == request.auth.uid && request.resource.data.user_id == request.auth.uid)
+      );
+      allow delete: if isAdmin();
     }
 
     match /free_meal_vouchers/{voucherId} {
@@ -383,7 +465,14 @@ service cloud.firestore {
 
     match /payment_subscriptions/{docId} {
       allow read: if request.auth != null && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (
+          resource.data.user_id == request.auth.uid &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'amount', 'plan_id', 'razorpay_subscription_id'])
+        )
+      );
+      allow create, delete: if isAdmin();
     }
 
     match /pricingConfig/{docId} {

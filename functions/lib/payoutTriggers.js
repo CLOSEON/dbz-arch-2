@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onDeliveryCompletedPayout = void 0;
+exports.onOrderCompletedPayout = exports.onDeliveryCompletedPayout = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const admin = __importStar(require("firebase-admin"));
 exports.onDeliveryCompletedPayout = (0, firestore_1.onDocumentUpdated)('deliveries/{orderId}', async (event) => {
@@ -64,6 +64,14 @@ exports.onDeliveryCompletedPayout = (0, firestore_1.onDocumentUpdated)('deliveri
     const PAYOUT_AMOUNT = 40;
     console.log(`[onDeliveryCompletedPayout] Delivery ${orderId} completed by agent ${agentId}. Creating payout of ₹${PAYOUT_AMOUNT}.`);
     try {
+        const existingPayout = await db.collection('agent_payouts')
+            .where('deliveryId', '==', orderId)
+            .limit(1)
+            .get();
+        if (!existingPayout.empty) {
+            console.log(`[onDeliveryCompletedPayout] Payout already exists for delivery ${orderId}. Skipping.`);
+            return;
+        }
         const payoutRef = db.collection('agent_payouts').doc();
         const agentUserRef = db.collection('users').doc(agentId);
         const payoutRecord = {
@@ -83,6 +91,57 @@ exports.onDeliveryCompletedPayout = (0, firestore_1.onDocumentUpdated)('deliveri
     }
     catch (err) {
         console.error(`[onDeliveryCompletedPayout] Failed to create payout for delivery ${orderId}:`, err);
+    }
+});
+exports.onOrderCompletedPayout = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', async (event) => {
+    const change = event.data;
+    if (!change)
+        return;
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    if (!beforeData || !afterData)
+        return;
+    const beforeStatus = beforeData.status;
+    const afterStatus = afterData.status;
+    if (beforeStatus === 'delivered' || afterStatus !== 'delivered') {
+        return;
+    }
+    const orderId = event.params.orderId;
+    const agentId = (afterData.rider_id || afterData.driverId || afterData.agentId || afterData.agent_id);
+    if (!agentId) {
+        console.log(`[onOrderCompletedPayout] Order ${orderId} has no assigned rider/agent ID. Skipping payout.`);
+        return;
+    }
+    const db = admin.firestore();
+    const PAYOUT_AMOUNT = 40;
+    try {
+        const existingPayout = await db.collection('agent_payouts')
+            .where('deliveryId', '==', orderId)
+            .limit(1)
+            .get();
+        if (!existingPayout.empty) {
+            console.log(`[onOrderCompletedPayout] Payout already recorded for order ${orderId}. Skipping.`);
+            return;
+        }
+        const payoutRef = db.collection('agent_payouts').doc();
+        const agentUserRef = db.collection('users').doc(agentId);
+        const payoutRecord = {
+            agentId,
+            deliveryId: orderId,
+            amount: PAYOUT_AMOUNT,
+            date: admin.firestore.Timestamp.now(),
+            status: 'pending',
+        };
+        const batch = db.batch();
+        batch.set(payoutRef, payoutRecord);
+        batch.update(agentUserRef, {
+            daily_earnings: admin.firestore.FieldValue.increment(PAYOUT_AMOUNT),
+        });
+        await batch.commit();
+        console.log(`[onOrderCompletedPayout] Payout ${payoutRef.id} created and daily_earnings incremented for rider ${agentId} on order ${orderId}.`);
+    }
+    catch (err) {
+        console.error(`[onOrderCompletedPayout] Failed to create payout for order ${orderId}:`, err);
     }
 });
 //# sourceMappingURL=payoutTriggers.js.map

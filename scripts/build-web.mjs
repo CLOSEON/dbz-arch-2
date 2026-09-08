@@ -47,7 +47,8 @@ for (const appName of apps) {
   }
 
   try {
-    execSync('npm run build', { cwd: appPath, stdio: 'inherit' });
+    const nextBin = path.join(root, 'node_modules', 'next', 'dist', 'bin', 'next');
+    execSync(`"${process.execPath}" "${nextBin}" build --webpack`, { cwd: appPath, stdio: 'inherit' });
     console.log(`✅ ${appName} build complete! Output generated in apps/${appName}/out\n`);
   } catch (err) {
     console.error(`❌ Build failed for ${appName}:`, err.message);

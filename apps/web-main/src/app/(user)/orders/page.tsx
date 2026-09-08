@@ -43,7 +43,16 @@ const CountdownTimer = React.memo(function CountdownTimer({
   // Memoize cutoff calculation to prevent recalculations on every render
   const cutoffMoment = useMemo(() => {
     let d: Date;
-    if (delivery.createdAt?.toDate) {
+    if (delivery.date) {
+      if (typeof delivery.date === 'string' && delivery.date.length === 10) {
+        const [y, m, day] = delivery.date.split('-').map(Number);
+        d = new Date(y, m - 1, day);
+      } else if (delivery.date.toDate) {
+        d = delivery.date.toDate();
+      } else {
+        d = new Date(delivery.date);
+      }
+    } else if (delivery.createdAt?.toDate) {
       d = delivery.createdAt.toDate();
     } else if (delivery.createdAt?.seconds) {
       d = new Date(delivery.createdAt.seconds * 1000);
@@ -52,12 +61,12 @@ const CountdownTimer = React.memo(function CountdownTimer({
     }
     
     const deliveryMoment = new Date(d);
+    const slot = delivery.scheduledSlot || delivery.delivery_slot || (delivery.meal?.type === 'lunch' ? '11am' : '8pm');
     
-    if (delivery.scheduledSlot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
-    else if (delivery.scheduledSlot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
-    else if (delivery.scheduledSlot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
-    else if (delivery.meal?.type === 'lunch') deliveryMoment.setHours(13, 0, 0, 0);
-    else deliveryMoment.setHours(20, 0, 0, 0);
+    if (slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+    else if (slot === '11am' || slot === 'lunch') deliveryMoment.setHours(13, 0, 0, 0);
+    else if (slot === '8pm' || slot === 'dinner') deliveryMoment.setHours(20, 0, 0, 0);
+    else deliveryMoment.setHours(13, 0, 0, 0);
 
     // Skip/Swap has a 4-hour cutoff. Undo Skip has no 4-hour cutoff (can be done until delivery time).
     return actionType === 'skip_swap' 

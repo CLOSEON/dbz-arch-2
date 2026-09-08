@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import type { UserRole } from '@/types';
 import { Capacitor } from '@capacitor/core';
 import { DabzzoLoadingScreen } from '@/components/ui/loading';
 import { MainNavbar } from '@/components/main/MainNavbar';
@@ -18,6 +19,13 @@ import { TestimonialsFaq } from '@/components/main/TestimonialsFaq';
 import { FinalCta } from '@/components/main/FinalCta';
 import { MainFooter } from '@/components/main/MainFooter';
 
+const ROLE_DASHBOARDS: Record<string, string> = {
+  admin: '/admin/dashboard',
+  vendor: 'https://vendor.panel.dabzzo.in',
+  delivery: 'https://rider.panel.dabzzo.in',
+  user: '/dashboard',
+};
+
 export default function HomePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -30,7 +38,12 @@ export default function HomePage() {
     if (!isNative || !isHydrated) return;
 
     if (user) {
-      router.replace('/dashboard');
+      const target = ROLE_DASHBOARDS[user.role] || '/dashboard';
+      if (user.role === 'vendor' || user.role === 'delivery') {
+        window.location.href = target;
+      } else {
+        router.replace(target);
+      }
     } else {
       router.replace('/login');
     }

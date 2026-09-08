@@ -1,17 +1,18 @@
 import * as admin from 'firebase-admin';
-import * as functionsTest from 'firebase-functions-test';
-import { updateDeliveryStatus } from '../deliveryTriggers';
-import { onDeliveryCompletedPayout } from '../payoutTriggers';
+const functionsTest = require('firebase-functions-test');
+import { updateDeliveryStatus, verifyDeliveryOTP } from '../deliveryTriggers';
+import { onDeliveryCompletedPayout, onOrderCompletedPayout } from '../payoutTriggers';
+import * as events from '../utils/events';
 import * as notifications from '../utils/notifications';
 
-// Initialize firebase-functions-test in offline mode
-const testEnv = functionsTest();
+let testEnv: any;
 
 // 1. Setup Mocks
 jest.mock('firebase-admin', () => {
   const mockTransaction = {
     get: jest.fn(),
     update: jest.fn(),
+    set: jest.fn(),
   };
 
   const mockDoc = {
@@ -20,10 +21,12 @@ jest.mock('firebase-admin', () => {
     set: jest.fn(),
   };
 
-  const mockCollection = {
+  const mockCollection: any = {
     doc: jest.fn(() => mockDoc),
     where: jest.fn(() => mockCollection),
-    get: jest.fn(() => Promise.resolve({ docs: [] })),
+    limit: jest.fn(() => mockCollection),
+    get: jest.fn(() => Promise.resolve({ docs: [], empty: true })),
+    add: jest.fn(() => Promise.resolve({ id: 'mock_doc_id' })),
   };
 
   const mockBatch = {
@@ -32,11 +35,13 @@ jest.mock('firebase-admin', () => {
     commit: jest.fn(() => Promise.resolve()),
   };
 
-  const firestore = jest.fn(() => ({
+  const mockFirestoreInstance = {
     collection: jest.fn(() => mockCollection),
-    runTransaction: jest.fn((cb) => cb(mockTransaction)),
+    runTransaction: jest.fn((cb: any) => cb(mockTransaction)),
     batch: jest.fn(() => mockBatch),
-  })) as any;
+  };
+
+  const firestore: any = jest.fn(() => mockFirestoreInstance);
 
   firestore.FieldValue = {
     arrayUnion: jest.fn((val) => val),
@@ -54,6 +59,10 @@ jest.mock('firebase-admin', () => {
   };
 });
 
+jest.mock('../utils/events', () => ({
+  publishEvent: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../utils/notifications', () => ({
   sendPushNotification: jest.fn(),
   orderPickedUpPayload: jest.fn(),
@@ -67,9 +76,10 @@ describe('Delivery Status Updates and Payouts', () => {
   let wrappedPayoutTrigger: any;
 
   beforeAll(() => {
+    testEnv = functionsTest();
     // Wrap the functions
     wrappedUpdateDeliveryStatus = testEnv.wrap(updateDeliveryStatus);
-    wrappedPayoutTrigger = testEnv.wrap(onDeliveryCompletedPayout);
+    wrappedPayoutTrigger = (onDeliveryCompletedPayout as any).run;
   });
 
   afterEach(() => {
@@ -116,7 +126,7 @@ describe('Delivery Status Updates and Payouts', () => {
 
     expect(result.success).toBe(true);
     expect(result.newStatus).toBe('picked_up');
-    expect(notifications.sendPushNotification).toHaveBeenCalled();
+    expect(events.publishEvent).toHaveBeenCalled();
   });
 
   it('2. Invalid transition pending → delivered throws FAILED_PRECONDITION', async () => {
@@ -186,16 +196,22 @@ describe('Delivery Status Updates and Payouts', () => {
     // This tests the payoutTrigger (onDeliveryCompletedPayout) which runs after the delivery status is updated to delivered.
     
     // Simulate the Firestore change event
-    const beforeSnap = testEnv.firestore.makeDocumentSnapshot(
-      { status: 'picked_up', agentId: 'agent_123' },
-      'deliveries/order_1'
-    );
-    const afterSnap = testEnv.firestore.makeDocumentSnapshot(
-      { status: 'delivered', agentId: 'agent_123' },
-      'deliveries/order_1'
-    );
+    const beforeSnap = {
+      data: () => ({ status: 'picked_up', agentId: 'agent_123' }),
+    };
+    const afterSnap = {
+      data: () => ({ status: 'delivered', agentId: 'agent_123' }),
+    };
 
-    const change = testEnv.makeChange(beforeSnap, afterSnap);
+    const event = {
+      data: {
+        before: beforeSnap,
+        after: afterSnap,
+      },
+      params: {
+        orderId: 'order_1',
+      },
+    };
 
     // Get the batch mock to assert it was used correctly
     const db = admin.firestore();
@@ -207,7 +223,7 @@ describe('Delivery Status Updates and Payouts', () => {
     (db.batch as jest.Mock).mockReturnValueOnce(batchMock);
 
     // Call the wrapped payout trigger
-    await wrappedPayoutTrigger(change);
+    await wrappedPayoutTrigger(event);
 
     // Verify batch was created and committed
     expect(db.batch).toHaveBeenCalled();
@@ -221,6 +237,113 @@ describe('Delivery Status Updates and Payouts', () => {
       agentId: 'agent_123',
       deliveryId: 'order_1',
       amount: 40, // ₹40 fixed payout
+      status: 'pending',
+    });
+  });
+
+  it('6. verifyDeliveryOTP returns success: false and warning when invalid OTP is provided', async () => {
+    const db = admin.firestore();
+    const mockOrderData = {
+      rider_id: 'rider_99',
+      status: 'out_for_delivery',
+      otp: '1234',
+    };
+
+    (db.runTransaction as jest.Mock).mockImplementationOnce(async (cb: any) => {
+      const tx = {
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => mockOrderData,
+        }),
+        update: jest.fn(),
+        set: jest.fn(),
+      };
+      return cb(tx);
+    });
+
+    const result = await (verifyDeliveryOTP as any).run({
+      data: { orderId: 'order_test_otp', otp: '9999' }, // Wrong OTP
+      auth: { uid: 'rider_99', token: { role: 'delivery_agent' } },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Invalid OTP');
+  });
+
+  it('7. verifyDeliveryOTP returns success: true and transitions order when valid OTP is provided', async () => {
+    const db = admin.firestore();
+    const mockOrderData = {
+      rider_id: 'rider_99',
+      status: 'out_for_delivery',
+      otp: '5678',
+    };
+
+    let updatedFields: any = null;
+    (db.runTransaction as jest.Mock).mockImplementationOnce(async (cb: any) => {
+      const tx = {
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => mockOrderData,
+        }),
+        update: jest.fn((ref, data) => {
+          updatedFields = data;
+        }),
+        set: jest.fn(),
+      };
+      return cb(tx);
+    });
+
+    const result = await (verifyDeliveryOTP as any).run({
+      data: { orderId: 'order_test_otp', otp: '5678' }, // Correct OTP
+      auth: { uid: 'rider_99', token: { role: 'delivery_agent' } },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('OTP verified successfully');
+    expect(updatedFields).toMatchObject({
+      status: 'delivered',
+      otpVerified: true,
+    });
+  });
+
+  it('8. onOrderCompletedPayout triggers payout on canonical orders collection', async () => {
+    const beforeSnap = {
+      data: () => ({ status: 'out_for_delivery', rider_id: 'rider_canonical_1' }),
+    };
+    const afterSnap = {
+      data: () => ({ status: 'delivered', rider_id: 'rider_canonical_1' }),
+    };
+
+    const event = {
+      data: {
+        before: beforeSnap,
+        after: afterSnap,
+      },
+      params: {
+        orderId: 'order_canon_123',
+      },
+    };
+
+    const db = admin.firestore();
+    const batchMock = {
+      set: jest.fn(),
+      update: jest.fn(),
+      commit: jest.fn().mockResolvedValue(undefined),
+    };
+    (db.batch as jest.Mock).mockReturnValueOnce(batchMock);
+
+    await (onOrderCompletedPayout as any).run(event);
+
+    expect(db.batch).toHaveBeenCalled();
+    expect(batchMock.set).toHaveBeenCalled();
+    expect(batchMock.update).toHaveBeenCalled();
+    expect(batchMock.commit).toHaveBeenCalled();
+
+    const payoutRecord = batchMock.set.mock.calls[0][1];
+    expect(payoutRecord).toMatchObject({
+      agentId: 'rider_canonical_1',
+      deliveryId: 'order_canon_123',
+      amount: 40,
       status: 'pending',
     });
   });

@@ -490,6 +490,9 @@ export const markBatchReady = onCall(async (request) => {
     // 2. Cascade to every non-skipped order in the batch
     let cascadeCount = 0;
 
+    // Collect customer notification events to dispatch after transaction commits
+    const pendingEvents: { customerId: string; orderId: string; mealType: string }[] = [];
+
     for (const orderDoc of orderDocs) {
       if (!orderDoc.exists) continue;
 
@@ -514,20 +517,40 @@ export const markBatchReady = onCall(async (request) => {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // 4. Notify the customer that meal prep is complete
-      publishEvent(
-        'meal_prep_started',
-        order.user_id,
-        'customer',
-        `meal_prep_${orderDoc.id}`,
-        { mealType: order.meal_type || 'meal' }
-      ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
+      if (order.user_id) {
+        pendingEvents.push({
+          customerId: order.user_id,
+          orderId: orderDoc.id,
+          mealType: order.meal_type || 'meal'
+        });
+      }
 
       cascadeCount++;
     }
 
-    return { success: true, message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.` };
+    return {
+      success: true,
+      message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.`,
+      pendingEvents
+    };
   });
+
+  if (!result.success) {
+    return result;
+  }
+
+  // Publish customer events after transaction commits
+  if (result.pendingEvents && Array.isArray(result.pendingEvents)) {
+    for (const evt of result.pendingEvents) {
+      publishEvent(
+        'meal_prep_started',
+        evt.customerId,
+        'customer',
+        `meal_prep_${evt.orderId}`,
+        { mealType: evt.mealType }
+      ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
+    }
+  }
 
   // Automatically trigger rider assignment for this vendor now that the batch is ready
   // MUST BE AWAITED so the Cloud Function doesn't suspend before assignment finishes
@@ -538,7 +561,7 @@ export const markBatchReady = onCall(async (request) => {
     console.error('[markBatchReady] Auto-assign failed:', e);
   }
 
-  return result;
+  return { success: true, message: result.message };
 });
 
 export const verifyDeliveryOTP = onCall(async (request) => {
@@ -553,61 +576,95 @@ export const verifyDeliveryOTP = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Missing orderId or otp');
   }
 
-  // Use module-level db (admin already initialized at top of file)
-  const orderRef = admin.firestore().collection('orders').doc(orderId);
-  const orderDoc = await orderRef.get();
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
 
-  if (!orderDoc.exists) {
-    throw new HttpsError('not-found', 'Order not found');
-  }
+  // 1. Transactionally verify OTP and update order to 'delivered'
+  const txResult = await db.runTransaction(async (transaction) => {
+    const orderDoc = await transaction.get(orderRef);
 
-  const orderData = orderDoc.data()!;
+    if (!orderDoc.exists) {
+      throw new HttpsError('not-found', 'Order not found');
+    }
 
-  // Broad auth check — cover all rider ID field names used across the platform
-  const isAssignedRider =
-    orderData.rider_id === auth.uid ||
-    orderData.driverId === auth.uid ||
-    orderData.agentId === auth.uid ||
-    orderData.agent_id === auth.uid;
-  const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true;
+    const data = orderDoc.data()!;
 
-  if (!isAssignedRider && !isAdmin) {
-    throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
-  }
+    // Auth check — cover all rider ID field names used across the platform
+    const isAssignedRider =
+      data.rider_id === auth.uid ||
+      data.driverId === auth.uid ||
+      data.agentId === auth.uid ||
+      data.agent_id === auth.uid ||
+      data.riderId === auth.uid;
+    const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true || auth.token?.email === 'closeon.st@gmail.com';
 
-  if (orderData.status === 'delivered') {
-    return { success: false, message: 'Order is already delivered' };
-  }
+    if (!isAssignedRider && !isAdmin) {
+      throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
+    }
 
-  // Check both possible OTP field names
-  const storedOtp = orderData.otp ?? orderData.delivery_otp;
-  if (storedOtp === undefined || storedOtp === null) {
-    throw new HttpsError('failed-precondition', 'No OTP is set for this order. Contact support.');
-  }
-  if (String(storedOtp) !== String(otp)) {
-    return { success: false, message: 'Invalid OTP. Please ask the customer for the PIN shown on their screen.' };
-  }
+    if (data.status === 'delivered') {
+      return { success: false, message: 'Order is already delivered', orderData: data };
+    }
 
-  // Atomic batch write — update order + write log in one call
-  const batch = admin.firestore().batch();
+    // Check both possible OTP field names
+    const storedOtp = data.otp ?? data.delivery_otp;
+    if (storedOtp === undefined || storedOtp === null) {
+      throw new HttpsError('failed-precondition', 'No OTP is set for this order. Contact support.');
+    }
 
-  batch.update(orderRef, {
-    status: 'delivered',
-    delivered_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at: admin.firestore.FieldValue.serverTimestamp()
+    if (String(storedOtp).trim() !== String(otp).trim()) {
+      return { success: false, message: 'Invalid OTP. Please ask the customer for the PIN shown on their screen.', orderData: data };
+    }
+
+    // Update order status to 'delivered'
+    transaction.update(orderRef, {
+      status: 'delivered',
+      otpVerified: true,
+      delivered_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    const logRef = db.collection('order_status_logs').doc();
+    transaction.set(logRef, {
+      id: logRef.id,
+      order_id: orderId,
+      from_status: data.status,
+      to_status: 'delivered',
+      actor: auth.uid,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: 'OTP verified successfully. Order delivered.', orderData: data };
   });
 
-  const logRef = admin.firestore().collection('order_status_logs').doc();
-  batch.set(logRef, {
-    id: logRef.id,
-    order_id: orderId,
-    from_status: orderData.status,
-    to_status: 'delivered',
-    actor: auth.uid,
-    timestamp: admin.firestore.FieldValue.serverTimestamp()
-  });
+  if (!txResult.success) {
+    return { success: false, message: txResult.message };
+  }
 
-  await batch.commit();
+  const orderData = txResult.orderData;
+
+  // 2. Synchronize trip status if order is linked to a rider_trip
+  if (orderData?.rider_trip_id) {
+    try {
+      const tripId = orderData.rider_trip_id;
+      const tripRef = db.collection('rider_trips').doc(tripId);
+      const remainingOrdersSnap = await db.collection('orders')
+        .where('rider_trip_id', '==', tripId)
+        .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
+        .get();
+
+      const stillActive = remainingOrdersSnap.docs.filter(d => d.id !== orderId);
+      if (stillActive.length === 0) {
+        await tripRef.update({
+          status: 'completed',
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (tripSyncErr) {
+      console.warn('[verifyDeliveryOTP] Trip sync check failed:', tripSyncErr);
+    }
+  }
 
   return { success: true, message: 'OTP verified successfully. Order delivered.' };
 });

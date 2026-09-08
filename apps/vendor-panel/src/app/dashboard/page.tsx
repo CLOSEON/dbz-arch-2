@@ -196,17 +196,20 @@ export default function VendorDashboard() {
             addProjected("lunch", sub.deliveryPreference || "11am");
             addProjected("dinner", "8pm");
           } else {
-            const singleMeal = sub.delivery_slot === "dinner" ? "dinner" : "lunch";
+            const effSlot = sub.delivery_slot || sub.deliverySlot;
+            const singleMeal = effSlot === "dinner" ? "dinner" : "lunch";
             addProjected(singleMeal, singleMeal === "dinner" ? "8pm" : (sub.deliveryPreference || "11am"));
           }
         } else {
           const effSlot = sub.delivery_slot || sub.deliverySlot || null;
-          if (effSlot === "dinner" || (!effSlot && sub.meal_type === "dinner")) {
+          if (effSlot === "dinner") {
             addProjected("dinner", "8pm");
-          } else if (effSlot === "lunch" || (!effSlot && sub.meal_type === "lunch")) {
+          } else if (effSlot === "lunch") {
             addProjected("lunch", sub.deliveryPreference || "11am");
-          } else if (!effSlot && sub.meal_type === "both") {
+          } else if (effSlot === "both" || (!effSlot && sub.meal_type === "both")) {
             addProjected("lunch", sub.deliveryPreference || "11am");
+            addProjected("dinner", "8pm");
+          } else if (!effSlot && sub.meal_type === "dinner") {
             addProjected("dinner", "8pm");
           } else {
             addProjected("lunch", sub.deliveryPreference || "11am");
@@ -751,10 +754,10 @@ export default function VendorDashboard() {
         subscriptions.forEach((sub: any) => {
           const isNonVeg = sub.dietary === 'non_veg' || sub.category === 'non_veg' || (sub.meal_type as any) === 'non_veg';
           const isVeg = !isNonVeg;
-          // delivery_slot is authoritative — meal_type='both' only applies when no delivery_slot is set
+          // delivery_slot is authoritative — meal_type='both' only applies when no delivery_slot or effSlot='both'
           const effectiveSlot = sub.delivery_slot || sub.deliverySlot || null;
-          const servesLunch = effectiveSlot === 'lunch' || (!effectiveSlot && (sub.meal_type === 'lunch' || sub.meal_type === 'both' || !sub.meal_type));
-          const servesDinner = effectiveSlot === 'dinner' || (!effectiveSlot && (sub.meal_type === 'dinner' || sub.meal_type === 'both'));
+          const servesLunch = effectiveSlot === 'lunch' || effectiveSlot === 'both' || (!effectiveSlot && (sub.meal_type === 'lunch' || sub.meal_type === 'both' || !sub.meal_type));
+          const servesDinner = effectiveSlot === 'dinner' || effectiveSlot === 'both' || (!effectiveSlot && (sub.meal_type === 'dinner' || sub.meal_type === 'both'));
 
           if (servesLunch && tagFilterSlot === 'lunch') {
             boxItems.push({
@@ -1176,8 +1179,8 @@ export default function VendorDashboard() {
         const activeSlotSubs = subscriptions.filter((s: any) => {
           const effSlot = s.delivery_slot || s.deliverySlot || null;
           return tagFilterSlot === 'lunch'
-            ? (effSlot === 'lunch' || (!effSlot && (s.meal_type === 'lunch' || s.meal_type === 'both' || !s.meal_type)))
-            : (effSlot === 'dinner' || (!effSlot && (s.meal_type === 'dinner' || s.meal_type === 'both')));
+            ? (effSlot === 'lunch' || effSlot === 'both' || (!effSlot && (s.meal_type === 'lunch' || s.meal_type === 'both' || !s.meal_type)))
+            : (effSlot === 'dinner' || effSlot === 'both' || (!effSlot && (s.meal_type === 'dinner' || s.meal_type === 'both')));
         });
         const activeVegCount = activeSlotSubs.filter((s: any) => s.dietary !== 'non_veg' && s.category !== 'non_veg' && s.meal_type !== 'non_veg').length;
         const activeNonVegCount = activeSlotSubs.length - activeVegCount;

@@ -120,7 +120,7 @@ export function MainNavbar() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block w-full text-center bg-brand text-white font-bold py-3 rounded-xl shadow-md"
                 >
-                  Dashboard →
+                  Go to Dashboard →
                 </Link>
               ) : (
                 <>
