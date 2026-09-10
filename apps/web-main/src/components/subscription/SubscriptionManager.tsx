@@ -437,7 +437,7 @@ export function SubscriptionManager({
               </div>
 
               {/* Pattern Summary Banner */}
-              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-100 text-xs font-semibold text-slate-700 mb-4 flex items-center justify-between gap-2">
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-100 text-xs font-semibold text-slate-700 mb-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                   <span className="truncate">
@@ -446,6 +446,26 @@ export function SubscriptionManager({
                   </span>
                 </div>
               </div>
+
+              {/* Custom Thali Manifest Banner */}
+              {Boolean((sub as any).custom_meal_config?.manifestSummary || (sub as any).meal_components?.length) && (
+                <div className="p-3 rounded-2xl bg-orange-50/70 border border-orange-200/80 text-xs font-semibold text-slate-700 mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-sm shrink-0">🍱</span>
+                    <span className="truncate">
+                      <span className="font-bold text-orange-950 mr-1">Custom Portions:</span>
+                      <span className="text-orange-900 font-medium">
+                        {(sub as any).custom_meal_config?.manifestSummary || (sub as any).meal_components?.join(', ')}
+                      </span>
+                    </span>
+                  </div>
+                  {Boolean((sub as any).custom_meal_config?.customerDeltaPerMeal) && (
+                    <span className="shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-200/70 text-orange-900">
+                      {(sub as any).custom_meal_config.customerDeltaPerMeal > 0 ? `+₹${(sub as any).custom_meal_config.customerDeltaPerMeal}` : `-₹${Math.abs((sub as any).custom_meal_config.customerDeltaPerMeal)}`}/meal
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Dedicated Pattern Visualizer */}
               <div className="mb-5">

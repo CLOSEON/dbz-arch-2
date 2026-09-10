@@ -14,6 +14,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 import { reverseGeocode } from '@/lib/geo';
+import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 
 type RazorpayPaymentResponse = {
   razorpay_payment_id: string;
@@ -26,6 +27,7 @@ interface SubscriptionOnboardingModalProps {
   onClose: () => void;
   vendor: AppUser;
   initialPlanId: string;
+  initialStep?: number;
   category?: DietaryCategory;
   selectedFrequency: SubscriptionFrequency;
   appliedDiscount: { code: string; discount_pct: number } | null;
@@ -37,6 +39,7 @@ export function SubscriptionOnboardingModal({
   onClose,
   vendor,
   initialPlanId,
+  initialStep = 1,
   category: initialCategory = 'veg',
   selectedFrequency,
   appliedDiscount,
@@ -46,7 +49,7 @@ export function SubscriptionOnboardingModal({
   const setUser = useAuthStore((s) => s.setUser);
   const addToast = useUiStore((s) => s.addToast);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initialStep);
   const [address, setAddress] = useState(user?.address || '');
   const [flatBuilding, setFlatBuilding] = useState('');
   const [areaStreet, setAreaStreet] = useState('');
@@ -57,6 +60,7 @@ export function SubscriptionOnboardingModal({
   const [planId, setPlanId] = useState(initialPlanId || 'lunch');
   const [dietaryCategory, setDietaryCategory] = useState<DietaryCategory>(initialCategory);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
   const [deliveryPreference, setDeliveryPreference] = useState<'8am' | '11am' | null>(user?.deliveryPreference || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'creating_order' | 'awaiting_payment' | 'verifying' | 'activating' | 'done'>('idle');
@@ -68,9 +72,11 @@ export function SubscriptionOnboardingModal({
   useEffect(() => {
     if (isOpen) {
       setStep(1);
+      setStep(initialStep || 1);
       setPlanId(initialPlanId || 'lunch');
       setDietaryCategory(initialCategory || 'veg');
       setSelectedAddonIds([]);
+      setCustomMealConfig(null);
       setAddress(user?.address || '');
       setLocation(user?.location || null);
       setDeliveryPreference(user?.deliveryPreference || null);
@@ -184,8 +190,10 @@ export function SubscriptionOnboardingModal({
 
   const { credit: prorationCredit, activeSubMeal } = getProrationCredit();
   const basePrice = getBasePlanPrice(planId);
+  const mealsCount = selectedFrequency === 'monthly' ? (planId === 'both' ? 60 : 30) : selectedFrequency === 'weekly' ? (planId === 'both' ? 14 : 7) : (planId === 'both' ? 2 : 1);
+  const thaliDeltaTotal = (customMealConfig?.customerDeltaPerMeal || 0) * mealsCount;
   const discountAmt = appliedDiscount ? Math.round((basePrice * appliedDiscount.discount_pct) / 100) : 0;
-  const finalPrice = Math.max(0, basePrice + totalAddonsPrice - discountAmt - prorationCredit);
+  const finalPrice = Math.max(0, basePrice + totalAddonsPrice + thaliDeltaTotal - discountAmt - prorationCredit);
   const amountPaise = finalPrice * 100;
 
   const handleToggleAddon = (id: string) => {
@@ -307,12 +315,14 @@ export function SubscriptionOnboardingModal({
       selected_addons: structuredAddons,
       base_price: basePrice,
       addons_price: totalAddonsPrice,
-      total_price: basePrice + totalAddonsPrice,
+      total_price: basePrice + totalAddonsPrice + thaliDeltaTotal,
       discount_pct: appliedDiscount?.discount_pct,
       promo_code: appliedDiscount?.code,
       payment_id: response.razorpay_payment_id,
       razorpay_order_id: response.razorpay_order_id,
       paid_amount: finalPrice,
+      custom_meal_config: customMealConfig || undefined,
+      meal_components: customMealConfig?.manifestSummary ? [customMealConfig.manifestSummary] : undefined,
     });
 
     setPaymentStatus('done');
@@ -655,11 +665,28 @@ export function SubscriptionOnboardingModal({
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Sparkles className="w-4 h-4 text-amber-500" />
-                        <h3 className="text-sm font-black text-slate-900">Customise Your Tiffin with Add-Ons</h3>
+                        <h3 className="text-sm font-black text-slate-900">Customise Your Tiffin with Add-Ons & Portions</h3>
                       </div>
                       <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                        Add daily sweets, extra curd, or special side dishes directly to your recurring subscription.
+                        Adjust your daily thali portions (extra rotis, rice, dal) and select recurring sweets or sides.
                       </p>
+                    </div>
+
+                    {/* Thali Portions Customizer */}
+                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/20 p-3.5">
+                      <ThaliCustomizer
+                        baseMealPrice={Math.max(10, Math.round(basePrice / Math.max(1, mealsCount)))}
+                        planType={selectedFrequency === 'monthly' ? 'monthly' : selectedFrequency === 'weekly' ? 'weekly' : 'daily'}
+                        vendorOverrides={vendor.custom_component_rates}
+                        vendorMarginOverride={vendor.vendor_margin_percent ?? vendor.vendor_margin_override}
+                        onChange={(config) => setCustomMealConfig(config)}
+                        compact
+                        title="Customize Daily Thali Portions"
+                      />
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Kitchen Extras & Add-Ons</h4>
                     </div>
 
                     {activeVendorAddons.length === 0 ? (
@@ -709,6 +736,11 @@ export function SubscriptionOnboardingModal({
                     <div className="pt-2">
                       <button onClick={handleConfirmStep3} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
                         {selectedAddonIds.length > 0 ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` : 'Skip Add-Ons'}
+                        {customMealConfig && customMealConfig.customerDeltaPerMeal !== 0
+                          ? `Continue with Custom Portions (${customMealConfig.customerDeltaPerMeal > 0 ? '+' : ''}₹${customMealConfig.customerDeltaPerMeal}/meal)`
+                          : selectedAddonIds.length > 0 
+                            ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` 
+                            : 'Continue to Delivery Slot'}
                       </button>
                     </div>
                   </div>
@@ -791,6 +823,18 @@ export function SubscriptionOnboardingModal({
                         <span className="text-slate-500 font-medium">Base Plan Price</span>
                         <span className="font-bold text-slate-900">₹{basePrice}</span>
                       </div>
+                      {customMealConfig && customMealConfig.manifestSummary && (
+                        <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/60 text-xs">
+                          <span className="font-bold text-amber-900 block mb-0.5">📦 Customized Thali Portions:</span>
+                          <span className="text-amber-800 text-[11px] font-medium leading-tight block">{customMealConfig.manifestSummary}</span>
+                        </div>
+                      )}
+                      {thaliDeltaTotal !== 0 && (
+                        <div className="flex justify-between text-sm text-amber-800">
+                          <span className="font-medium">Thali Portions Delta ({mealsCount} meals)</span>
+                          <span className="font-bold">{thaliDeltaTotal > 0 ? `+₹${thaliDeltaTotal}` : `-₹${Math.abs(thaliDeltaTotal)}`}</span>
+                        </div>
+                      )}
                       {totalAddonsPrice > 0 && (
                         <div className="flex justify-between text-sm text-amber-800">
                           <span className="font-medium">Add-Ons Total</span>

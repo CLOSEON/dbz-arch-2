@@ -19,6 +19,7 @@ import {
 import { getPricingConfig, DEFAULT_WEEKLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
 import { CustomPlanCheckoutModal } from './CustomPlanCheckoutModal';
+import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 import { cn } from '@/lib/utils';
 
 export type MealCount = 0 | 1 | 2; // 0 = Skip, 1 = 1 Meal, 2 = 2 Meals
@@ -36,10 +37,13 @@ export interface DaySelection extends DayPlanInfo {
 }
 
 export interface PlanBuilderResult {
+  pattern: Record<string, number>;
   selections: DaySelection[];
   totalMeals: number;
   pricePerMeal: number;
   weeklyTotal: number;
+  customMealConfig?: ThaliCustomizerConfig | null;
+  vendorId?: string;
 }
 
 export interface WeeklyCustomPlanBuilderProps {
@@ -55,6 +59,18 @@ export interface WeeklyCustomPlanBuilderProps {
    * Pre-selected meal counts for each day by id (e.g. { mon: 1, tue: 2 }).
    */
   initialSelections?: Partial<Record<string, MealCount>>;
+  /**
+   * Selected vendor ID if scoping to a specific kitchen.
+   */
+  vendorId?: string;
+  /**
+   * Optional vendor custom component rates and overrides.
+   */
+  vendorOverrides?: Record<string, any>;
+  /**
+   * Optional custom kitchen margin override percentage (e.g. 40).
+   */
+  vendorMarginOverride?: number;
   /**
    * Callback fired immediately whenever any day's meal count changes.
    */
@@ -114,6 +130,9 @@ export function WeeklyCustomPlanBuilder({
   initialPricePerMeal,
   startDate,
   initialSelections,
+  vendorId,
+  vendorOverrides,
+  vendorMarginOverride,
   onPlanChange,
   onConfirmCheckout,
   onReset,
@@ -144,6 +163,7 @@ export function WeeklyCustomPlanBuilder({
   const [pricePerMeal, setPricePerMeal] = useState<number>(
     initialPricePerMeal ?? DEFAULT_WEEKLY_PRICING.pricePerMeal ?? 50
   );
+  const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
   const [isLoadingPricing, setIsLoadingPricing] = useState<boolean>(true);
   const [checkoutWarning, setCheckoutWarning] = useState<string | null>(null);
   const [showConfirmationModal, setShowConfirmationModal] = useState<boolean>(false);
@@ -176,10 +196,15 @@ export function WeeklyCustomPlanBuilder({
     };
   }, [initialPricePerMeal]);
 
+  // Compute effective price per meal with component customization delta
+  const effectivePricePerMeal = useMemo(() => {
+    return Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
+  }, [pricePerMeal, customMealConfig?.customerDeltaPerMeal]);
+
   // Real-time calculation: Total meals count and Weekly total price using calculateCustomPlanPrice
   const { totalMeals, totalPrice: weeklyTotal } = useMemo(() => {
-    return calculateCustomPlanPrice('weekly', selections, pricePerMeal);
-  }, [selections, pricePerMeal]);
+    return calculateCustomPlanPrice('weekly', selections, effectivePricePerMeal);
+  }, [selections, effectivePricePerMeal]);
 
   // Notify parent component whenever selections or pricing change
   useEffect(() => {
@@ -189,13 +214,16 @@ export function WeeklyCustomPlanBuilder({
         meals: selections[day.id] || 0,
       }));
       onPlanChange({
+        pattern: selections,
         selections: fullSelections,
         totalMeals,
-        pricePerMeal,
+        pricePerMeal: effectivePricePerMeal,
         weeklyTotal,
+        customMealConfig: customMealConfig || undefined,
+        vendorId,
       });
     }
-  }, [selections, totalMeals, pricePerMeal, weeklyTotal, weekDays, onPlanChange]);
+  }, [selections, totalMeals, effectivePricePerMeal, weeklyTotal, weekDays, customMealConfig, vendorId, onPlanChange]);
 
   // Handlers for day buttons
   const handleToggle1Meal = useCallback((dayId: string) => {
@@ -291,10 +319,13 @@ export function WeeklyCustomPlanBuilder({
     }));
 
     const result: PlanBuilderResult = {
+      pattern: selections,
       selections: fullSelections,
       totalMeals,
-      pricePerMeal,
+      pricePerMeal: effectivePricePerMeal,
       weeklyTotal,
+      customMealConfig: customMealConfig || undefined,
+      vendorId,
     };
 
     if (onConfirmCheckout) {
@@ -302,7 +333,7 @@ export function WeeklyCustomPlanBuilder({
     } else {
       setShowConfirmationModal(true);
     }
-  }, [totalMeals, weekDays, selections, pricePerMeal, weeklyTotal, onConfirmCheckout]);
+  }, [totalMeals, weekDays, selections, effectivePricePerMeal, weeklyTotal, customMealConfig, vendorId, onConfirmCheckout]);
 
   return (
     <div
@@ -472,6 +503,19 @@ export function WeeklyCustomPlanBuilder({
         })}
       </div>
 
+      {/* ── Thali Portions Customizer Section ──────────────────────────────── */}
+      <div className="mb-6 rounded-2xl border border-amber-200/80 bg-white p-4 sm:p-5 shadow-sm">
+        <ThaliCustomizer
+          baseMealPrice={pricePerMeal}
+          planType="weekly"
+          vendorOverrides={vendorOverrides}
+          vendorMarginOverride={vendorMarginOverride}
+          onChange={(config) => setCustomMealConfig(config)}
+          compact
+          title="Customize Your Daily Thali Portions (Optional)"
+        />
+      </div>
+
       {/* ── Real-time Calculation Below ───────────────────────────────────── */}
       <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-50/90 via-orange-50/60 to-amber-100/40 border border-amber-200/80 p-4 sm:p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-amber-200/60">
@@ -495,12 +539,19 @@ export function WeeklyCustomPlanBuilder({
             </span>
           </div>
 
-          {/* Price per meal: ₹{pricePerMeal} */}
+          {/* Price per meal: ₹{effectivePricePerMeal} */}
           <div className="flex items-center justify-between text-sm sm:text-base text-slate-700">
             <span className="font-medium">Price per meal:</span>
-            <span className="font-semibold text-slate-900">
-              ₹{pricePerMeal}
-            </span>
+            <div className="text-right">
+              <span className="font-semibold text-slate-900">
+                ₹{effectivePricePerMeal}
+              </span>
+              {customMealConfig && (customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
+                <span className="text-xs font-bold text-amber-700 ml-1.5">
+                  {((customMealConfig.customerDeltaPerMeal ?? 0) > 0 ? `+₹${customMealConfig.customerDeltaPerMeal}` : `-₹${Math.abs(customMealConfig.customerDeltaPerMeal ?? 0)}`)} thali delta
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Weekly total: ₹{total} (in bold, larger font) */}
@@ -575,8 +626,9 @@ export function WeeklyCustomPlanBuilder({
           totalPrice: weeklyTotal,
           pattern: selections,
           totalMeals,
-          pricePerMeal,
+          pricePerMeal: effectivePricePerMeal,
           planStartDate: weekDays[0]?.date || new Date(),
+          customMealConfig: customMealConfig || undefined,
         }}
       />
     </div>

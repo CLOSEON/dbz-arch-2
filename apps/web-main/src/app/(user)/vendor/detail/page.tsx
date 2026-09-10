@@ -19,7 +19,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SubscriptionOnboardingModal } from '@/components/subscription/SubscriptionOnboardingModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import type { AppUser, Review, DiscountCode, SubscriptionFrequency, DietaryCategory } from '@/types';
-import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Sparkles } from 'lucide-react';
+import { Star, ChevronLeft, MapPin, Utensils, MessageSquare, Plus, CheckCircle2, Tag, Loader2, X, Calendar, Clock, RotateCcw, AlertCircle, Clipboard, Sparkles, ArrowRight, Sliders } from 'lucide-react';
 import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 function StarSelector({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -71,6 +71,7 @@ export default function VendorDetailPage() {
   // Subscription Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialPlanId, setModalInitialPlanId] = useState('');
+  const [modalInitialStep, setModalInitialStep] = useState(1);
   const [subscribing, setSubscribing] = useState<string | null>(null);
 
   // Frequency selector state
@@ -194,6 +195,20 @@ export default function VendorDetailPage() {
     }
 
     setModalInitialPlanId(planId);
+    setModalInitialStep(1);
+    setIsModalOpen(true);
+  }
+
+  async function handleCustomizePortions(planId: string) {
+    if (!user) { addToast('Please sign in to customize your plan', 'warning'); router.push('/login'); return; }
+    
+    if (userSubs.includes('both') && planId !== 'both') {
+      setShowDowngradeModal(true);
+      return;
+    }
+
+    setModalInitialPlanId(planId);
+    setModalInitialStep(user?.address ? 3 : 1);
     setIsModalOpen(true);
   }
 
@@ -469,11 +484,49 @@ export default function VendorDetailPage() {
               <div>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">Select Meal Plan</h2>
                 <p className="text-xs font-semibold text-slate-400">Choose single meal or recurring subscription</p>
+                <p className="text-xs font-semibold text-slate-400">Choose standard plan, customize portions, or build a custom schedule</p>
+              </div>
+            </div>
+
+            {/* Custom Meal Plan Promotional Hero Card */}
+            <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-50/80 rounded-3xl p-5 border-2 border-amber-300 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-black text-slate-900 leading-tight">Need a Custom Schedule or Portions?</h3>
+                      <span className="bg-amber-200/90 text-amber-950 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-amber-300">
+                        Full Flexibility
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                      Pick specific days of the week, skip weekends, or adjust rotis, dal, and rice portions to your exact appetite with {kitchenTitle}.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-amber-200/60">
+                <div className="flex items-center gap-2.5 text-[11px] font-extrabold text-amber-900 flex-wrap">
+                  <span className="flex items-center gap-1">✓ Pick Custom Days</span>
+                  <span className="flex items-center gap-1">✓ Tailor Thali Portions</span>
+                  <span className="flex items-center gap-1">✓ Live Margin Pricing</span>
+                </div>
+                <Link
+                  href={`/custom-plan?vendorId=${vendorId}&freq=${selectedFrequency === 'weekly' ? 'weekly' : 'monthly'}`}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                >
+                  <span>Build Custom Plan</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             </div>
             
             {/* Frequency Selector */}
-            <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex">
+            <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap gap-1">
               {(['one-time', 'weekly', 'monthly'] as SubscriptionFrequency[]).map(freq => (
                 <button
                   key={freq}
@@ -490,6 +543,13 @@ export default function VendorDetailPage() {
                   {freq.replace('-', ' ')}
                 </button>
               ))}
+              <Link
+                href={`/custom-plan?vendorId=${vendorId}&freq=${selectedFrequency === 'weekly' ? 'weekly' : 'monthly'}`}
+                className="flex-1 py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/80"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-brand" />
+                <span>Custom Days</span>
+              </Link>
             </div>
           </div>
 
@@ -506,7 +566,7 @@ export default function VendorDetailPage() {
 
                 return (
                   <div key={plan.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:border-amber-300 transition-all">
-                    <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className={cn(
@@ -528,6 +588,10 @@ export default function VendorDetailPage() {
                           <p className="text-xs font-medium text-slate-400 mt-0.5">
                             {plan.type}
                           </p>
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-1">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-700">4× Roti • 1× Rice • 1× Sabzi • 1× Dal</span>
+                            <span className="text-amber-700 font-bold hidden sm:inline">• Adjustable Portions</span>
+                          </div>
                           <div className="flex items-baseline gap-1.5 mt-1.5">
                             {appliedDiscount ? (
                               <>
@@ -544,20 +608,36 @@ export default function VendorDetailPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleSubscribe(plan.id)}
-                        disabled={isBtnDisabled}
-                        className={cn(
-                          "px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shrink-0 active:scale-95 shadow-md",
-                          isSubscribed 
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default shadow-none" 
-                            : isSoldOut 
-                              ? "bg-rose-50 text-rose-600 border border-rose-200 cursor-not-allowed shadow-none"
-                              : "bg-brand hover:bg-amber-600 text-white shadow-brand/20"
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        {selectedFrequency !== 'one-time' && (
+                          <button
+                            type="button"
+                            onClick={() => handleCustomizePortions(plan.id)}
+                            disabled={isBtnDisabled}
+                            className="px-3.5 py-3 rounded-2xl text-xs font-black tracking-wide transition-all border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 active:scale-95 flex items-center gap-1.5 shadow-2xs"
+                            title="Customize thali portions before subscribing"
+                          >
+                            <Sliders className="w-3.5 h-3.5 text-brand" />
+                            <span className="hidden sm:inline">Customise Portions</span>
+                            <span className="sm:hidden">Customise</span>
+                          </button>
                         )}
-                      >
-                        {subscribing === plan.id ? '...' : isSubscribed ? 'Subscribed' : isSoldOut ? 'Sold Out' : 'Subscribe'}
-                      </button>
+
+                        <button
+                          onClick={() => handleSubscribe(plan.id)}
+                          disabled={isBtnDisabled}
+                          className={cn(
+                            "px-5 sm:px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shrink-0 active:scale-95 shadow-md",
+                            isSubscribed 
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default shadow-none" 
+                              : isSoldOut 
+                                ? "bg-rose-50 text-rose-600 border border-rose-200 cursor-not-allowed shadow-none"
+                                : "bg-brand hover:bg-amber-600 text-white shadow-brand/20"
+                          )}
+                        >
+                          {subscribing === plan.id ? '...' : isSubscribed ? 'Subscribed' : isSoldOut ? 'Sold Out' : 'Subscribe'}
+                        </button>
+                      </div>
 
                     </div>
                   </div>
@@ -698,6 +778,7 @@ export default function VendorDetailPage() {
           onClose={() => setIsModalOpen(false)}
           vendor={vendor}
           initialPlanId={modalInitialPlanId}
+          initialStep={modalInitialStep}
           category={selectedCategory}
           selectedFrequency={selectedFrequency}
           appliedDiscount={appliedDiscount}

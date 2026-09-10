@@ -128,8 +128,244 @@ export const getPricingConfig = functions.https.onCall(
   }
 );
 
-import { calculateCustomPlanPrice, CustomPlanType } from './utils/pricingUtils';
+import {
+  calculateCustomPlanPrice,
+  CustomPlanType,
+  PricingAlgorithmSettings,
+  DEFAULT_PRICING_ALGORITHM,
+  calculateVendorPayout,
+  calculateCustomerFoodRate,
+  calculateCustomerMealPrice,
+  computeAlgorithmicMealPricing,
+  AlgorithmicMealPricingResult,
+} from './utils/pricingUtils';
 import { publishEvent } from './utils/events';
+
+export interface MealComponentItem {
+  id: string;
+  name: string;
+  unit: 'piece' | 'bowl' | 'portion';
+  baseQuantity: number;
+  minQuantity: number;
+  maxQuantity: number;
+  rawCost?: number;
+  customerRate: number;
+  vendorRate: number;
+  isActive: boolean;
+  category: 'staple' | 'curry' | 'side' | 'dessert';
+}
+
+export const DEFAULT_MEAL_COMPONENTS: MealComponentItem[] = [
+  {
+    id: 'roti',
+    name: 'Roti / Chapati',
+    unit: 'piece',
+    baseQuantity: 4,
+    minQuantity: 0,
+    maxQuantity: 10,
+    rawCost: 2.5,
+    customerRate: 5,
+    vendorRate: 4.17,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'rice',
+    name: 'Steamed Basmati Rice',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 3,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'sabzi',
+    name: 'Seasonal Sabzi / Dry Veg',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 3,
+    rawCost: 8,
+    customerRate: 25,
+    vendorRate: 13.33,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'dal',
+    name: 'Special Dal / Curry',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 3,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'sweet',
+    name: 'Chef Dessert / Sweet',
+    unit: 'portion',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 5,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'dessert',
+  },
+  {
+    id: 'curd',
+    name: 'Fresh Curd / Salad Bowl',
+    unit: 'portion',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 3,
+    rawCost: 5,
+    customerRate: 12,
+    vendorRate: 8.33,
+    isActive: true,
+    category: 'side',
+  },
+];
+
+export async function fetchPricingAlgorithmSettings(
+  db: admin.firestore.Firestore
+): Promise<PricingAlgorithmSettings> {
+  try {
+    const snap = await db.collection('system_settings').doc('pricing_algorithm').get();
+    if (snap.exists) {
+      const data = snap.data();
+      if (data) {
+        return {
+          deliveryChargePerMeal:
+            typeof data.deliveryChargePerMeal === 'number'
+              ? data.deliveryChargePerMeal
+              : DEFAULT_PRICING_ALGORITHM.deliveryChargePerMeal,
+          vendorMarginPercent:
+            typeof data.vendorMarginPercent === 'number'
+              ? data.vendorMarginPercent
+              : DEFAULT_PRICING_ALGORITHM.vendorMarginPercent,
+          platformMargins: {
+            monthly:
+              typeof data.platformMargins?.monthly === 'number'
+                ? data.platformMargins.monthly
+                : DEFAULT_PRICING_ALGORITHM.platformMargins.monthly,
+            weekly:
+              typeof data.platformMargins?.weekly === 'number'
+                ? data.platformMargins.weekly
+                : DEFAULT_PRICING_ALGORITHM.platformMargins.weekly,
+            daily:
+              typeof data.platformMargins?.daily === 'number'
+                ? data.platformMargins.daily
+                : DEFAULT_PRICING_ALGORITHM.platformMargins.daily,
+          },
+          roundingStrategy: data.roundingStrategy === 'ceil' ? 'ceil' : 'round',
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[fetchPricingAlgorithmSettings] Using fallback defaults:', e);
+  }
+  return { ...DEFAULT_PRICING_ALGORITHM };
+}
+
+export async function fetchMealComponentsCatalog(
+  db: admin.firestore.Firestore
+): Promise<MealComponentItem[]> {
+  try {
+    const snap = await db.collection('system_settings').doc('meal_components').get();
+    if (snap.exists) {
+      const d = snap.data();
+      if (Array.isArray(d?.components) && d.components.length > 0) {
+        return d.components as MealComponentItem[];
+      }
+    }
+  } catch (e) {
+    console.warn('[fetchMealComponentsCatalog] Using fallback defaults:', e);
+  }
+  return DEFAULT_MEAL_COMPONENTS;
+}
+
+export function computeComponentDeltas(
+  customMealConfig: any,
+  catalog: MealComponentItem[],
+  vendorRates?: Record<string, any>
+) {
+  const selectedQuantities =
+    customMealConfig?.quantities || customMealConfig?.components || {};
+  let customerDeltaPerMeal = 0;
+  let vendorDeltaPerMeal = 0;
+  const parts: string[] = [];
+
+  catalog.forEach((comp) => {
+    if (!comp.isActive) return;
+    const baseQty = comp.baseQuantity ?? 0;
+    const selectedQty =
+      selectedQuantities[comp.id] !== undefined
+        ? Number(selectedQuantities[comp.id])
+        : baseQty;
+
+    const delta = selectedQty - baseQty;
+    const customerRate = comp.customerRate ?? 0;
+
+    const override = vendorRates?.[comp.id];
+    let vendorRate = comp.vendorRate ?? 0;
+    if (typeof override === 'number') {
+      vendorRate = override;
+    } else if (override && typeof override.vendorRate === 'number') {
+      vendorRate = override.vendorRate;
+    }
+
+    customerDeltaPerMeal += delta * customerRate;
+    vendorDeltaPerMeal += delta * vendorRate;
+
+    if (selectedQty === 0) {
+      if (baseQty > 0) parts.push(`No ${comp.name}`);
+    } else {
+      parts.push(`${selectedQty}× ${comp.name}`);
+    }
+  });
+
+  const manifestSummary = parts.length > 0 ? parts.join(', ') : 'Standard Thali';
+
+  return {
+    customerDeltaPerMeal,
+    vendorDeltaPerMeal,
+    manifestSummary,
+  };
+}
+
+/**
+ * Calculate the standard base thali vendor payout from components and vendor overrides.
+ * e.g. 4× Roti + 1× Rice + 1× Sabzi + 1× Dal
+ */
+export function calculateBaseVendorCost(
+  catalog: MealComponentItem[] = DEFAULT_MEAL_COMPONENTS,
+  vendorOverrides?: Record<string, any>
+): number {
+  return catalog.reduce((sum, comp) => {
+    if (!comp.isActive) return sum;
+    const override = vendorOverrides?.[comp.id];
+    let rate = comp.vendorRate ?? 0;
+    if (typeof override === 'number') {
+      rate = override;
+    } else if (override && typeof override.vendorRate === 'number') {
+      rate = override.vendorRate;
+    }
+    return sum + ((comp.baseQuantity ?? 0) * rate);
+  }, 0);
+}
+
 
 export interface CreateCustomPlanSubscriptionRequest {
   userId: string;
@@ -141,6 +377,9 @@ export interface CreateCustomPlanSubscriptionRequest {
   vendorId?: string;
   paymentId?: string;
   razorpayOrderId?: string;
+  customMealConfig?: any;
+  custom_meal_config?: any;
+  meal_components?: string[];
   metadata?: Record<string, any>;
 }
 
@@ -212,7 +451,20 @@ export const createCustomPlanSubscription = functions.https.onCall(
       );
     }
 
-    const pattern = data?.pattern;
+    let pattern = data?.pattern;
+    // Robust normalizer: handles both object map { mon: 1 } and array [{ id: 'mon', meals: 1 }]
+    if (Array.isArray(pattern)) {
+      const converted: Record<string, number> = {};
+      pattern.forEach((item: any) => {
+        const key = item?.id || item?.dateKey || item?.shortDay || item?.day || item?.dateStr;
+        const count = Number(item?.meals ?? item?.count ?? item?.quantity ?? item?.mealCount ?? 0);
+        if (key && !isNaN(count)) {
+          converted[key] = count;
+        }
+      });
+      pattern = converted;
+    }
+
     if (!pattern || typeof pattern !== 'object' || Array.isArray(pattern)) {
       throw new functions.https.HttpsError(
         'invalid-argument',
@@ -221,8 +473,8 @@ export const createCustomPlanSubscription = functions.https.onCall(
     }
 
     // Validation: pattern must have at least 1 meal
-    const patternMealCount = Object.values(pattern).reduce<number>((sum, val) => {
-      const count = Number(val);
+    const patternMealCount = Object.values(pattern).reduce<number>((sum, val: any) => {
+      const count = typeof val === 'object' && val !== null ? Number(val.meals ?? val.count ?? 0) : Number(val);
       return !isNaN(count) && count > 0 ? sum + count : sum;
     }, 0);
 
@@ -243,8 +495,9 @@ export const createCustomPlanSubscription = functions.https.onCall(
     }
     const userData = userDocSnap.data() || {};
 
-    // ── 2. Pricing Validation via calculateCustomPlanPrice ────────────────────
-    let pricePerMeal = 50; // default baseline
+    // ── 2. Pricing Validation via calculateCustomPlanPrice & Component Rates ─
+    let baseCustomerPricePerMeal = 50; // default baseline
+    let baseVendorCostPerMeal = 35;
     try {
       const pricingDocId = `${planType}_pricing`;
       let pricingSnap = await db.collection('pricingConfig').doc(pricingDocId).get();
@@ -263,18 +516,127 @@ export const createCustomPlanSubscription = functions.https.onCall(
       if (pricingSnap.exists) {
         const pricingData = pricingSnap.data();
         if (typeof pricingData?.pricePerMeal === 'number') {
-          pricePerMeal =
+          baseCustomerPricePerMeal =
             planType === 'monthly' && pricingData.pricePerMeal > 300
               ? Math.round(pricingData.pricePerMeal / 28)
               : pricingData.pricePerMeal;
+        }
+        if (typeof pricingData?.vendorCostPerMeal === 'number') {
+          baseVendorCostPerMeal =
+            planType === 'monthly' && pricingData.vendorCostPerMeal > 300
+              ? Math.round(pricingData.vendorCostPerMeal / 28)
+              : pricingData.vendorCostPerMeal;
         }
       }
     } catch (pricingErr) {
       console.warn('[createCustomPlanSubscription] Error fetching pricing config, using default rate:', pricingErr);
     }
 
+    const customMealConfig = data?.customMealConfig || data?.custom_meal_config || null;
+    const vendorId = data?.vendorId || userData?.default_vendor_id || 'default_vendor';
+
+    // Fetch vendor details and custom rate overrides if present
+    let vendorData: any = null;
+    if (vendorId && vendorId !== 'default_vendor') {
+      try {
+        const vendorSnap = await db.collection('users').doc(vendorId).get();
+        if (vendorSnap.exists) {
+          vendorData = vendorSnap.data();
+        }
+      } catch (vErr) {
+        console.warn('[createCustomPlanSubscription] Failed fetching vendor data:', vErr);
+      }
+    }
+
+    const algoSettings = await fetchPricingAlgorithmSettings(db);
+    const vendorMarginOverride =
+      typeof vendorData?.vendor_margin_percent === 'number'
+        ? vendorData.vendor_margin_percent
+        : typeof vendorData?.vendor_margin_override === 'number'
+        ? vendorData.vendor_margin_override
+        : undefined;
+    const vendorMarginPercent = vendorMarginOverride ?? algoSettings.vendorMarginPercent ?? 40;
+
+    const catalog = await fetchMealComponentsCatalog(db);
+    const vendorCustomRates = vendorData?.custom_component_rates;
+    const hasVendorCustomRates =
+      vendorCustomRates &&
+      typeof vendorCustomRates === 'object' &&
+      Object.keys(vendorCustomRates).length > 0;
+
+    // Resolve base vendor cost: prioritize vendor_base_payout, standard_meal_payout, or calculateBaseVendorCost
+    if (typeof vendorData?.vendor_base_payout === 'number' && vendorData.vendor_base_payout > 0) {
+      baseVendorCostPerMeal = vendorData.vendor_base_payout;
+    } else if (typeof vendorData?.standard_meal_payout === 'number' && vendorData.standard_meal_payout > 0) {
+      baseVendorCostPerMeal = vendorData.standard_meal_payout;
+    } else if (typeof vendorData?.vendor_cost_per_meal === 'number' && vendorData.vendor_cost_per_meal > 0) {
+      baseVendorCostPerMeal = vendorData.vendor_cost_per_meal;
+    } else if (hasVendorCustomRates) {
+      const computedBase = calculateBaseVendorCost(catalog, vendorCustomRates);
+      if (computedBase > 0) {
+        baseVendorCostPerMeal = computedBase;
+      }
+    }
+
+    let customerDeltaPerMeal = 0;
+    let vendorDeltaPerMeal = 0;
+    let manifestSummary = 'Standard Thali (4× Roti, 1× Rice, 1× Dal, 1× Sabzi)';
+    let rawKitchenCost = 30; // standard thali baseline raw cost
+    let algorithmicPricing: AlgorithmicMealPricingResult | null = null;
+
+    if (customMealConfig) {
+      const catalog = await fetchMealComponentsCatalog(db);
+      const vendorCustomRates = vendorData?.custom_component_rates;
+      const deltas = computeComponentDeltas(customMealConfig, catalog, vendorCustomRates);
+      customerDeltaPerMeal = deltas.customerDeltaPerMeal;
+      vendorDeltaPerMeal = deltas.vendorDeltaPerMeal;
+      manifestSummary = customMealConfig.manifestSummary || deltas.manifestSummary;
+
+      // Calculate total raw kitchen cost from components
+      const selectedQuantities =
+        customMealConfig?.quantities || customMealConfig?.components || {};
+      let totalRaw = 0;
+      catalog.forEach((comp) => {
+        if (!comp.isActive) return;
+        const baseQty = comp.baseQuantity ?? 0;
+        const selectedQty =
+          selectedQuantities[comp.id] !== undefined
+            ? Number(selectedQuantities[comp.id])
+            : baseQty;
+        const raw = typeof comp.rawCost === 'number' ? comp.rawCost : 0;
+        totalRaw += selectedQty * raw;
+      });
+
+      if (totalRaw > 0) {
+        rawKitchenCost = Math.round(totalRaw * 100) / 100;
+      }
+
+      algorithmicPricing = computeAlgorithmicMealPricing(
+        rawKitchenCost,
+        planType === 'weekly' ? 'weekly' : 'monthly',
+        algoSettings,
+        vendorMarginPercent
+      );
+    }
+
+    let effectiveCustomerPricePerMeal = Math.max(10, baseCustomerPricePerMeal + customerDeltaPerMeal);
+    let effectiveVendorCostPerMeal = Math.max(10, baseVendorCostPerMeal + vendorDeltaPerMeal);
+
+    // If algorithmic pricing matches or is requested, adopt algorithmic rates
+    const providedTotalPrice = Number(data.totalPrice);
+    if (algorithmicPricing) {
+      const algoVerification = calculateCustomPlanPrice(planType, pattern, algorithmicPricing.customerMealPrice);
+      if (Math.abs(algoVerification.totalPrice - providedTotalPrice) <= 1.0) {
+        effectiveCustomerPricePerMeal = algorithmicPricing.customerMealPrice;
+        effectiveVendorCostPerMeal = algorithmicPricing.vendorPayout;
+        if (!hasVendorCustomRates && !vendorData?.vendor_base_payout && !vendorData?.standard_meal_payout) {
+          effectiveVendorCostPerMeal = algorithmicPricing.vendorPayout;
+        }
+      }
+    }
+
     // Call calculateCustomPlanPrice to verify calculations
-    const verification = calculateCustomPlanPrice(planType, pattern, pricePerMeal);
+    const verification = calculateCustomPlanPrice(planType, pattern, effectiveCustomerPricePerMeal);
 
     if (verification.totalMeals !== Number(data.totalMeals)) {
       throw new functions.https.HttpsError(
@@ -283,13 +645,14 @@ export const createCustomPlanSubscription = functions.https.onCall(
       );
     }
 
-    const providedTotalPrice = Number(data.totalPrice);
-    if (Math.abs(verification.totalPrice - providedTotalPrice) > 0.05) {
+    if (Math.abs(verification.totalPrice - providedTotalPrice) > 1.0) {
       throw new functions.https.HttpsError(
         'invalid-argument',
-        `Validation failed: Provided totalPrice (₹${providedTotalPrice}) does not match calculated total price (₹${verification.totalPrice} at ₹${pricePerMeal}/meal).`
+        `Validation failed: Provided totalPrice (₹${providedTotalPrice}) does not match calculated total price (₹${verification.totalPrice} at ₹${effectiveCustomerPricePerMeal}/meal).`
       );
     }
+
+    const totalPayableToVendor = Math.round(verification.totalMeals * effectiveVendorCostPerMeal * 100) / 100;
 
     // ── 3. Billing & Start Dates Calculation ──────────────────────────────────
     let startTimestamp: admin.firestore.Timestamp;
@@ -318,10 +681,10 @@ export const createCustomPlanSubscription = functions.https.onCall(
 
     const now = admin.firestore.Timestamp.now();
 
-    // ── 4. Create Document in "subscriptions" Collection ──────────────────────
+    // ── 4. Create Document in "subscriptions" Collection via Batch ───────────
+    const batch = db.batch();
     const subRef = db.collection('subscriptions').doc();
     const subscriptionType = planType === 'weekly' ? 'custom_weekly' : 'custom_monthly';
-    const vendorId = data?.vendorId || userData?.default_vendor_id || 'default_vendor';
     const paymentId = data?.paymentId || null;
     const razorpayOrderId = data?.razorpayOrderId || null;
 
@@ -330,13 +693,17 @@ export const createCustomPlanSubscription = functions.https.onCall(
       userId: userId,
       user_id: userId,
       vendor_id: vendorId,
+      vendor_name: vendorData?.kitchen_name || vendorData?.name || '',
       subscriptionType: subscriptionType,
       plan_id: subscriptionType,
       customPlan: {
         pattern: pattern,
         totalMeals: verification.totalMeals,
         totalPrice: verification.totalPrice,
-        pricePerMeal: pricePerMeal,
+        pricePerMeal: effectiveCustomerPricePerMeal,
+        basePricePerMeal: baseCustomerPricePerMeal,
+        customerDeltaPerMeal,
+        vendorDeltaPerMeal,
         createdAt: now,
       },
       status: 'active',
@@ -348,6 +715,26 @@ export const createCustomPlanSubscription = functions.https.onCall(
       start_date: startTimestamp,
       createdAt: now,
       created_at: now,
+
+      // Component Manifest & Rates
+      custom_meal_config: customMealConfig
+        ? {
+            ...customMealConfig,
+            manifestSummary,
+            customerDeltaPerMeal,
+            vendorDeltaPerMeal,
+            effectiveCustomerPricePerMeal,
+            effectiveVendorCostPerMeal,
+            rawKitchenCost,
+            vendorMarginPercent,
+            vendorPayout: effectiveVendorCostPerMeal,
+            algorithmicPricing: algorithmicPricing || null,
+          }
+        : null,
+      meal_components: [manifestSummary],
+      effective_customer_price_per_meal: effectiveCustomerPricePerMeal,
+      effective_vendor_cost_per_meal: effectiveVendorCostPerMeal,
+      vendor_total_payable: totalPayableToVendor,
 
       // For delivery ops
       deliveryPattern: pattern,
@@ -373,30 +760,79 @@ export const createCustomPlanSubscription = functions.https.onCall(
       subscriptionDoc.metadata = data.metadata;
     }
 
-    await subRef.set(subscriptionDoc);
+    batch.set(subRef, subscriptionDoc);
 
-    // ── 5. Link to Payments System Record if Payment Exists ───────────────────
+    // ── 5. Link to Payments System Record ─────────────────────────────────────
     if (paymentId || razorpayOrderId) {
-      try {
-        const paymentDocRef = db.collection('payments').doc(paymentId || `pay_${subRef.id}`);
-        await paymentDocRef.set(
-          {
-            subscription_id: subRef.id,
-            user_id: userId,
-            amount: verification.totalPrice,
-            currency: 'INR',
-            status: paymentId ? 'captured' : 'created',
-            razorpay_order_id: razorpayOrderId,
-            razorpay_payment_id: paymentId,
-            plan_type: subscriptionType,
-            created_at: now,
-          },
-          { merge: true }
-        );
-      } catch (payErr) {
-        console.warn('[createCustomPlanSubscription] Payment linking note:', payErr);
-      }
+      const paymentDocRef = db.collection('payments').doc(paymentId || `pay_${subRef.id}`);
+      batch.set(
+        paymentDocRef,
+        {
+          subscription_id: subRef.id,
+          user_id: userId,
+          amount: verification.totalPrice,
+          currency: 'INR',
+          status: paymentId ? 'captured' : 'created',
+          razorpay_order_id: razorpayOrderId,
+          razorpay_payment_id: paymentId,
+          plan_type: subscriptionType,
+          created_at: now,
+        },
+        { merge: true }
+      );
     }
+
+    // ── 6. Vendor Upfront Settlement & Earnings Crediting ─────────────────────
+    if (vendorId && vendorId !== 'default_vendor') {
+      const vendorPayoutRef = db.collection('vendor_payouts').doc();
+      batch.set(vendorPayoutRef, {
+        id: vendorPayoutRef.id,
+        vendor_id: vendorId,
+        vendor_name: vendorData?.kitchen_name || vendorData?.name || '',
+        subscription_id: subRef.id,
+        user_id: userId,
+        user_name: userData?.name || '',
+        amount: totalPayableToVendor,
+        cost_per_meal: effectiveVendorCostPerMeal,
+        total_meals: verification.totalMeals,
+        source: 'custom_subscription',
+        status: 'credited',
+        reference_id: razorpayOrderId || paymentId || '',
+        custom_meal_config: subscriptionDoc.custom_meal_config,
+        raw_kitchen_cost: rawKitchenCost,
+        vendor_margin_percent: vendorMarginPercent,
+        manifest: manifestSummary,
+        created_at: now,
+      });
+
+      // Increment vendor balance atomically
+      const vendorDocRef = db.collection('users').doc(vendorId);
+      batch.set(
+        vendorDocRef,
+        {
+          total_earnings: admin.firestore.FieldValue.increment(totalPayableToVendor),
+          pending_payout: admin.firestore.FieldValue.increment(totalPayableToVendor),
+          last_payout_credit_at: now,
+        },
+        { merge: true }
+      );
+    }
+
+    // ── 7. Update Customer Membership to Active ───────────────────────────────
+    const customerDocRef = db.collection('users').doc(userId);
+    batch.set(
+      customerDocRef,
+      {
+        is_active_subscriber: true,
+        membership_status: 'active',
+        active_subscription_id: subRef.id,
+        last_subscribed_at: now,
+        updated_at: now,
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
 
     // ── 6. Publish Order Event for Kitchen & Dispatch ─────────────────────────
     try {
@@ -430,7 +866,7 @@ export const createCustomPlanSubscription = functions.https.onCall(
         subscriptionType: subscriptionType,
         totalMeals: verification.totalMeals,
         totalPrice: verification.totalPrice,
-        pricePerMeal: pricePerMeal,
+        pricePerMeal: effectiveCustomerPricePerMeal,
         status: 'active',
         billingCycle: planType,
         startDate: startTimestamp,
@@ -754,6 +1190,8 @@ export const activateExternalSubscriptionAdmin = functions.https.onCall(
         nextBillingDate: admin.firestore.Timestamp.fromDate(nextBillingDateObj),
         delivery_address: deliveryAddress || '',
         delivery_slot: deliverySlot || 'lunch',
+        custom_meal_config: data.custom_meal_config || data.customMealConfig || null,
+        meal_components: data.meal_components || (data.custom_meal_config?.manifestSummary ? [data.custom_meal_config.manifestSummary] : (data.customMealConfig?.manifestSummary ? [data.customMealConfig.manifestSummary] : null)),
         created_at: admin.firestore.FieldValue.serverTimestamp(),
         created_by_admin: context?.auth?.uid || 'admin',
       });

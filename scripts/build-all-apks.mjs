@@ -130,6 +130,8 @@ for (const app of appsToBuild) {
 
   console.log(`🔨 Assembling Gradle APK for ${app.name}...`);
   execSync('./gradlew assembleDebug --no-daemon', { cwd: androidDir, stdio: 'inherit' });
+  console.log(`🔨 Assembling Gradle APK for ${app.name} (${app.appId})...`);
+  execSync(`./gradlew assembleDebug -PcustomApplicationId=${app.appId} --no-daemon`, { cwd: androidDir, stdio: 'inherit' });
 
   const generatedApk = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   const destination = path.join(outputDir, app.outputApk);

@@ -21,6 +21,7 @@ import { getPricingConfig, DEFAULT_MONTHLY_PRICING } from '@/lib/queries/pricing
 import { calculateCustomPlanPrice } from '@/lib/pricing';
 import { getUserSubscriptions } from '@/lib/queries/subscriptions';
 import { CustomPlanCheckoutModal } from './CustomPlanCheckoutModal';
+import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 import type { Subscription } from '@/types';
@@ -40,11 +41,14 @@ export interface MonthlyPlanBuilderResult {
   year: number;
   month: number; // 0-indexed (0=Jan, 8=Sept)
   monthName: string; // e.g. 'September'
+  pattern: Record<string, number>;
   selections: Record<string, MealCount>;
   dateDetails: MonthlyPlanDateSelection[];
   totalMeals: number;
   pricePerMeal: number;
   monthlyTotal: number;
+  customMealConfig?: ThaliCustomizerConfig | null;
+  vendorId?: string;
 }
 
 export interface MonthlyCustomPlanBuilderProps {
@@ -64,6 +68,18 @@ export interface MonthlyCustomPlanBuilderProps {
    * Pre-selected meal counts by dateKey ('YYYY-MM-DD').
    */
   initialSelections?: Record<string, MealCount>;
+  /**
+   * Selected vendor ID if scoping to a specific kitchen.
+   */
+  vendorId?: string;
+  /**
+   * Optional vendor custom component rates and overrides.
+   */
+  vendorOverrides?: Record<string, any>;
+  /**
+   * Optional custom kitchen margin override percentage (e.g. 40).
+   */
+  vendorMarginOverride?: number;
   /**
    * Callback fired whenever any date's meal selection changes.
    */
@@ -102,6 +118,9 @@ export function MonthlyCustomPlanBuilder({
   initialYear,
   initialMonth,
   initialSelections,
+  vendorId,
+  vendorOverrides,
+  vendorMarginOverride,
   onPlanChange,
   onConfirmCheckout,
   onReset,
@@ -122,6 +141,7 @@ export function MonthlyCustomPlanBuilder({
   const [pricePerMeal, setPricePerMeal] = useState<number>(
     initialPricePerMeal ?? DEFAULT_MONTHLY_PRICING.pricePerMeal ?? 50
   );
+  const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
   const [isLoadingPricing, setIsLoadingPricing] = useState<boolean>(true);
   const [existingPlanLoaded, setExistingPlanLoaded] = useState<string | null>(null);
   const [checkoutWarning, setCheckoutWarning] = useState<string | null>(null);
@@ -258,9 +278,13 @@ export function MonthlyCustomPlanBuilder({
   }, [currentYear, currentMonth, today]);
 
   // 4. Real-time Calculation using calculateCustomPlanPrice
+  const effectivePricePerMeal = useMemo(() => {
+    return Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
+  }, [pricePerMeal, customMealConfig?.customerDeltaPerMeal]);
+
   const { totalMeals, totalPrice: monthlyTotal } = useMemo(() => {
-    return calculateCustomPlanPrice('monthly', selections, pricePerMeal);
-  }, [selections, pricePerMeal]);
+    return calculateCustomPlanPrice('monthly', selections, effectivePricePerMeal);
+  }, [selections, effectivePricePerMeal]);
 
   // Notify parent on changes
   useEffect(() => {
@@ -278,14 +302,17 @@ export function MonthlyCustomPlanBuilder({
         year: currentYear,
         month: currentMonth,
         monthName: MONTH_NAMES[currentMonth],
+        pattern: selections,
         selections,
         dateDetails,
         totalMeals,
-        pricePerMeal,
+        pricePerMeal: effectivePricePerMeal,
         monthlyTotal,
+        customMealConfig: customMealConfig || undefined,
+        vendorId,
       });
     }
-  }, [selections, totalMeals, pricePerMeal, monthlyTotal, currentYear, currentMonth, calendarData.days, onPlanChange]);
+  }, [selections, totalMeals, effectivePricePerMeal, monthlyTotal, currentYear, currentMonth, calendarData.days, customMealConfig, vendorId, onPlanChange]);
 
   // Month navigation
   const handlePrevMonth = () => {
@@ -384,11 +411,14 @@ export function MonthlyCustomPlanBuilder({
       year: currentYear,
       month: currentMonth,
       monthName: MONTH_NAMES[currentMonth],
+      pattern: selections,
       selections,
       dateDetails,
       totalMeals,
-      pricePerMeal,
+      pricePerMeal: effectivePricePerMeal,
       monthlyTotal,
+      customMealConfig: customMealConfig || undefined,
+      vendorId,
     };
 
     if (onConfirmCheckout) {
@@ -396,7 +426,7 @@ export function MonthlyCustomPlanBuilder({
     } else {
       setShowConfirmationModal(true);
     }
-  }, [totalMeals, calendarData.days, selections, currentYear, currentMonth, pricePerMeal, monthlyTotal, onConfirmCheckout]);
+  }, [totalMeals, calendarData.days, selections, currentYear, currentMonth, effectivePricePerMeal, monthlyTotal, customMealConfig, vendorId, onConfirmCheckout]);
 
   return (
     <div
@@ -638,6 +668,19 @@ export function MonthlyCustomPlanBuilder({
         </div>
       </div>
 
+      {/* ── Thali Portions Customizer Section ──────────────────────────────── */}
+      <div className="mb-6 rounded-2xl border border-amber-200/80 bg-white p-4 sm:p-5 shadow-sm">
+        <ThaliCustomizer
+          baseMealPrice={pricePerMeal}
+          planType="monthly"
+          vendorOverrides={vendorOverrides}
+          vendorMarginOverride={vendorMarginOverride}
+          onChange={(config) => setCustomMealConfig(config)}
+          compact
+          title="Customize Your Daily Thali Portions (Optional)"
+        />
+      </div>
+
       {/* ── Real-time Calculation Below ───────────────────────────────────── */}
       <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-50/90 via-orange-50/60 to-amber-100/40 border border-amber-200/80 p-4 sm:p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-amber-200/60">
@@ -661,12 +704,19 @@ export function MonthlyCustomPlanBuilder({
             </span>
           </div>
 
-          {/* Price per meal: ₹{pricePerMeal} */}
+          {/* Price per meal: ₹{effectivePricePerMeal} */}
           <div className="flex items-center justify-between text-sm sm:text-base text-slate-700">
             <span className="font-medium">Price per meal:</span>
-            <span className="font-semibold text-slate-900">
-              ₹{pricePerMeal}
-            </span>
+            <div className="text-right">
+              <span className="font-semibold text-slate-900">
+                ₹{effectivePricePerMeal}
+              </span>
+              {customMealConfig && (customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
+                <span className="text-xs font-bold text-amber-700 ml-1.5">
+                  {((customMealConfig.customerDeltaPerMeal ?? 0) > 0 ? `+₹${customMealConfig.customerDeltaPerMeal}` : `-₹${Math.abs(customMealConfig.customerDeltaPerMeal ?? 0)}`)} thali delta
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Monthly total: ₹{total} (in bold, larger font) */}
@@ -741,8 +791,9 @@ export function MonthlyCustomPlanBuilder({
           totalPrice: monthlyTotal,
           pattern: selections,
           totalMeals,
-          pricePerMeal,
+          pricePerMeal: effectivePricePerMeal,
           planStartDate: new Date(currentYear, currentMonth, 1),
+          customMealConfig: customMealConfig || undefined,
         }}
       />
     </div>

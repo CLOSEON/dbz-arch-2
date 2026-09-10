@@ -1,3 +1,0 @@
-module.exports=[34271,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(77082);a.n(d("[project]/Desktop/CLOSEON/applications/Webapp/DBZARCH2/node_modules/next/dist/client/components/builtin/global-error.js <module evaluation>"))},5905,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(77082);a.n(d("[project]/Desktop/CLOSEON/applications/Webapp/DBZARCH2/node_modules/next/dist/client/components/builtin/global-error.js"))},46291,a=>{"use strict";a.i(34271);var b=a.i(5905);a.n(b)},59137,a=>{a.n(a.i(46291))}];
-
-//# sourceMappingURL=0rk6_next_dist_client_components_builtin_global-error_07g1b.~.js.map

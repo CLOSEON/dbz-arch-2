@@ -23,6 +23,7 @@ import { useAuthStore } from '@/store/authStore';
 import { createCustomPlanSubscription } from '@/lib/queries/subscriptions';
 import { createRazorpayOrder, openRazorpayCheckout } from '@/lib/razorpay';
 import { formatDate, cn } from '@/lib/utils';
+import { CustomMealConfig } from '@/types';
 
 export interface CustomPlanCheckoutData {
   planType: 'weekly' | 'monthly';
@@ -32,6 +33,7 @@ export interface CustomPlanCheckoutData {
   pricePerMeal?: number;
   planStartDate?: Date | string;
   vendorId?: string;
+  customMealConfig?: CustomMealConfig;
 }
 
 export interface CustomPlanCheckoutModalProps {
@@ -196,6 +198,8 @@ export function CustomPlanCheckoutModal({
         vendorId,
         paymentId: paymentId || `pay_${Date.now()}`,
         razorpayOrderId: paymentResult.razorpay_order_id,
+        customMealConfig: customPlanData.customMealConfig,
+        custom_meal_config: customPlanData.customMealConfig,
       });
 
       const subscriptionId = subResponse.subscriptionId;
@@ -241,6 +245,8 @@ export function CustomPlanCheckoutModal({
         vendorId,
         paymentId: mockPayId,
         razorpayOrderId: `order_demo_${Date.now()}`,
+        customMealConfig: customPlanData.customMealConfig,
+        custom_meal_config: customPlanData.customMealConfig,
       });
 
       const subscriptionId = subResponse.subscriptionId;
@@ -399,6 +405,30 @@ export function CustomPlanCheckoutModal({
               </div>
             )}
           </div>
+
+          {/* ── Customized Meal Box Manifest (if customized) ────────────────── */}
+          {customPlanData.customMealConfig && (
+            <div className="rounded-2xl bg-amber-50/70 border border-amber-200/90 p-3.5 sm:p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  Customized Daily Thali Portions
+                </span>
+                {(customPlanData.customMealConfig.deltaPricePerMeal ?? customPlanData.customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
+                  <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-amber-200/70 text-amber-900">
+                    {(customPlanData.customMealConfig.deltaPricePerMeal ?? customPlanData.customMealConfig.customerDeltaPerMeal ?? 0) > 0
+                      ? `+₹${customPlanData.customMealConfig.deltaPricePerMeal ?? customPlanData.customMealConfig.customerDeltaPerMeal}/meal`
+                      : `-₹${Math.abs(customPlanData.customMealConfig.deltaPricePerMeal ?? customPlanData.customMealConfig.customerDeltaPerMeal ?? 0)}/meal`}
+                  </span>
+                )}
+              </div>
+              <div className="p-3 bg-white rounded-xl border border-amber-200/60 shadow-xs">
+                <p className="text-xs font-bold text-slate-800 leading-relaxed">
+                  📦 {customPlanData.customMealConfig.manifestSummary || 'Custom Thali Configuration'}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* ── Pricing & Order Summary Card ───────────────────────────────── */}
           <div className="rounded-2xl bg-gradient-to-br from-amber-50/80 via-orange-50/50 to-amber-100/30 border border-amber-200/80 p-4 space-y-2 text-xs sm:text-sm">

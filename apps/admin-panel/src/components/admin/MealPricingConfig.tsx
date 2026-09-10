@@ -15,14 +15,44 @@ import {
   Sparkles,
   Calculator,
   ShieldCheck,
+  Utensils,
+  Plus,
+  Trash2,
+  Sliders,
+  Layers,
+  Scale,
+  Percent,
+  CheckCircle2,
+  X,
+  Undo2,
 } from 'lucide-react';
 import {
   getAllPricingConfigs,
   savePricingConfig,
+  getPricingAlgorithmSettings,
+  savePricingAlgorithmSettings,
   DEFAULT_WEEKLY_PRICING,
   DEFAULT_MONTHLY_PRICING,
+  DEFAULT_PRICING_ALGORITHM,
+  calculateVendorPayout,
+  calculateCustomerFoodRate,
+  calculateCustomerMealPrice,
+  computeAlgorithmicMealPricing,
+  PricingAlgorithmSettings,
 } from '@/lib/queries/pricing';
-import type { MealPricingConfig as MealPricingConfigData, PlanPricingType } from '@/types';
+import {
+  getMealComponentsCatalog,
+  saveMealComponentsCatalog,
+  calculateComponentDeltas,
+} from '@/lib/queries/mealComponents';
+import type {
+  MealPricingConfig as MealPricingConfigData,
+  PlanPricingType,
+  MealComponent,
+  ComponentCategory,
+  ComponentUnit,
+} from '@/types';
+import { DEFAULT_MEAL_COMPONENTS } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { triggerHapticImpact, triggerHapticSelection, ImpactStyle } from '@/lib/haptics';
@@ -42,6 +72,18 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   const [monthlyConfig, setMonthlyConfig] = useState<MealPricingConfigData>(DEFAULT_MONTHLY_PRICING);
   const [loading, setLoading] = useState(true);
 
+  // ── Pricing Algorithm State (system_settings/pricing_algorithm) ──────────────
+  const [algoConfig, setAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
+  const [initialAlgoConfig, setInitialAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
+  const [deliveryCharge, setDeliveryCharge] = useState<string>('13');
+  const [vendorMarginPct, setVendorMarginPct] = useState<number>(40);
+  const [dailyPlatformMargin, setDailyPlatformMargin] = useState<string>('15');
+  const [weeklyPlatformMargin, setWeeklyPlatformMargin] = useState<string>('12');
+  const [monthlyPlatformMargin, setMonthlyPlatformMargin] = useState<string>('4');
+  const [roundingStrategy, setRoundingStrategy] = useState<'round' | 'ceil'>('round');
+  const [savingAlgo, setSavingAlgo] = useState(false);
+  const [sampleRawCost, setSampleRawCost] = useState<string>('30');
+
   // Editable Form Inputs (strings for smooth typing)
   const [weeklyPrice, setWeeklyPrice] = useState<string>('50');
   const [weeklyVendorCost, setWeeklyVendorCost] = useState<string>('30');
@@ -56,19 +98,43 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [savingMonthly, setSavingMonthly] = useState(false);
 
+  // Check if Pricing Algorithm settings changed
+  const isAlgoChanged = useMemo(() => {
+    return (
+      Number(deliveryCharge) !== initialAlgoConfig.deliveryChargePerMeal ||
+      vendorMarginPct !== initialAlgoConfig.vendorMarginPercent ||
+      Number(dailyPlatformMargin) !== initialAlgoConfig.platformMargins.daily ||
+      Number(weeklyPlatformMargin) !== initialAlgoConfig.platformMargins.weekly ||
+      Number(monthlyPlatformMargin) !== initialAlgoConfig.platformMargins.monthly ||
+      roundingStrategy !== initialAlgoConfig.roundingStrategy
+    );
+  }, [deliveryCharge, vendorMarginPct, dailyPlatformMargin, weeklyPlatformMargin, monthlyPlatformMargin, roundingStrategy, initialAlgoConfig]);
+
   // Load live pricing configs from Firestore
   const loadPricing = useCallback(async () => {
     setLoading(true);
     try {
-      const { weekly, monthly } = await getAllPricingConfigs();
+      const [{ weekly, monthly }, algo] = await Promise.all([
+        getAllPricingConfigs(),
+        getPricingAlgorithmSettings(),
+      ]);
       setWeeklyConfig(weekly);
       setMonthlyConfig(monthly);
+      setAlgoConfig(algo);
+      setInitialAlgoConfig(algo);
 
       setWeeklyPrice(String(weekly.pricePerMeal ?? 50));
       setWeeklyVendorCost(String(weekly.vendorCostPerMeal ?? 30));
 
       setMonthlyPrice(String(monthly.pricePerMeal ?? 1400));
       setMonthlyVendorCost(String(monthly.vendorCostPerMeal ?? 900));
+
+      setDeliveryCharge(String(algo.deliveryChargePerMeal ?? 13));
+      setVendorMarginPct(algo.vendorMarginPercent ?? 40);
+      setDailyPlatformMargin(String(algo.platformMargins?.daily ?? 15));
+      setWeeklyPlatformMargin(String(algo.platformMargins?.weekly ?? 12));
+      setMonthlyPlatformMargin(String(algo.platformMargins?.monthly ?? 4));
+      setRoundingStrategy(algo.roundingStrategy ?? 'round');
     } catch (err) {
       console.error('[MealPricingConfig] Error loading pricing config:', err);
       addToast('Failed to load meal pricing configuration', 'error');
@@ -80,6 +146,220 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   useEffect(() => {
     void loadPricing();
   }, [loadPricing]);
+
+  // Save Pricing Algorithm handler
+  const handleSaveAlgo = async () => {
+    setSavingAlgo(true);
+    triggerHapticImpact(ImpactStyle.Medium);
+    try {
+      const updatedBy = user?.id || user?.email || 'admin';
+      const updated = await savePricingAlgorithmSettings(
+        {
+          deliveryChargePerMeal: Math.max(0, Number(deliveryCharge) || 0),
+          vendorMarginPercent: Math.min(Math.max(1, Number(vendorMarginPct) || 40), 99),
+          platformMargins: {
+            daily: Math.min(Math.max(0, Number(dailyPlatformMargin) || 0), 99),
+            weekly: Math.min(Math.max(0, Number(weeklyPlatformMargin) || 0), 99),
+            monthly: Math.min(Math.max(0, Number(monthlyPlatformMargin) || 0), 99),
+          },
+          roundingStrategy,
+        },
+        updatedBy
+      );
+      setAlgoConfig(updated);
+      setInitialAlgoConfig(updated);
+      addToast('Pricing algorithm engine configuration saved! 🚀', 'success');
+    } catch (err: any) {
+      console.error('[MealPricingConfig] Error saving algorithm config:', err);
+      addToast(err?.message || 'Failed to save algorithm settings', 'error');
+    } finally {
+      setSavingAlgo(false);
+    }
+  };
+
+  // ── Component Catalog State ──────────────────────────────────────────────────
+  const [components, setComponents] = useState<MealComponent[]>(DEFAULT_MEAL_COMPONENTS);
+  const [initialComponents, setInitialComponents] = useState<MealComponent[]>(DEFAULT_MEAL_COMPONENTS);
+  const [loadingComponents, setLoadingComponents] = useState(true);
+  const [savingComponents, setSavingComponents] = useState(false);
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newComp, setNewComp] = useState<Partial<MealComponent>>({
+    id: '',
+    name: '',
+    unit: 'piece',
+    category: 'staple',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 5,
+    rawCost: 2.5,
+    customerRate: 5,
+    vendorRate: 4,
+    isActive: true,
+  });
+
+  // Simulated Customization Delta for preview
+  const [simulatedQuantities, setSimulatedQuantities] = useState<Record<string, number>>({});
+
+  const loadCatalog = useCallback(async () => {
+    setLoadingComponents(true);
+    try {
+      const data = await getMealComponentsCatalog();
+      setComponents(data);
+      setInitialComponents(data);
+      const initialSim: Record<string, number> = {};
+      data.forEach((c) => {
+        initialSim[c.id] = c.baseQuantity;
+      });
+      setSimulatedQuantities(initialSim);
+    } catch (err) {
+      console.error('[MealPricingConfig] Error loading component catalog:', err);
+      addToast('Failed to load meal components catalog', 'error');
+    } finally {
+      setLoadingComponents(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
+
+  const isCatalogChanged = useMemo(() => {
+    return JSON.stringify(components) !== JSON.stringify(initialComponents);
+  }, [components, initialComponents]);
+
+  const handleUpdateComponent = (id: string, field: keyof MealComponent, value: any) => {
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          return { ...c, [field]: value };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleToggleActive = (id: string) => {
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          return { ...c, isActive: !c.isActive };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleDeleteComponent = (id: string) => {
+    setComponents((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleResetDefaults = () => {
+    setComponents([...DEFAULT_MEAL_COMPONENTS]);
+    const sim: Record<string, number> = {};
+    DEFAULT_MEAL_COMPONENTS.forEach((c) => {
+      sim[c.id] = c.baseQuantity;
+    });
+    setSimulatedQuantities(sim);
+    addToast('Reset to standard pre-populated defaults', 'success');
+  };
+
+  const handleAddNewComponent = () => {
+    if (!newComp.name?.trim()) {
+      addToast('Component name is required', 'error');
+      return;
+    }
+    const id = (newComp.id?.trim() || newComp.name.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+    if (components.some((c) => c.id === id)) {
+      addToast(`Component ID "${id}" already exists`, 'error');
+      return;
+    }
+    const custRate = Math.max(0, Number(newComp.customerRate ?? 10));
+    const vendRate = Math.max(0, Number(newComp.vendorRate ?? 7));
+    const minQ = Math.max(0, Number(newComp.minQuantity ?? 0));
+    const maxQ = Math.max(1, Number(newComp.maxQuantity ?? 5));
+    const baseQ = Math.max(0, Number(newComp.baseQuantity ?? 0));
+
+    if (custRate < vendRate) {
+      addToast('Customer rate cannot be lower than vendor rate (negative platform margin)', 'error');
+      return;
+    }
+    if (minQ > maxQ) {
+      addToast('Minimum quantity cannot exceed maximum quantity', 'error');
+      return;
+    }
+    if (baseQ < minQ || baseQ > maxQ) {
+      addToast('Base quantity must be between minimum and maximum quantity', 'error');
+      return;
+    }
+
+    const rawCost = typeof newComp.rawCost === 'number' ? Math.max(0, newComp.rawCost) : 0;
+
+    const created: MealComponent = {
+      id,
+      name: newComp.name.trim(),
+      unit: (newComp.unit as ComponentUnit) || 'piece',
+      category: (newComp.category as ComponentCategory) || 'staple',
+      baseQuantity: baseQ,
+      minQuantity: minQ,
+      maxQuantity: maxQ,
+      rawCost,
+      customerRate: custRate,
+      vendorRate: vendRate,
+      isActive: true,
+    };
+    setComponents((prev) => [...prev, created]);
+    setSimulatedQuantities((prev) => ({ ...prev, [created.id]: created.baseQuantity }));
+    setNewComp({
+      id: '',
+      name: '',
+      unit: 'piece',
+      category: 'staple',
+      baseQuantity: 1,
+      minQuantity: 0,
+      maxQuantity: 5,
+      rawCost: 2.5,
+      customerRate: 5,
+      vendorRate: 4,
+      isActive: true,
+    });
+    setIsAddingNew(false);
+    addToast(`Added ${created.name} to catalog`, 'success');
+  };
+
+  const handleSaveCatalog = async () => {
+    for (const comp of components) {
+      if (!comp.name.trim()) {
+        addToast('All components must have a valid name', 'error');
+        return;
+      }
+      if (comp.customerRate < comp.vendorRate) {
+        addToast(`Component "${comp.name}": customer rate (₹${comp.customerRate}) is lower than vendor rate (₹${comp.vendorRate})`, 'error');
+        return;
+      }
+      if (comp.minQuantity > comp.maxQuantity) {
+        addToast(`Component "${comp.name}": min quantity cannot exceed max quantity`, 'error');
+        return;
+      }
+    }
+
+    setSavingComponents(true);
+    triggerHapticImpact(ImpactStyle.Medium);
+    try {
+      const updatedBy = user?.id || user?.email || 'admin';
+      await saveMealComponentsCatalog(components, updatedBy);
+      setInitialComponents([...components]);
+      addToast('Meal components catalog saved successfully! 🍱', 'success');
+    } catch (err: any) {
+      console.error('[MealPricingConfig] Error saving catalog:', err);
+      addToast(err?.message || 'Failed to save component catalog', 'error');
+    } finally {
+      setSavingComponents(false);
+    }
+  };
+
+  const simulationDeltas = useMemo(() => {
+    return calculateComponentDeltas(simulatedQuantities, components);
+  }, [simulatedQuantities, components]);
 
   // ─── Parsed Numeric Values & Margins ──────────────────────────────────────────
   const parsedWeeklyPrice = Math.max(0, Number(weeklyPrice) || 0);
@@ -205,6 +485,338 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           <span>Refresh Rates</span>
         </button>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          SECTION: DYNAMIC PRICING ALGORITHM ENGINE (system_settings/pricing_algorithm)
+      ══════════════════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-3xl border border-slate-200/85 shadow-xs p-5 sm:p-7 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 text-brand font-black shrink-0">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-black text-slate-900 leading-tight">
+                  Dynamic Algorithmic Pricing Engine
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  system_settings/pricing_algorithm
+                </span>
+                {isAlgoChanged && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                    Unsaved Algorithm Edits
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-medium text-slate-500 mt-1">
+                Controls the core algorithmic formulas: Kitchen Vendor Payouts with fluctuating margin % (default 40%), Delivery Fee (₹13), and Platform Margins across plan tiers.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveAlgo}
+            disabled={savingAlgo || !isAlgoChanged}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 shadow-xs ${
+              isAlgoChanged
+                ? 'bg-brand hover:bg-amber-600 text-white shadow-brand/20'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {savingAlgo ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Saving Algorithm…</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Pricing Algorithm</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Algorithm Controls Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Delivery Charge */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-800">
+                Delivery Charge
+              </label>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                Fixed / Meal
+              </span>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={deliveryCharge}
+                onChange={(e) => setDeliveryCharge(e.target.value)}
+                className="w-full pl-7 pr-14 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 font-extrabold text-sm focus:border-brand focus:ring-2 focus:ring-brand/10 outline-none"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">/ meal</span>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Default ₹13 per meal added directly to customer final price.
+            </p>
+          </div>
+
+          {/* 2. Kitchen Vendor Margin % */}
+          <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-800">
+                Vendor Margin %
+              </label>
+              <span className="text-xs font-black text-brand bg-white px-2 py-0.5 rounded-md border border-amber-200">
+                {vendorMarginPct}%
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="10"
+                max="70"
+                step="1"
+                value={vendorMarginPct}
+                onChange={(e) => setVendorMarginPct(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer"
+              />
+              <input
+                type="number"
+                min="1"
+                max="90"
+                value={vendorMarginPct}
+                onChange={(e) => setVendorMarginPct(Number(e.target.value))}
+                className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-xs font-black text-slate-900 text-center"
+              />
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Formula: <code>Payout = Cost / (100 - {vendorMarginPct}) × 100</code>
+            </p>
+          </div>
+
+          {/* 3. Platform Margins */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
+            <label className="text-xs font-extrabold text-slate-800 block">
+              Platform Margins by Plan
+            </label>
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block">Daily</span>
+                <div className="relative mt-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    value={dailyPlatformMargin}
+                    onChange={(e) => setDailyPlatformMargin(e.target.value)}
+                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
+                  />
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">15%</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block">Weekly</span>
+                <div className="relative mt-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    value={weeklyPlatformMargin}
+                    onChange={(e) => setWeeklyPlatformMargin(e.target.value)}
+                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
+                  />
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">12%</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block">Monthly</span>
+                <div className="relative mt-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    value={monthlyPlatformMargin}
+                    onChange={(e) => setMonthlyPlatformMargin(e.target.value)}
+                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
+                  />
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">4%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Rounding Strategy & Database Timestamp */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-800">
+                Rounding Strategy
+              </label>
+              <select
+                value={roundingStrategy}
+                onChange={(e) => setRoundingStrategy(e.target.value as 'round' | 'ceil')}
+                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 outline-none"
+              >
+                <option value="round">Math.round (Standard)</option>
+                <option value="ceil">Math.ceil (Ceiling)</option>
+              </select>
+            </div>
+
+            <div className="pt-2 text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Updated:</span>
+              <span className="font-mono text-slate-600">{renderTimestamp(algoConfig.updatedAt) || 'Default Config'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Calculation Output Sandbox */}
+        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-indigo-500/10 rounded-2xl border border-amber-200/80 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand" />
+              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                Live Algorithmic Engine Output Simulator
+              </h4>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-bold text-slate-600">Sample Kitchen Raw Cost:</span>
+              <div className="relative w-24">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={sampleRawCost}
+                  onChange={(e) => setSampleRawCost(e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-black text-slate-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Derived live results across Daily, Weekly, Monthly */}
+          {(() => {
+            const rawCostNum = Math.max(0, Number(sampleRawCost) || 30);
+            const deliveryNum = Math.max(0, Number(deliveryCharge) || 13);
+            const vendorPayout = calculateVendorPayout(rawCostNum, vendorMarginPct);
+
+            const dailyPricing = computeAlgorithmicMealPricing(rawCostNum, 'daily', {
+              deliveryChargePerMeal: deliveryNum,
+              vendorMarginPercent: vendorMarginPct,
+              platformMargins: {
+                daily: Number(dailyPlatformMargin) || 15,
+                weekly: Number(weeklyPlatformMargin) || 12,
+                monthly: Number(monthlyPlatformMargin) || 4,
+              },
+              roundingStrategy,
+            });
+
+            const weeklyPricing = computeAlgorithmicMealPricing(rawCostNum, 'weekly', {
+              deliveryChargePerMeal: deliveryNum,
+              vendorMarginPercent: vendorMarginPct,
+              platformMargins: {
+                daily: Number(dailyPlatformMargin) || 15,
+                weekly: Number(weeklyPlatformMargin) || 12,
+                monthly: Number(monthlyPlatformMargin) || 4,
+              },
+              roundingStrategy,
+            });
+
+            const monthlyPricing = computeAlgorithmicMealPricing(rawCostNum, 'monthly', {
+              deliveryChargePerMeal: deliveryNum,
+              vendorMarginPercent: vendorMarginPct,
+              platformMargins: {
+                daily: Number(dailyPlatformMargin) || 15,
+                weekly: Number(weeklyPlatformMargin) || 12,
+                monthly: Number(monthlyPlatformMargin) || 4,
+              },
+              roundingStrategy,
+            });
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                {/* Vendor Payout Box */}
+                <div className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-2xs">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Derived Kitchen Payout
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-0.5">
+                    ₹{vendorPayout.toFixed(2)}
+                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
+                      {vendorMarginPct}% kitchen margin
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      (Cost: ₹{rawCostNum})
+                    </span>
+                  </div>
+                </div>
+
+                {/* Daily Plan Box */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Daily Plan</span>
+                    <span className="text-[10px] font-black text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded">
+                      {dailyPlatformMargin}% margin
+                    </span>
+                  </div>
+                  <div className="text-xl font-black text-brand mt-0.5">
+                    ₹{dailyPricing.customerMealPrice}
+                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Food ₹{dailyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                  </div>
+                </div>
+
+                {/* Weekly Plan Box */}
+                <div className="bg-white p-3 rounded-xl border border-orange-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weekly Plan</span>
+                    <span className="text-[10px] font-black text-brand bg-orange-50 px-1.5 py-0.2 rounded">
+                      {weeklyPlatformMargin}% margin
+                    </span>
+                  </div>
+                  <div className="text-xl font-black text-slate-900 mt-0.5">
+                    ₹{weeklyPricing.customerMealPrice}
+                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Food ₹{weeklyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                  </div>
+                </div>
+
+                {/* Monthly Plan Box */}
+                <div className="bg-white p-3 rounded-xl border border-indigo-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Plan</span>
+                    <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded">
+                      {monthlyPlatformMargin}% margin
+                    </span>
+                  </div>
+                  <div className="text-xl font-black text-indigo-700 mt-0.5">
+                    ₹{monthlyPricing.customerMealPrice}
+                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Food ₹{monthlyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* ── Main Two-Column Pricing Grid ── */}
@@ -624,6 +1236,480 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
                 </>
               )}
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          SECTION 3: GLOBAL MEAL COMPONENT CATALOG & CUSTOMIZATION RATES
+          Firestore Document: system_settings/meal_components
+      ══════════════════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-3xl border border-slate-200/85 shadow-xs p-5 sm:p-7 space-y-6 transition-all">
+        {/* Section Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 text-brand font-black shrink-0">
+              <Utensils className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-black text-slate-900 leading-tight">
+                  Global Meal Component Catalog & Customization Rates
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  system_settings/meal_components
+                </span>
+                {isCatalogChanged && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                    Unsaved Catalog Edits
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-medium text-slate-500 mt-1">
+                Manage base thali items, default quantities, min/max bounds, customer rates, vendor payout rates, and component margins.
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleResetDefaults}
+              className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              <Undo2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Reset Defaults</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsAddingNew(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5 text-amber-400" />
+              <span>Add Component</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveCatalog}
+              disabled={savingComponents || !isCatalogChanged}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 shadow-xs ${
+                isCatalogChanged
+                  ? 'bg-brand hover:bg-amber-600 text-white shadow-brand/20'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {savingComponents ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving…</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Catalog</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Add New Component Drawer/Form */}
+        {isAddingNew && (
+          <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/80 space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-black text-amber-900">
+                <Plus className="w-4 h-4 text-brand" />
+                <span>Add New Meal Component to Catalog</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddingNew(false)}
+                className="w-7 h-7 rounded-full bg-white text-slate-400 hover:text-slate-700 flex items-center justify-center border border-amber-200/60"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Item Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paratha"
+                  value={newComp.name || ''}
+                  onChange={(e) => setNewComp({ ...newComp, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Category</label>
+                <select
+                  value={newComp.category || 'staple'}
+                  onChange={(e) => setNewComp({ ...newComp, category: e.target.value as ComponentCategory })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                >
+                  <option value="staple">Staple (Roti, Rice)</option>
+                  <option value="curry">Curry (Dal, Sabzi)</option>
+                  <option value="side">Side (Salad, Curd)</option>
+                  <option value="dessert">Dessert (Sweet)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Unit</label>
+                <select
+                  value={newComp.unit || 'piece'}
+                  onChange={(e) => setNewComp({ ...newComp, unit: e.target.value as ComponentUnit })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                >
+                  <option value="piece">Piece (Roti, Sweet)</option>
+                  <option value="bowl">Bowl (Dal, Sabzi, Rice)</option>
+                  <option value="portion">Portion (Curd, Salad)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Base Quantity</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newComp.baseQuantity ?? 0}
+                  onChange={(e) => setNewComp({ ...newComp, baseQuantity: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Min Quantity</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newComp.minQuantity ?? 0}
+                  onChange={(e) => setNewComp({ ...newComp, minQuantity: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Max Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newComp.maxQuantity ?? 5}
+                  onChange={(e) => setNewComp({ ...newComp, maxQuantity: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Customer Rate (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newComp.customerRate ?? 10}
+                  onChange={(e) => setNewComp({ ...newComp, customerRate: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Vendor Rate (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newComp.vendorRate ?? 7}
+                  onChange={(e) => setNewComp({ ...newComp, vendorRate: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-brand"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddingNew(false)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewComponent}
+                className="px-4 py-2 text-xs font-black uppercase tracking-wider bg-brand text-white rounded-xl hover:bg-amber-600"
+              >
+                Add Component
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Components Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                <th className="pb-3 pl-2">Component</th>
+                <th className="pb-3">Category</th>
+                <th className="pb-3">Unit</th>
+                <th className="pb-3">Base Qty</th>
+                <th className="pb-3">Min / Max</th>
+                <th className="pb-3">Raw Kitchen Cost</th>
+                <th className="pb-3">Derived Vendor Payout</th>
+                <th className="pb-3">Customer Rates (D / W / M)</th>
+                <th className="pb-3">Item Cust Rate</th>
+                <th className="pb-3 text-center">Active</th>
+                <th className="pb-3 pr-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {components.map((comp) => {
+                const raw = typeof comp.rawCost === 'number' ? comp.rawCost : 0;
+                const derivedPayout = raw > 0 ? calculateVendorPayout(raw, vendorMarginPct) : comp.vendorRate;
+                const dailyR = calculateCustomerFoodRate(derivedPayout, Number(dailyPlatformMargin) || 15);
+                const weeklyR = calculateCustomerFoodRate(derivedPayout, Number(weeklyPlatformMargin) || 12);
+                const monthlyR = calculateCustomerFoodRate(derivedPayout, Number(monthlyPlatformMargin) || 4);
+
+                const categoryColors: Record<ComponentCategory, { bg: string; text: string; border: string }> = {
+                  staple: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+                  curry: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+                  side: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+                  dessert: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+                };
+                const catStyle = categoryColors[comp.category] || categoryColors.staple;
+
+                return (
+                  <tr key={comp.id} className={`hover:bg-slate-50/70 transition-colors ${!comp.isActive ? 'opacity-50' : ''}`}>
+                    {/* Component Name & ID */}
+                    <td className="py-3 pl-2">
+                      <div className="font-extrabold text-sm text-slate-900">{comp.name}</div>
+                      <div className="text-[10px] font-mono text-slate-400">id: {comp.id}</div>
+                    </td>
+
+                    {/* Category Badge */}
+                    <td className="py-3">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}>
+                        {comp.category}
+                      </span>
+                    </td>
+
+                    {/* Unit */}
+                    <td className="py-3">
+                      <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                        {comp.unit}
+                      </span>
+                    </td>
+
+                    {/* Base Quantity */}
+                    <td className="py-3">
+                      <div className="w-16">
+                        <input
+                          type="number"
+                          min="0"
+                          value={comp.baseQuantity}
+                          onChange={(e) => handleUpdateComponent(comp.id, 'baseQuantity', Math.max(0, Number(e.target.value)))}
+                          className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:bg-white focus:outline-none focus:border-brand"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Min / Max */}
+                    <td className="py-3">
+                      <div className="flex items-center gap-1 text-xs text-slate-500 font-semibold">
+                        <input
+                          type="number"
+                          min="0"
+                          value={comp.minQuantity}
+                          onChange={(e) => handleUpdateComponent(comp.id, 'minQuantity', Math.max(0, Number(e.target.value)))}
+                          className="w-11 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:outline-none"
+                        />
+                        <span>–</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={comp.maxQuantity}
+                          onChange={(e) => handleUpdateComponent(comp.id, 'maxQuantity', Math.max(1, Number(e.target.value)))}
+                          className="w-11 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:outline-none"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Raw Kitchen Cost */}
+                    <td className="py-3">
+                      <div className="relative w-20">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-600">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={comp.rawCost ?? ''}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? undefined : Math.max(0, Number(e.target.value));
+                            handleUpdateComponent(comp.id, 'rawCost', val);
+                            if (typeof val === 'number' && val > 0) {
+                              const newPayout = calculateVendorPayout(val, vendorMarginPct);
+                              handleUpdateComponent(comp.id, 'vendorRate', newPayout);
+                            }
+                          }}
+                          className="w-full pl-5 pr-1.5 py-1 bg-amber-50/60 border border-amber-200 rounded-lg text-xs font-black text-amber-950 focus:bg-white focus:outline-none focus:border-brand"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Derived Vendor Payout */}
+                    <td className="py-3">
+                      <div>
+                        <div className="text-xs font-black text-slate-900">
+                          ₹{derivedPayout.toFixed(2)}
+                        </div>
+                        <span className="inline-block mt-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800">
+                          {vendorMarginPct}% margin
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Customer Rates (Daily / Weekly / Monthly) */}
+                    <td className="py-3">
+                      <div className="flex items-center gap-1 text-[10px] font-black">
+                        <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded" title="Daily Plan Rate">
+                          D: ₹{dailyR.toFixed(1)}
+                        </span>
+                        <span className="bg-orange-50 text-brand px-1.5 py-0.5 rounded border border-orange-200/60" title="Weekly Plan Rate">
+                          W: ₹{weeklyR.toFixed(1)}
+                        </span>
+                        <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200/60" title="Monthly Plan Rate">
+                          M: ₹{monthlyR.toFixed(1)}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Customer Item Rate */}
+                    <td className="py-3">
+                      <div className="relative w-18">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={comp.customerRate}
+                          onChange={(e) => handleUpdateComponent(comp.id, 'customerRate', Math.max(0, Number(e.target.value)))}
+                          className="w-full pl-5 pr-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-emerald-800 focus:bg-white focus:outline-none focus:border-emerald-600"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Active Toggle */}
+                    <td className="py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(comp.id)}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors inline-flex items-center ${
+                          comp.isActive ? 'bg-emerald-600 justify-end' : 'bg-slate-200 justify-start'
+                        }`}
+                      >
+                        <span className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                      </button>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3 pr-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComponent(comp.id)}
+                        title="Delete component"
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── Live Customization Simulator & Delta Preview ── */}
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-brand" />
+              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                Live Component Customization Simulator & Two-Way Delta Preview
+              </h4>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400">
+              Simulating customer +/- thali choices
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            {components.map((c) => {
+              const qty = simulatedQuantities[c.id] ?? c.baseQuantity;
+              const delta = qty - c.baseQuantity;
+
+              return (
+                <div key={c.id} className="bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5 text-center">
+                  <div className="text-[11px] font-black text-slate-800 truncate">{c.name}</div>
+                  <div className="text-[10px] text-slate-400 font-semibold">
+                    Base: {c.baseQuantity} {c.unit}s
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSimulatedQuantities((prev) => ({
+                        ...prev,
+                        [c.id]: Math.max(c.minQuantity, (prev[c.id] ?? c.baseQuantity) - 1),
+                      }))}
+                      className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center"
+                    >
+                      –
+                    </button>
+                    <span className="text-sm font-black font-mono w-5">{qty}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSimulatedQuantities((prev) => ({
+                        ...prev,
+                        [c.id]: Math.min(c.maxQuantity, (prev[c.id] ?? c.baseQuantity) + 1),
+                      }))}
+                      className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div className="text-[10px] font-bold">
+                    {delta > 0 && <span className="text-emerald-700">+{delta} item</span>}
+                    {delta < 0 && <span className="text-rose-600">{delta} item</span>}
+                    {delta === 0 && <span className="text-slate-400">Default</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Simulation Output Pill */}
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div>
+              <span className="font-bold text-slate-500">Simulated Delta / Meal: </span>
+              <span className={`font-black ${simulationDeltas.customerDeltaPerMeal >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {simulationDeltas.customerDeltaPerMeal >= 0 ? `+₹${simulationDeltas.customerDeltaPerMeal}` : `−₹${Math.abs(simulationDeltas.customerDeltaPerMeal)}`}
+              </span>
+              <span className="text-slate-400 mx-1.5">•</span>
+              <span className="font-bold text-slate-500">Vendor Payout Delta: </span>
+              <span className="font-black text-slate-800">
+                {simulationDeltas.vendorDeltaPerMeal >= 0 ? `+₹${simulationDeltas.vendorDeltaPerMeal}` : `−₹${Math.abs(simulationDeltas.vendorDeltaPerMeal)}`}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500">Dabzzo Net Margin Delta:</span>
+              <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800">
+                ₹{simulationDeltas.customerDeltaPerMeal - simulationDeltas.vendorDeltaPerMeal} / meal
+              </span>
+            </div>
           </div>
         </div>
       </div>

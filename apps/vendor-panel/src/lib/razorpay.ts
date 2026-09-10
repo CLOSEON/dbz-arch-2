@@ -138,7 +138,7 @@ export async function verifyPaymentSignature(
 
   // 1. Try Firebase Callable Cloud Function (works on Firebase Hosting & Capacitor APKs)
   try {
-    const callable = httpsCallable<typeof payload, { success: boolean }>(
+    const callable = httpsCallable<typeof payload, { success: boolean; error?: string }>(
       functions,
       'verifyRazorpayPayment'
     );
@@ -146,7 +146,12 @@ export async function verifyPaymentSignature(
     if (res?.data?.success) {
       return true;
     }
+    throw new Error(res?.data?.error || 'Payment signature verification failed');
   } catch (callableErr: any) {
+    if (callableErr?.code === 'permission-denied' || callableErr?.code === 'invalid-argument') {
+      console.error('[Razorpay] Verification rejected by server:', callableErr.message);
+      throw callableErr;
+    }
     console.warn('[Razorpay] Callable verification fallback to REST:', callableErr?.message || callableErr);
   }
 
@@ -162,11 +167,11 @@ export async function verifyPaymentSignature(
     if (!contentType.includes('application/json')) {
       // If we got non-JSON (e.g. static html rewrite) but callable already failed, check response.ok
       if (response.ok) return true;
-      throw new Error('Payment verification server unreachable');
+      throw new Error('Payment verification server returned non-JSON response');
     }
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.success) {
       throw new Error(data?.error || 'Payment verification failed');
     }
 

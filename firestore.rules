@@ -247,6 +247,12 @@ service cloud.firestore {
     // ═══════════════════════════════════════════════════════════════════════
     // ADMIN-ONLY & AUDIT COLLECTIONS
     // ═══════════════════════════════════════════════════════════════════════
+    // Partner Applications (Kitchen & Rider onboarding from gig.dabzzo.in)
+    match /partner_applications/{appId} {
+      allow create: if true; // anyone can submit an onboarding application
+      allow read: if isAdmin() || (request.auth != null && resource.data.get('phone', '') == request.auth.token.get('phone_number', ''));
+      allow update, delete: if isAdmin();
+    }
 
     // Audit logs — append-only audit trail readable only by custom claim admins
     match /audit_logs/{logId} {
@@ -441,6 +447,20 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
       allow update: if request.auth != null && (resource.data.user_id == request.auth.uid || isAdmin());
       allow delete: if isAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
+      allow create: if request.auth != null && (
+        request.resource.data.get('user_id', '') == request.auth.uid ||
+        request.resource.data.get('recipient_user_id', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if request.auth != null && (
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('recipient_user_id', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (request.auth != null && (
+        resource.data.get('user_id', '') == request.auth.uid ||
+        resource.data.get('recipient_user_id', '') == request.auth.uid
+      ));
     }
 
     match /user_credits/{creditId} {
@@ -491,7 +511,8 @@ service cloud.firestore {
     }
 
     match /system_settings/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

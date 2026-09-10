@@ -123,3 +123,111 @@ export async function fetchPricingConfigViaFunction(
   return result.data;
 }
 
+import {
+  PricingAlgorithmSettings,
+  DEFAULT_PRICING_ALGORITHM,
+  calculateVendorPayout,
+  calculateCustomerFoodRate,
+  calculateCustomerMealPrice,
+  computeAlgorithmicMealPricing,
+  AlgorithmicMealPricingResult,
+} from '@/lib/pricing';
+
+export {
+  type PricingAlgorithmSettings,
+  DEFAULT_PRICING_ALGORITHM,
+  calculateVendorPayout,
+  calculateCustomerFoodRate,
+  calculateCustomerMealPrice,
+  computeAlgorithmicMealPricing,
+  type AlgorithmicMealPricingResult,
+};
+
+export const PRICING_ALGORITHM_DOC = {
+  collection: 'system_settings',
+  docId: 'pricing_algorithm',
+};
+
+/**
+ * Fetch pricing algorithm settings from system_settings/pricing_algorithm.
+ */
+export async function getPricingAlgorithmSettings(): Promise<PricingAlgorithmSettings> {
+  try {
+    const docRef = doc(db, PRICING_ALGORITHM_DOC.collection, PRICING_ALGORITHM_DOC.docId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        deliveryChargePerMeal:
+          typeof data.deliveryChargePerMeal === 'number'
+            ? data.deliveryChargePerMeal
+            : DEFAULT_PRICING_ALGORITHM.deliveryChargePerMeal,
+        vendorMarginPercent:
+          typeof data.vendorMarginPercent === 'number'
+            ? data.vendorMarginPercent
+            : DEFAULT_PRICING_ALGORITHM.vendorMarginPercent,
+        platformMargins: {
+          monthly:
+            typeof data.platformMargins?.monthly === 'number'
+              ? data.platformMargins.monthly
+              : DEFAULT_PRICING_ALGORITHM.platformMargins.monthly,
+          weekly:
+            typeof data.platformMargins?.weekly === 'number'
+              ? data.platformMargins.weekly
+              : DEFAULT_PRICING_ALGORITHM.platformMargins.weekly,
+          daily:
+            typeof data.platformMargins?.daily === 'number'
+              ? data.platformMargins.daily
+              : DEFAULT_PRICING_ALGORITHM.platformMargins.daily,
+        },
+        roundingStrategy: data.roundingStrategy === 'ceil' ? 'ceil' : 'round',
+        updatedAt: data.updatedAt,
+        updatedBy: data.updatedBy,
+      };
+    }
+  } catch (err) {
+    console.warn('[getPricingAlgorithmSettings] Failed to fetch settings, using defaults:', err);
+  }
+  return { ...DEFAULT_PRICING_ALGORITHM };
+}
+
+/**
+ * Save pricing algorithm settings to system_settings/pricing_algorithm.
+ */
+export async function savePricingAlgorithmSettings(
+  settings: Partial<PricingAlgorithmSettings>,
+  updatedBy: string = 'admin'
+): Promise<PricingAlgorithmSettings> {
+  const docRef = doc(db, PRICING_ALGORITHM_DOC.collection, PRICING_ALGORITHM_DOC.docId);
+  const payload: PricingAlgorithmSettings = {
+    deliveryChargePerMeal:
+      typeof settings.deliveryChargePerMeal === 'number'
+        ? settings.deliveryChargePerMeal
+        : DEFAULT_PRICING_ALGORITHM.deliveryChargePerMeal,
+    vendorMarginPercent:
+      typeof settings.vendorMarginPercent === 'number'
+        ? settings.vendorMarginPercent
+        : DEFAULT_PRICING_ALGORITHM.vendorMarginPercent,
+    platformMargins: {
+      monthly:
+        typeof settings.platformMargins?.monthly === 'number'
+          ? settings.platformMargins.monthly
+          : DEFAULT_PRICING_ALGORITHM.platformMargins.monthly,
+      weekly:
+        typeof settings.platformMargins?.weekly === 'number'
+          ? settings.platformMargins.weekly
+          : DEFAULT_PRICING_ALGORITHM.platformMargins.weekly,
+      daily:
+        typeof settings.platformMargins?.daily === 'number'
+          ? settings.platformMargins.daily
+          : DEFAULT_PRICING_ALGORITHM.platformMargins.daily,
+    },
+    roundingStrategy: settings.roundingStrategy === 'ceil' ? 'ceil' : 'round',
+    updatedAt: Timestamp.now(),
+    updatedBy: updatedBy || 'admin',
+  };
+
+  await setDoc(docRef, payload, { merge: true });
+  return payload;
+}
+

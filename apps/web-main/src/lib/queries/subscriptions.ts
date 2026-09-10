@@ -28,7 +28,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon } from '@/types';
+import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon, CustomMealConfig } from '@/types';
 
 // ─── Deterministic document ID ────────────────────────────────────────────────
 // One document per (user × vendor × mealType). Always the same ID, always.
@@ -118,6 +118,8 @@ export async function createSubscription(data: {
   total_price?: number;
   discount_pct?: number;
   promo_code?: string;
+  custom_meal_config?: CustomMealConfig;
+  meal_components?: string[];
   /** Razorpay payment ID after successful payment (for audit trail) */
   payment_id?: string;
   /** Razorpay order ID */
@@ -155,6 +157,13 @@ export async function createSubscription(data: {
   if (data.total_price != null) payload.total_price = data.total_price;
   if (data.discount_pct != null) payload.discount_pct = data.discount_pct;
   if (data.promo_code != null) payload.promo_code = data.promo_code;
+  if (data.custom_meal_config) {
+    payload.custom_meal_config = data.custom_meal_config;
+    if (data.custom_meal_config.manifestSummary) {
+      payload.meal_components = [data.custom_meal_config.manifestSummary];
+    }
+  }
+  if (data.meal_components) payload.meal_components = data.meal_components;
   if (data.payment_id) payload.payment_id = data.payment_id;
   if (data.razorpay_order_id) payload.razorpay_order_id = data.razorpay_order_id;
   if (data.paid_amount != null) {
@@ -367,6 +376,8 @@ export interface CreateCustomPlanParams {
   paymentId?: string;
   razorpayOrderId?: string;
   metadata?: Record<string, any>;
+  customMealConfig?: CustomMealConfig;
+  custom_meal_config?: CustomMealConfig;
 }
 
 export interface CreateCustomPlanResponse {

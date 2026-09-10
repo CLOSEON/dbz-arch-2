@@ -21,6 +21,7 @@ import { MealRatesCard } from '@/components/vendor/MealRatesCard';
 import { UpdateVendorLocationModal } from '@/components/vendor/UpdateVendorLocationModal';
 import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
 import { generateBoxTag } from '@/lib/boxTag';
+import { getBoxManifest } from '@/lib/mealManifest';
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
 
 type ActiveTab = 'overview' | 'tags' | 'menu' | 'subscribers' | 'rates';
@@ -965,6 +966,7 @@ export default function VendorDashboard() {
               ) : (
                 boxItems.map((item, idx) => {
                   const { sub, key, slotLabel, slotType, isVeg } = item;
+                  const manifest = getBoxManifest(sub);
                   const boxTag = generateBoxTag({
                     customerName: sub.userName || sub.name || 'Customer',
                     vendorName: vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen',
@@ -1015,6 +1017,33 @@ export default function VendorDashboard() {
                         </p>
                         <p className="text-xs text-brand font-bold">
                           Slot: {slotLabel}
+                        </p>
+                      </div>
+
+                      {/* Kitchen Box Packing Manifest */}
+                      <div className={`p-3.5 rounded-2xl border transition-all ${
+                        manifest.isCustomized 
+                          ? 'bg-amber-500/10 border-amber-300 ring-1 ring-amber-400/30' 
+                          : 'bg-slate-50/80 border-slate-200/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                            📦 Kitchen Box Manifest
+                          </span>
+                          {manifest.isCustomized ? (
+                            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
+                              Custom Portions
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-slate-400 uppercase">
+                              Standard Base
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs font-black leading-snug ${
+                          manifest.isCustomized ? 'text-amber-950' : 'text-slate-700'
+                        }`}>
+                          {manifest.manifestText}
                         </p>
                       </div>
 
@@ -1094,20 +1123,32 @@ export default function VendorDashboard() {
                   : (!effSlot && sub.meal_type === 'both')
                   ? 'Lunch & Dinner'
                   : (sub.deliveryPreference || 'Dinner (8:00 PM)');
+                const subManifest = getBoxManifest(sub);
                 return (
                   <div key={sub.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1 pr-3">
                       <div className="flex items-center gap-2">
                         <h4 className="font-black text-slate-900 text-base">{sub.userName || sub.name || 'Subscriber'}</h4>
                         <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                           {sub.status || 'Active'}
                         </span>
+                        {subManifest.isCustomized && (
+                          <span className="text-[10px] font-black uppercase text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full border border-amber-300">
+                            Custom Portions
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs font-bold text-brand uppercase">{sub.plan_name || `${sub.meal_type} Plan`} • {isNonVeg ? 'Non-Veg' : 'Pure Veg'}</p>
                       <p className="text-xs text-slate-500 flex items-center gap-1 mt-1"><Phone className="w-3 h-3 text-slate-400" /> {sub.userPhone || sub.phone || 'No phone'}</p>
                       <p className="text-xs text-slate-400">Slot: {slotText}</p>
+                      {subManifest.isCustomized && (
+                        <div className="mt-2 p-2 bg-amber-50/70 rounded-xl border border-amber-200/60 text-xs">
+                          <span className="font-black text-amber-900 block text-[10px] uppercase tracking-wider">📦 Custom Box Manifest:</span>
+                          <span className="text-amber-800 text-[11px] font-medium leading-tight">{subManifest.manifestText}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-brand flex items-center justify-center font-bold text-sm">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-brand flex items-center justify-center font-bold text-sm shrink-0">
                       {(sub.userName || sub.name || 'S')[0].toUpperCase()}
                     </div>
                   </div>

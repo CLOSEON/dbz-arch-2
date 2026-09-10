@@ -341,6 +341,8 @@ async function processDailyDeliveries(force: boolean = false) {
           otp: otp,
           total_amount: pricePerMeal,
           amount: pricePerMeal,
+          custom_meal_config: sub.custom_meal_config || null,
+          meal_components: sub.meal_components || (sub.custom_meal_config?.manifestSummary ? [sub.custom_meal_config.manifestSummary] : null),
           rider_trip_id: null,
           swap_ref: null,
           skip_ref: null,
@@ -787,6 +789,8 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
         otp,
         total_amount: pricePerMeal,
         amount: pricePerMeal,
+        custom_meal_config: sub.custom_meal_config || null,
+        meal_components: sub.meal_components || (sub.custom_meal_config?.manifestSummary ? [sub.custom_meal_config.manifestSummary] : null),
         rider_trip_id: null,
         swap_ref: null,
         skip_ref: null,
@@ -1005,5 +1009,209 @@ export const generateTestDelivery = onCall(async (request) => {
     batchId: batchId, 
     tripId: tripId,
     message: 'Test delivery flow successfully generated!'
+  };
+});
+
+/**
+ * Server-side Cloud Function: Skip Meal Order
+ * Safely executes cutoff validation, batch decrement, credit award,
+ * and order state mutation via Firebase Admin SDK.
+ */
+export const skipMealOrder = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const userId = auth.uid;
+  const { orderId, date, scheduledSlot, subscriptionId } = (data || {}) as any;
+
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'orderId is required.');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  let orderData: any;
+  let isNewProjected = false;
+
+  if (!orderSnap.exists) {
+    // If order was a projected virtual order, instantiate it as skipped
+    isNewProjected = true;
+    orderData = {
+      id: orderId,
+      user_id: userId,
+      customerId: userId,
+      subscription_id: subscriptionId || '',
+      date: date || new Date().toISOString().split('T')[0],
+      scheduledSlot: scheduledSlot || 'lunch',
+      delivery_slot: scheduledSlot || 'lunch',
+      status: 'pending',
+      created_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+  } else {
+    orderData = orderSnap.data()!;
+    const owner = orderData.user_id || orderData.customerId;
+    if (owner !== userId) {
+      throw new HttpsError('permission-denied', 'You do not own this order.');
+    }
+  }
+
+  // Check if order is already past skippable stages
+  if (['out_for_delivery', 'picked_up', 'delivered'].includes(orderData.status)) {
+    throw new HttpsError('failed-precondition', `Cannot skip order that is ${orderData.status}.`);
+  }
+
+  // Calculate cutoff & credit amount
+  const creditsEarned = 1.0;
+
+  // Execute atomic update
+  const batch = db.batch();
+
+  // 1. Decrement batch count if locked into a batch
+  if (orderData.batch_id) {
+    const batchRef = db.collection('batches').doc(orderData.batch_id);
+    batch.update(batchRef, {
+      total_count: admin.firestore.FieldValue.increment(-1),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 2. Award credit in user_credits
+  const creditRef = db.collection('user_credits').doc();
+  batch.set(creditRef, {
+    id: creditRef.id,
+    user_id: userId,
+    credit_amount: creditsEarned,
+    source: 'cancellation',
+    source_reference_id: orderId,
+    redeemed: false,
+    created_at: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // 3. Mark order as skipped
+  if (isNewProjected) {
+    batch.set(orderRef, {
+      ...orderData,
+      status: 'skipped',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } else {
+    batch.update(orderRef, {
+      status: 'skipped',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 4. Record order status log
+  const logRef = db.collection('order_status_logs').doc();
+  batch.set(logRef, {
+    id: logRef.id,
+    order_id: orderId,
+    from_status: orderData.status || 'created',
+    to_status: 'skipped',
+    actor: userId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return {
+    success: true,
+    creditsEarned,
+    message: 'Tiffin skipped successfully. Credit added to your account.'
+  };
+});
+
+/**
+ * Server-side Cloud Function: Undo Skip Meal Order
+ * Re-activates a skipped order and reverses credit adjustments.
+ */
+export const undoSkipMealOrder = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const userId = auth.uid;
+  const { orderId } = (data || {}) as any;
+
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'orderId is required.');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', 'Order not found.');
+  }
+
+  const orderData = orderSnap.data()!;
+  const owner = orderData.user_id || orderData.customerId;
+  if (owner !== userId) {
+    throw new HttpsError('permission-denied', 'You do not own this order.');
+  }
+
+  if (orderData.status !== 'skipped') {
+    throw new HttpsError('failed-precondition', 'Order is not in skipped status.');
+  }
+
+  const batch = db.batch();
+
+  // 1. Re-activate order to pending / created
+  batch.update(orderRef, {
+    status: 'pending',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // 2. Increment batch count if previously assigned to a batch
+  if (orderData.batch_id) {
+    const batchRef = db.collection('batches').doc(orderData.batch_id);
+    batch.update(batchRef, {
+      total_count: admin.firestore.FieldValue.increment(1),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 3. Mark previously awarded skip credit as redeemed/reversed
+  const creditsSnap = await db.collection('user_credits')
+    .where('user_id', '==', userId)
+    .where('source_reference_id', '==', orderId)
+    .where('redeemed', '==', false)
+    .limit(1)
+    .get();
+
+  if (!creditsSnap.empty) {
+    batch.update(creditsSnap.docs[0].ref, {
+      redeemed: true,
+      redeemed_at: admin.firestore.FieldValue.serverTimestamp(),
+      reversal_reason: 'undo_skip'
+    });
+  }
+
+  // 4. Log status change
+  const logRef = db.collection('order_status_logs').doc();
+  batch.set(logRef, {
+    id: logRef.id,
+    order_id: orderId,
+    from_status: 'skipped',
+    to_status: 'pending',
+    actor: userId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return {
+    success: true,
+    mode: 'credit',
+    message: 'Tiffin restored successfully.'
   };
 });

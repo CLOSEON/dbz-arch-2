@@ -97,6 +97,9 @@ export interface AppUser {
     beneficiary_name: string;
   };
   platform_fee_pct?: number;
+  vendor_margin_percent?: number;
+  vendor_margin_override?: number;
+  custom_component_rates?: Record<string, number | { vendorRate?: number; customerRate?: number }>;
   // Partner Verification
   verification_status?: 'pending' | 'details_requested' | 'verified' | 'rejected';
   admin_note?: string;
@@ -148,6 +151,8 @@ export interface Subscription {
   razorpay_order_id?: string;
   discount_pct?: number;
   promo_code?: string;
+  custom_meal_config?: CustomMealConfig;
+  meal_components?: string[];
   created_at: FirestoreTimestamp;
   next_billing_date?: FirestoreTimestamp;
   cancelled_at?: FirestoreTimestamp;
@@ -453,3 +458,145 @@ export interface MealPricingConfig {
   updatedAt?: FirestoreTimestamp;
   updatedBy?: string;
 }
+
+export interface PricingAlgorithmSettings {
+  deliveryChargePerMeal: number;       // Default: 13 (₹13)
+  vendorMarginPercent: number;         // Default: 40 (40% kitchen margin, divisor is 100 - vendorMarginPercent)
+  platformMargins: {
+    monthly: number;                   // Default: 4 (4% margin, divisor 0.96)
+    weekly: number;                    // Default: 12 (12% margin, divisor 0.88)
+    daily: number;                     // Default: 15 (15% margin, divisor 0.85)
+  };
+  roundingStrategy: 'round' | 'ceil';  // Default: 'round'
+  updatedAt?: FirestoreTimestamp | any;
+  updatedBy?: string;
+}
+
+export const DEFAULT_PRICING_ALGORITHM: PricingAlgorithmSettings = {
+  deliveryChargePerMeal: 13,
+  vendorMarginPercent: 40,
+  platformMargins: {
+    monthly: 4,
+    weekly: 12,
+    daily: 15,
+  },
+  roundingStrategy: 'round',
+};
+
+// ─── Meal Component Catalog & Customization ───────────────────────────────────
+
+export type ComponentUnit = 'piece' | 'bowl' | 'portion';
+export type ComponentCategory = 'staple' | 'curry' | 'side' | 'dessert';
+
+export interface MealComponent {
+  id: string;
+  name: string;
+  unit: ComponentUnit;
+  baseQuantity: number;
+  minQuantity: number;
+  maxQuantity: number;
+  rawCost?: number;
+  customerRate: number;
+  vendorRate: number;
+  isActive: boolean;
+  category: ComponentCategory;
+}
+
+export interface CustomMealConfig {
+  components: Record<string, number>; // componentId -> quantity
+  deltaPricePerMeal: number;
+  deltaVendorCostPerMeal?: number;
+  customerDeltaPerMeal?: number;
+  vendorDeltaPerMeal?: number;
+  effectiveCustomerPricePerMeal: number;
+  effectiveVendorCostPerMeal?: number;
+  baseCustomerPricePerMeal: number;
+  baseVendorCostPerMeal?: number;
+  manifestSummary?: string;
+  rawKitchenCost?: number;
+  vendorMarginPercent?: number;
+  vendorPayout?: number;
+  algorithmicPricing?: any;
+}
+
+export const DEFAULT_MEAL_COMPONENTS: MealComponent[] = [
+  {
+    id: 'roti',
+    name: 'Roti',
+    unit: 'piece',
+    baseQuantity: 4,
+    minQuantity: 0,
+    maxQuantity: 12,
+    rawCost: 2.5,
+    customerRate: 5,
+    vendorRate: 3,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'rice',
+    name: 'Rice',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'sabzi',
+    name: 'Sabzi',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    rawCost: 8,
+    customerRate: 25,
+    vendorRate: 18,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'dal',
+    name: 'Dal',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'sweet',
+    name: 'Sweet',
+    unit: 'piece',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 5,
+    rawCost: 6,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'dessert',
+  },
+  {
+    id: 'curd_salad',
+    name: 'Curd/Salad',
+    unit: 'portion',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 5,
+    rawCost: 5,
+    customerRate: 12,
+    vendorRate: 8,
+    isActive: true,
+    category: 'side',
+  },
+];
+

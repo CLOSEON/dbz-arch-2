@@ -5,6 +5,7 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.dabzo.app"
+        applicationId project.hasProperty('customApplicationId') ? project.property('customApplicationId') : "com.dabzo.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2

@@ -154,9 +154,9 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         setPickups(enriched);
       }, (err) => console.error("Pickups listener error:", err));
 
-      // 3. Live Deliveries
+      // 3. Live Dispatched Orders
       const qDel = query(
-        collection(db, 'deliveries'),
+        collection(db, 'orders'),
         where('vendor_id', '==', targetVendorId),
         where('status', 'in', ['out_for_delivery', 'picked_up'])
       );

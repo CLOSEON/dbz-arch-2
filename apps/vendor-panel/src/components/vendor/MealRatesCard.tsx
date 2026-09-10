@@ -2,13 +2,54 @@
 
 import { useAuthStore } from '@/store/authStore';
 import { useVendorData } from './VendorDataProvider';
-import { IndianRupee, Clock, RotateCcw, Calendar, Tag, ShieldCheck, PhoneCall } from 'lucide-react';
+import { IndianRupee, Clock, RotateCcw, Calendar, Tag, ShieldCheck, PhoneCall, Utensils, CheckCircle2 } from 'lucide-react';
 import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
+import { calculateBaseVendorCost } from '@/lib/queries/mealComponents';
+import { DEFAULT_MEAL_COMPONENTS } from '@/types';
 
 export function MealRatesCard() {
   const user = useAuthStore((s) => s.user);
   const { managedVendor } = useVendorData();
   const currentVendor = managedVendor || user;
+
+  const vendorMarginPct =
+    currentVendor?.vendor_margin_percent ??
+    currentVendor?.vendor_margin_override ??
+    40;
+  const standardRawCost = 30;
+  const safeMargin = Math.min(Math.max(vendorMarginPct, 0), 99.99);
+
+  const customRates = currentVendor?.custom_component_rates;
+  const hasCustomRates =
+    customRates &&
+    typeof customRates === 'object' &&
+    Object.keys(customRates).length > 0;
+
+  const standardComponentCost = hasCustomRates
+    ? calculateBaseVendorCost(DEFAULT_MEAL_COMPONENTS, customRates)
+    : 0;
+
+  let standardPayout = 0;
+  let isComponentBased = false;
+
+  if (typeof currentVendor?.vendor_base_payout === 'number' && currentVendor.vendor_base_payout > 0) {
+    standardPayout = currentVendor.vendor_base_payout;
+    isComponentBased = true;
+  } else if (typeof currentVendor?.standard_meal_payout === 'number' && currentVendor.standard_meal_payout > 0) {
+    standardPayout = currentVendor.standard_meal_payout;
+    isComponentBased = true;
+  } else if (typeof currentVendor?.vendor_cost_per_meal === 'number' && currentVendor.vendor_cost_per_meal > 0) {
+    standardPayout = currentVendor.vendor_cost_per_meal;
+    isComponentBased = true;
+  } else if (hasCustomRates && standardComponentCost > 0) {
+    standardPayout = standardComponentCost;
+    isComponentBased = true;
+  } else {
+    const standardRawCost = 30;
+    standardPayout = (standardRawCost / (100 - safeMargin)) * 100;
+  }
+
+  const formattedPayout = standardPayout.toFixed(2);
 
   const hasVeg = !currentVendor?.dietary_categories || currentVendor.dietary_categories.includes('veg');
   const hasNonVeg = currentVendor?.dietary_categories?.includes('non_veg');
@@ -72,6 +113,96 @@ export function MealRatesCard() {
           </p>
         </div>
       </div>
+
+      {/* Dynamic Algorithmic Kitchen Payout Banner */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent rounded-2xl p-4 sm:p-5 border border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-sm shrink-0 mt-0.5 sm:mt-0">
+            <Utensils className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-sm font-black text-slate-900">Standard Meal Kitchen Payout</h4>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black border ${
+                isComponentBased
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+              }`}>
+                {isComponentBased ? 'Approved Component Rates Active' : `${vendorMarginPct}% kitchen margin included`}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+              {isComponentBased
+                ? 'Calculated from approved kitchen component rates (4× Roti + 1× Rice + 1× Sabzi + 1× Dal) • Net automated vendor payout.'
+                : `Base raw kitchen cost: ₹${standardRawCost}.00 • Net automated vendor payout calculated via dynamic pricing algorithm.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="shrink-0 bg-white px-4 py-2.5 rounded-xl border border-emerald-200/80 text-left sm:text-right shadow-2xs">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Your Payout</span>
+          <div className="flex items-baseline gap-1">
+            <span className="text-xl font-black text-emerald-700">₹{formattedPayout}</span>
+            <span className="text-xs font-bold text-slate-500">/ meal</span>
+          </div>
+          <span className="text-[10px] text-emerald-600 font-semibold block mt-0.5">
+            {isComponentBased
+              ? `₹${formattedPayout} / meal standard payout`
+              : `₹${formattedPayout} / meal payout • ${vendorMarginPct}% kitchen margin included`}
+          </span>
+        </div>
+      </div>
+
+      {/* Itemized Meal Components Rate Card */}
+      {hasCustomRates && (
+        <div className="bg-amber-50/30 rounded-2xl p-4 border border-amber-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Utensils className="w-4 h-4 text-amber-600" />
+              <span className="text-xs font-black uppercase tracking-wider text-amber-900">
+                Kitchen Meal Components & Approved Rates
+              </span>
+            </div>
+            <span className="text-[10px] font-bold bg-white text-amber-800 px-2 py-0.5 rounded-lg border border-amber-100 shadow-2xs">
+              Live Override Rates
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            {DEFAULT_MEAL_COMPONENTS.map((comp) => {
+              const override = customRates[comp.id];
+              let rate = comp.vendorRate ?? 0;
+              let isOverridden = false;
+              if (typeof override === 'number') {
+                rate = override;
+                isOverridden = true;
+              } else if (override && typeof override.vendorRate === 'number') {
+                rate = override.vendorRate;
+                isOverridden = true;
+              }
+
+              return (
+                <div
+                  key={comp.id}
+                  className={`p-2.5 rounded-xl border text-center ${
+                    isOverridden
+                      ? 'bg-amber-50/70 border-amber-300'
+                      : 'bg-white border-slate-100'
+                  }`}
+                >
+                  <span className="text-[11px] font-bold text-slate-700 block truncate">{comp.name}</span>
+                  <span className="text-xs font-black text-slate-900 block mt-0.5">
+                    ₹{rate.toFixed(2)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-medium block">
+                    {comp.baseQuantity > 0 ? `Base: ${comp.baseQuantity}` : 'Add-on'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Vegetarian Rates */}
       {hasVeg && (
