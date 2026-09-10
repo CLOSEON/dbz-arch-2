@@ -1,7 +1,8 @@
                      'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Utensils, Sparkles, Plus, Minus, Check, RotateCcw } from 'lucide-react';
+import { Utensils, Sparkles, Plus, Minus, Check, RotateCcw, ShieldCheck } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
 import { getMealComponentsCatalog, calculateComponentDeltas, buildBoxManifest, calculateBaseVendorCost } from '@/lib/queries/mealComponents';
 import {
   getPricingAlgorithmSettings,
@@ -58,6 +59,8 @@ export function ThaliCustomizer({
 }: ThaliCustomizerProps) {
   const [catalog, setCatalog] = useState<MealComponent[]>(DEFAULT_MEAL_COMPONENTS);
   const [loading, setLoading] = useState<boolean>(true);
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = Boolean(user?.is_superadmin || (user?.role as string) === 'superadmin' || user?.role === 'admin');
 
   // Map of componentId -> quantity
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -413,23 +416,29 @@ export function ThaliCustomizer({
           </span>
         </div>
 
-        {/* Dynamic Margin & Kitchen Cost Badge */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/70 text-xs text-slate-600">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-slate-700">Raw Kitchen Cost:</span>
-            <span className="font-black text-slate-900">₹{rawKitchenCost}</span>
-            <span className="text-slate-300">•</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
-              {effectiveVendorMargin}% kitchen ratio
-            </span>
+        {/* Dynamic Margin & Kitchen Cost Badge - Strictly for Superadmin / Admin diagnostics only */}
+        {isSuperAdmin && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/70 text-xs text-slate-600 bg-amber-100/40 p-2.5 rounded-xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-amber-800 text-white tracking-wider">
+                <ShieldCheck className="w-3 h-3" />
+                Superadmin
+              </span>
+              <span className="font-bold text-slate-700">Raw Kitchen Cost:</span>
+              <span className="font-black text-slate-900">₹{rawKitchenCost}</span>
+              <span className="text-slate-300">•</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                {effectiveVendorMargin}% kitchen ratio
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">Vendor Payout:</span>
+              <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                ₹{algorithmicPricing.vendorPayout.toFixed(2)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-slate-500 font-medium">Vendor Payout:</span>
-            <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-              ₹{algorithmicPricing.vendorPayout.toFixed(2)}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
