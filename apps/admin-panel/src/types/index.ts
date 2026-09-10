@@ -1,6 +1,6 @@
 // ─── Core Types ──────────────────────────────────────────────────────────────
 
-export type UserRole = 'user' | 'vendor' | 'delivery' | 'admin';
+export type UserRole = 'user' | 'vendor' | 'delivery' | 'admin' | 'superadmin';
 
 export type DietaryCategory = 'veg' | 'non_veg';
 
