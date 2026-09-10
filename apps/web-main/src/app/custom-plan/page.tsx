@@ -67,6 +67,7 @@ function CustomPlanContent() {
       planType: 'weekly',
       totalPrice: result.weeklyTotal,
       pattern: patternMap,
+      slots: result.slots,
       totalMeals: result.totalMeals,
       pricePerMeal: result.pricePerMeal,
       planStartDate: new Date(),
@@ -84,6 +85,7 @@ function CustomPlanContent() {
       planType: 'monthly',
       totalPrice: result.monthlyTotal,
       pattern: patternMap,
+      slots: result.slots,
       totalMeals: result.totalMeals,
       pricePerMeal: result.pricePerMeal,
       planStartDate: new Date(result.year, result.month, 1),
@@ -100,12 +102,10 @@ function CustomPlanContent() {
       {/* Top Navigation & Brand Header */}
       <div className="max-w-4xl mx-auto mb-6 flex items-center justify-between">
         <Link
-          href="/"
           href={vendorIdFromQuery ? `/vendor/detail?id=${vendorIdFromQuery}` : '/'}
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 bg-white/80 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors shadow-xs"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Home
           {vendorIdFromQuery ? 'Back to Kitchen' : 'Back to Home'}
         </Link>
         <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100/70 px-3 py-1.5 rounded-xl border border-amber-200">

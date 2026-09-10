@@ -100,6 +100,7 @@ export interface AppUser {
   // Fluctuation margin override for this specific kitchen (e.g. 40%)
   vendor_margin_percent?: number;
   vendor_margin_override?: number;
+  standard_meal_payout?: number;
   // Component rates override for this specific kitchen
   custom_component_rates?: Record<string, number | { vendorRate?: number; customerRate?: number }>;
   // Partner Verification

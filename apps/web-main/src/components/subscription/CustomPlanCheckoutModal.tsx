@@ -29,6 +29,7 @@ export interface CustomPlanCheckoutData {
   planType: 'weekly' | 'monthly';
   totalPrice: number;
   pattern: Record<string, any>;
+  slots?: Record<string, any>;
   totalMeals: number;
   pricePerMeal?: number;
   planStartDate?: Date | string;
@@ -75,6 +76,7 @@ export function CustomPlanCheckoutModal({
     planType,
     totalPrice,
     pattern = {},
+    slots = {},
     totalMeals,
     pricePerMeal = Math.round(totalPrice / Math.max(1, totalMeals)),
     planStartDate = new Date(),
@@ -87,16 +89,20 @@ export function CustomPlanCheckoutModal({
   const weeklyBreakdown = WEEKDAY_ORDER.map(({ key, short, name }) => {
     const count = Number(pattern[key] ?? pattern[short.toLowerCase()] ?? pattern[short] ?? 0);
     return { key, short, name, count };
+    const slot = slots[short.toLowerCase()] ?? slots[key] ?? (count === 2 ? 'both' : count === 1 ? 'lunch' : 'skip');
+    return { key, short, name, count, slot };
   });
 
   // ── Monthly pattern items breakdown ─────────────────────────────────────────
   const monthlyBreakdown = Object.entries(pattern)
     .map(([dateKey, meals]) => {
       const dayNum = dateKey.includes('-') ? dateKey.split('-').pop() : dateKey;
+      const slot = slots[dateKey] ?? (Number(meals) === 2 ? 'both' : Number(meals) === 1 ? 'lunch' : 'skip');
       return {
         dateKey,
         dayNum: Number(dayNum) || dateKey,
         meals: Number(meals) || 0,
+        slot,
       };
     })
     .filter((d) => d.meals > 0)
@@ -200,6 +206,8 @@ export function CustomPlanCheckoutModal({
         razorpayOrderId: paymentResult.razorpay_order_id,
         customMealConfig: customPlanData.customMealConfig,
         custom_meal_config: customPlanData.customMealConfig,
+        custom_slots: slots,
+        customSlots: slots,
       });
 
       const subscriptionId = subResponse.subscriptionId;
@@ -351,33 +359,43 @@ export function CustomPlanCheckoutModal({
             {isWeekly ? (
               /* Weekly Day-by-Day Breakdown Grid */
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {weeklyBreakdown.map(({ key, short, count }) => (
-                  <div
-                    key={key}
-                    className={cn(
-                      'p-2.5 rounded-xl border flex items-center justify-between transition-all',
-                      count === 2
-                        ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-300/40'
-                        : count === 1
-                        ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-300/40'
-                        : 'bg-white border-slate-200 opacity-60'
-                    )}
-                  >
-                    <span className="font-bold text-xs text-slate-700">{short}</span>
-                    <span
+                {weeklyBreakdown.map(({ key, short, count, slot }) => {
+                  const isLunch = slot === 'lunch' || count === 1;
+                  const isDinner = slot === 'dinner';
+                  const isBoth = slot === 'both' || count === 2;
+
+                  return (
+                    <div
+                      key={key}
                       className={cn(
-                        'text-xs font-black px-2 py-0.5 rounded-md',
-                        count === 2
-                          ? 'bg-orange-500 text-white'
-                          : count === 1
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-slate-100 text-slate-400'
+                        'p-2.5 rounded-xl border flex items-center justify-between transition-all',
+                        isBoth
+                          ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-300/40'
+                          : isDinner
+                          ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300/40'
+                          : isLunch
+                          ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-300/40'
+                          : 'bg-white border-slate-200 opacity-60'
                       )}
                     >
-                      {count === 2 ? '2 Meals' : count === 1 ? '1 Meal' : 'Skip'}
-                    </span>
-                  </div>
-                ))}
+                      <span className="font-bold text-xs text-slate-700">{short}</span>
+                      <span
+                        className={cn(
+                          'text-xs font-black px-2 py-0.5 rounded-md',
+                          isBoth
+                            ? 'bg-gradient-to-r from-amber-600 to-orange-500 text-white'
+                            : isDinner
+                            ? 'bg-indigo-600 text-white'
+                            : isLunch
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-slate-100 text-slate-400'
+                        )}
+                      >
+                        {isBoth ? '🍱 Both' : isDinner ? '🌙 Dinner' : isLunch ? '☀️ Lunch' : 'Skip'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               /* Monthly Date-by-Date Breakdown List */
@@ -398,6 +416,29 @@ export function CustomPlanCheckoutModal({
                         <span className="font-black">{meals} {meals === 1 ? 'Meal' : 'Meals'}</span>
                       </span>
                     ))}
+                    {monthlyBreakdown.map(({ dateKey, dayNum, meals, slot }) => {
+                      const isDinner = slot === 'dinner';
+                      const isBoth = slot === 'both' || meals === 2;
+
+                      return (
+                        <span
+                          key={dateKey}
+                          className={cn(
+                            'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border font-bold',
+                            isBoth
+                              ? 'bg-orange-50 text-orange-950 border-orange-300'
+                              : isDinner
+                              ? 'bg-indigo-50 text-indigo-950 border-indigo-300'
+                              : 'bg-amber-50 text-amber-950 border-amber-300'
+                          )}
+                        >
+                          <span className="text-slate-500 text-[11px]">Date {dayNum}:</span>
+                          <span className="font-black">
+                            {isBoth ? '🍱 Both' : isDinner ? '🌙 Dinner' : '☀️ Lunch'}
+                          </span>
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-slate-500">No scheduled dates chosen.</p>

@@ -113,6 +113,7 @@ export default function VendorDetailClient(props: PageProps) {
     addons: VendorAddon[];
     image: string;
     vendor_margin_percent: string;
+    standard_meal_payout: string;
     custom_component_rates: Record<string, string>;
   }>({
     kitchen_name: '',
@@ -156,6 +157,7 @@ export default function VendorDetailClient(props: PageProps) {
     addons: [],
     image: '',
     vendor_margin_percent: '',
+    standard_meal_payout: '',
     custom_component_rates: {}
   });
 
@@ -238,6 +240,9 @@ export default function VendorDetailClient(props: PageProps) {
         vendor_margin_percent: typeof vendorData.vendor_margin_percent === 'number'
           ? String(vendorData.vendor_margin_percent)
           : (typeof (vendorData as any).vendor_margin_override === 'number' ? String((vendorData as any).vendor_margin_override) : ''),
+        standard_meal_payout: typeof vendorData.standard_meal_payout === 'number'
+          ? String(vendorData.standard_meal_payout)
+          : (typeof (vendorData as any).vendor_base_payout === 'number' ? String((vendorData as any).vendor_base_payout) : ''),
         custom_component_rates: (() => {
           const initialCustomRates: Record<string, string> = {};
           if (vendorData.custom_component_rates && typeof vendorData.custom_component_rates === 'object') {
@@ -521,6 +526,10 @@ export default function VendorDetailClient(props: PageProps) {
           const m = Number(editForm.vendor_margin_percent);
           return !isNaN(m) && m > 0 && m < 100 ? m : null;
         })(),
+        standard_meal_payout: (() => {
+          const p = Number(editForm.standard_meal_payout);
+          return !isNaN(p) && p > 0 ? p : 65;
+        })(),
         custom_component_rates: (() => {
           const sanitizedRates: Record<string, { vendorRate: number }> = {};
           Object.entries(editForm.custom_component_rates || {}).forEach(([compId, val]) => {
@@ -532,20 +541,6 @@ export default function VendorDetailClient(props: PageProps) {
           return sanitizedRates;
         })(),
         vendor_base_payout: (() => {
-          const basePayout = componentCatalog.reduce((sum, comp) => {
-            if (!comp.isActive) return sum;
-            const overrideVal = editForm.custom_component_rates[comp.id];
-            const isOverridden =
-              overrideVal !== undefined &&
-              overrideVal !== '' &&
-              !isNaN(Number(overrideVal)) &&
-              Number(overrideVal) > 0;
-            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
-            return sum + (comp.baseQuantity ?? 0) * rate;
-          }, 0);
-          return Math.round(basePayout * 100) / 100;
-        })(),
-        standard_meal_payout: (() => {
           const basePayout = componentCatalog.reduce((sum, comp) => {
             if (!comp.isActive) return sum;
             const overrideVal = editForm.custom_component_rates[comp.id];
@@ -1398,12 +1393,39 @@ export default function VendorDetailClient(props: PageProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Standard Meal Base Payout (e.g. ₹65 for Priya's Kitchen) */}
+              <div className="space-y-2 bg-white/80 p-3 rounded-xl border border-amber-200/60">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700">Vendor Kitchen Margin %</span>
+                  <span className="text-xs font-bold text-slate-700">Standard Meal Base Payout</span>
                   <span className="text-xs font-black text-brand bg-white px-2 py-0.5 rounded-md border border-amber-200">
-                    {editForm.vendor_margin_percent ? `${editForm.vendor_margin_percent}%` : '40% (Global)'}
+                    ₹{editForm.standard_meal_payout || '65.00'}
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="10"
+                    step="1"
+                    placeholder="65"
+                    value={editForm.standard_meal_payout}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, standard_meal_payout: e.target.value }))}
+                    className="w-full pl-7 pr-16 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 font-extrabold text-sm focus:border-brand outline-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">/ meal</span>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Agreed rate paid to vendor for 1 standard meal (e.g. Priya&apos;s Kitchen is ₹65). Base material is ~₹30 (Cost Ratio = {((30 / Number(editForm.standard_meal_payout || 65)) * 100).toFixed(1)}%).
+                </p>
+              </div>
+
+              {/* Optional Margin % Override */}
+              <div className="space-y-2 bg-white/80 p-3 rounded-xl border border-amber-200/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">Optional Margin % Override</span>
+                  <span className="text-xs font-black text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    {editForm.vendor_margin_percent ? `${editForm.vendor_margin_percent}%` : 'From Payout Ratio'}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1412,7 +1434,7 @@ export default function VendorDetailClient(props: PageProps) {
                     min="10"
                     max="70"
                     step="1"
-                    value={editForm.vendor_margin_percent || '40'}
+                    value={editForm.vendor_margin_percent || '46'}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, vendor_margin_percent: e.target.value }))}
                     className="w-full accent-amber-500 cursor-pointer"
                   />
@@ -1421,7 +1443,7 @@ export default function VendorDetailClient(props: PageProps) {
                       type="number"
                       min="1"
                       max="90"
-                      placeholder="40"
+                      placeholder="Auto"
                       value={editForm.vendor_margin_percent}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, vendor_margin_percent: e.target.value }))}
                       className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 text-center focus:border-brand outline-none"
@@ -1429,7 +1451,11 @@ export default function VendorDetailClient(props: PageProps) {
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">%</span>
                   </div>
                 </div>
+                <p className="text-[10px] text-slate-500">
+                  Leave blank to auto-derive from standard meal payout ratio.
+                </p>
               </div>
+            </div>
 
               {/* Simulation Pill */}
               <div className="bg-white p-3.5 rounded-xl border border-amber-200/70 space-y-2 shadow-2xs">
@@ -1542,7 +1568,6 @@ export default function VendorDetailClient(props: PageProps) {
                 </p>
               </div>
             </div>
-          </div>
 
           {/* Component Payout Overrides for this Kitchen */}
           <div className="space-y-3 pt-2">

@@ -72,7 +72,8 @@ const WEEKDAY_NAMES = [
  */
 export function formatPatternSummary(
   pattern: Record<string, any> = {},
-  isMonthly = false
+  isMonthly = false,
+  slots?: Record<string, any>
 ): string {
   if (isMonthly) {
     const datesWithMeals = Object.entries(pattern)
@@ -84,16 +85,22 @@ export function formatPatternSummary(
       return `${datesWithMeals.length} planned dates this month`;
     }
     return datesWithMeals
-      .map((d) => `Date ${d.key.split('-').pop()}: ${d.meals} ${d.meals === 1 ? 'meal' : 'meals'}`)
+      .map((d) => {
+        const s = slots?.[d.key];
+        const slotLabel = s === 'both' ? 'Both' : s === 'dinner' ? 'Dinner' : s === 'lunch' ? 'Lunch' : `${d.meals} ${d.meals === 1 ? 'meal' : 'meals'}`;
+        return `Date ${d.key.split('-').pop()}: ${slotLabel}`;
+      })
       .join(', ');
   }
 
-  // Weekly pattern: "Mon 1, Tue 1, Wed 2, ..."
+  // Weekly pattern: "Mon Lunch, Tue Dinner, ..."
   const parts: string[] = [];
   WEEKDAY_NAMES.forEach(({ full, short }) => {
     const count = Number(pattern[full] ?? pattern[short.toLowerCase()] ?? pattern[short] ?? 0);
+    const s = slots?.[short.toLowerCase()] ?? slots?.[full];
     if (count > 0) {
-      parts.push(`${short} ${count}`);
+      const slotLabel = s === 'both' ? 'Both' : s === 'dinner' ? 'Dinner' : s === 'lunch' ? 'Lunch' : `${count}`;
+      parts.push(`${short} ${slotLabel}`);
     } else {
       parts.push(`${short} Skip`);
     }
@@ -350,7 +357,11 @@ export function SubscriptionManager({
           const isActive = sub.status === 'active';
           const isPaused = sub.status === 'paused';
 
-          const patternSummary = formatPatternSummary(pattern, !isWeekly);
+          const patternSummary = formatPatternSummary(
+            pattern,
+            !isWeekly,
+            (sub as any).custom_slots || (sub as any).customSlots
+          );
 
           return (
             <div
