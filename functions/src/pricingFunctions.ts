@@ -739,6 +739,8 @@ export const createCustomPlanSubscription = functions.https.onCall(
       // For delivery ops
       deliveryPattern: pattern,
       delivery_pattern: pattern,
+      custom_schedule: pattern,
+      custom_slots: (data as any)?.custom_slots || (data as any)?.customSlots || null,
       isCustomPlan: true,
       is_custom_plan: true,
 

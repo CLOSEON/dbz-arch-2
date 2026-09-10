@@ -99,6 +99,7 @@ export interface AppUser {
   platform_fee_pct?: number;
   vendor_margin_percent?: number;
   vendor_margin_override?: number;
+  standard_meal_payout?: number;
   custom_component_rates?: Record<string, number | { vendorRate?: number; customerRate?: number }>;
   // Partner Verification
   verification_status?: 'pending' | 'details_requested' | 'verified' | 'rejected';

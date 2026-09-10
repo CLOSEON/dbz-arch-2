@@ -369,6 +369,8 @@ export interface CreateCustomPlanParams {
   userId: string;
   planType: 'weekly' | 'monthly';
   pattern: Record<string, any>;
+  custom_slots?: Record<string, any>;
+  customSlots?: Record<string, any>;
   totalMeals: number;
   totalPrice: number;
   planStartDate?: Date | string | number;

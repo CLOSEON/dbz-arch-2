@@ -16,6 +16,9 @@ import {
   AlertCircle,
   CheckCircle2,
   CalendarDays,
+  Sun,
+  Moon,
+  Check
 } from 'lucide-react';
 import { getPricingConfig, DEFAULT_MONTHLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
@@ -27,12 +30,14 @@ import { cn } from '@/lib/utils';
 import type { Subscription } from '@/types';
 
 export type MealCount = 0 | 1 | 2; // 0 = Skip, 1 = 1 Meal, 2 = 2 Meals
+export type MealSlotChoice = 'skip' | 'lunch' | 'dinner' | 'both';
 
 export interface MonthlyPlanDateSelection {
   dateKey: string; // 'YYYY-MM-DD'
   dayNumber: number; // 1..31
   dayOfWeek: string; // 'Monday', 'Tuesday', ...
   date: Date;
+  slot: MealSlotChoice;
   meals: MealCount;
   isToday: boolean;
 }
@@ -42,6 +47,7 @@ export interface MonthlyPlanBuilderResult {
   month: number; // 0-indexed (0=Jan, 8=Sept)
   monthName: string; // e.g. 'September'
   pattern: Record<string, number>;
+  slots: Record<string, MealSlotChoice>;
   selections: Record<string, MealCount>;
   dateDetails: MonthlyPlanDateSelection[];
   totalMeals: number;
@@ -49,6 +55,12 @@ export interface MonthlyPlanBuilderResult {
   monthlyTotal: number;
   customMealConfig?: ThaliCustomizerConfig | null;
   vendorId?: string;
+  slotCounts: {
+    lunch: number;
+    dinner: number;
+    both: number;
+    skip: number;
+  };
 }
 
 export interface MonthlyCustomPlanBuilderProps {
@@ -68,6 +80,10 @@ export interface MonthlyCustomPlanBuilderProps {
    * Pre-selected meal counts by dateKey ('YYYY-MM-DD').
    */
   initialSelections?: Record<string, MealCount>;
+  /**
+   * Pre-selected meal slots by dateKey ('YYYY-MM-DD').
+   */
+  initialSlots?: Record<string, MealSlotChoice>;
   /**
    * Selected vendor ID if scoping to a specific kitchen.
    */
@@ -118,6 +134,7 @@ export function MonthlyCustomPlanBuilder({
   initialYear,
   initialMonth,
   initialSelections,
+  initialSlots,
   vendorId,
   vendorOverrides,
   vendorMarginOverride,
@@ -133,9 +150,17 @@ export function MonthlyCustomPlanBuilder({
   const [currentYear, setCurrentYear] = useState<number>(() => initialYear ?? today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState<number>(() => initialMonth ?? today.getMonth());
 
-  // Meal selections keyed by 'YYYY-MM-DD'
-  const [selections, setSelections] = useState<Record<string, MealCount>>(() => {
-    return initialSelections ? { ...initialSelections } : {};
+  // Slot selections keyed by 'YYYY-MM-DD' ('skip' | 'lunch' | 'dinner' | 'both')
+  const [slots, setSlots] = useState<Record<string, MealSlotChoice>>(() => {
+    if (initialSlots) return { ...initialSlots };
+    if (initialSelections) {
+      const converted: Record<string, MealSlotChoice> = {};
+      Object.entries(initialSelections).forEach(([dateKey, count]) => {
+        converted[dateKey] = count === 2 ? 'both' : count === 1 ? 'lunch' : 'skip';
+      });
+      return converted;
+    }
+    return {};
   });
 
   const [pricePerMeal, setPricePerMeal] = useState<number>(
@@ -182,8 +207,8 @@ export function MonthlyCustomPlanBuilder({
 
   // 2. Pre-populate if user has existing monthly plan (show their current selections)
   useEffect(() => {
-    if (initialSelections && Object.keys(initialSelections).length > 0) {
-      return; // Already initialized by caller
+    if ((initialSlots && Object.keys(initialSlots).length > 0) || (initialSelections && Object.keys(initialSelections).length > 0)) {
+      return;
     }
 
     let isMounted = true;
@@ -199,29 +224,38 @@ export function MonthlyCustomPlanBuilder({
         if (!activeMonthly || !isMounted) return;
 
         // Check if existing subscription has custom schedule saved
+        const customSlots = (activeMonthly as any).custom_slots as Record<string, MealSlotChoice> | undefined;
         const customSchedule = (activeMonthly as any).custom_schedule as Record<string, MealCount> | undefined;
-        const populated: Record<string, MealCount> = {};
+        const populated: Record<string, MealSlotChoice> = {};
 
         const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-        if (customSchedule && Object.keys(customSchedule).length > 0) {
-          Object.entries(customSchedule).forEach(([k, v]) => {
+        if (customSlots && Object.keys(customSlots).length > 0) {
+          Object.entries(customSlots).forEach(([k, v]) => {
             populated[k] = v;
           });
-          setExistingPlanLoaded('Loaded custom selections from your active monthly plan');
+          setExistingPlanLoaded('Loaded custom slots from your active monthly plan');
+        } else if (customSchedule && Object.keys(customSchedule).length > 0) {
+          Object.entries(customSchedule).forEach(([k, v]) => {
+            populated[k] = v === 2 ? 'both' : v === 1 ? 'lunch' : 'skip';
+          });
+          setExistingPlanLoaded('Loaded custom schedule from your active monthly plan');
         } else {
           // If standard monthly subscription, pre-populate days based on meal_type
-          const defaultMeals: MealCount = activeMonthly.meal_type === 'both' ? 2 : 1;
+          const defaultSlot: MealSlotChoice =
+            activeMonthly.meal_type === 'both' ? 'both' :
+            activeMonthly.meal_type === 'dinner' ? 'dinner' : 'lunch';
+
           for (let d = 1; d <= daysInCurrentMonth; d++) {
             const key = formatDateKey(currentYear, currentMonth, d);
-            populated[key] = defaultMeals;
+            populated[key] = defaultSlot;
           }
           setExistingPlanLoaded(
-            `Pre-populated ${defaultMeals === 2 ? '2 Meals/day' : '1 Meal/day'} from your active monthly subscription`
+            `Pre-populated ${defaultSlot === 'both' ? 'Lunch + Dinner' : defaultSlot === 'dinner' ? 'Dinner' : 'Lunch'} from your active subscription`
           );
         }
 
-        setSelections((prev) => ({
+        setSlots((prev) => ({
           ...populated,
           ...prev, // preserve any immediate manual edits
         }));
@@ -234,7 +268,7 @@ export function MonthlyCustomPlanBuilder({
     return () => {
       isMounted = false;
     };
-  }, [user?.id, currentYear, currentMonth, initialSelections]);
+  }, [user?.id, currentYear, currentMonth, initialSelections, initialSlots]);
 
   // 3. Calendar Grid Construction (Mon-Sun)
   const calendarData = useMemo(() => {
@@ -278,6 +312,33 @@ export function MonthlyCustomPlanBuilder({
   }, [currentYear, currentMonth, today]);
 
   // 4. Real-time Calculation using calculateCustomPlanPrice
+  // 4. Derive numeric meal selections from slots
+  const selections = useMemo(() => {
+    const map: Record<string, MealCount> = {};
+    calendarData.days.forEach((day) => {
+      const s = slots[day.dateKey] || 'skip';
+      map[day.dateKey] = s === 'both' ? 2 : (s === 'lunch' || s === 'dinner') ? 1 : 0;
+    });
+    return map;
+  }, [calendarData.days, slots]);
+
+  // Count slots
+  const slotCounts = useMemo(() => {
+    let lunch = 0;
+    let dinner = 0;
+    let both = 0;
+    let skip = 0;
+    calendarData.days.forEach((day) => {
+      const s = slots[day.dateKey] || 'skip';
+      if (s === 'lunch') lunch++;
+      else if (s === 'dinner') dinner++;
+      else if (s === 'both') both++;
+      else skip++;
+    });
+    return { lunch, dinner, both, skip };
+  }, [calendarData.days, slots]);
+
+  // 5. Real-time Calculation using calculateCustomPlanPrice
   const effectivePricePerMeal = useMemo(() => {
     return Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
   }, [pricePerMeal, customMealConfig?.customerDeltaPerMeal]);
@@ -294,6 +355,7 @@ export function MonthlyCustomPlanBuilder({
         dayNumber: day.dayNumber,
         dayOfWeek: day.dayOfWeek,
         date: day.date,
+        slot: slots[day.dateKey] || 'skip',
         meals: selections[day.dateKey] || 0,
         isToday: day.isToday,
       }));
@@ -303,6 +365,7 @@ export function MonthlyCustomPlanBuilder({
         month: currentMonth,
         monthName: MONTH_NAMES[currentMonth],
         pattern: selections,
+        slots,
         selections,
         dateDetails,
         totalMeals,
@@ -310,9 +373,10 @@ export function MonthlyCustomPlanBuilder({
         monthlyTotal,
         customMealConfig: customMealConfig || undefined,
         vendorId,
+        slotCounts,
       });
     }
-  }, [selections, totalMeals, effectivePricePerMeal, monthlyTotal, currentYear, currentMonth, calendarData.days, customMealConfig, vendorId, onPlanChange]);
+  }, [slots, selections, totalMeals, effectivePricePerMeal, monthlyTotal, currentYear, currentMonth, calendarData.days, customMealConfig, vendorId, slotCounts, onPlanChange]);
 
   // Month navigation
   const handlePrevMonth = () => {
@@ -338,62 +402,60 @@ export function MonthlyCustomPlanBuilder({
     setCurrentMonth(today.getMonth());
   };
 
-  // Date toggle handlers
-  const handleToggleMeal = useCallback((dateKey: string, targetMeals: 1 | 2) => {
+  // Slot selector handlers
+  const handleSetSlot = useCallback((dateKey: string, targetSlot: MealSlotChoice) => {
     setCheckoutWarning(null);
-    setSelections((prev) => {
-      const current = prev[dateKey] || 0;
+    setSlots((prev) => {
+      const current = prev[dateKey] || 'skip';
       return {
         ...prev,
-        [dateKey]: current === targetMeals ? 0 : targetMeals,
+        [dateKey]: current === targetSlot ? 'skip' : targetSlot,
       };
     });
   }, []);
 
-  const handleSkipDate = useCallback((dateKey: string) => {
+  // Quick Preset Handlers with Slots
+  const handleSelectWorkdaysSlot = useCallback((slot: 'lunch' | 'dinner' | 'both') => {
     setCheckoutWarning(null);
-    setSelections((prev) => ({
-      ...prev,
-      [dateKey]: 0,
-    }));
-  }, []);
-
-  // Quick Preset Handlers for the entire month
-  const handleSelectAllWorkdays = useCallback((mealCount: 1 | 2) => {
-    setCheckoutWarning(null);
-    const updated: Record<string, MealCount> = { ...selections };
-    calendarData.days.forEach((d) => {
-      const dayOfWeek = d.date.getDay(); // 0 is Sun, 6 is Sat
-      const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
-      updated[d.dateKey] = isWeekday ? mealCount : 0;
+    setSlots((prev) => {
+      const updated = { ...prev };
+      calendarData.days.forEach((d) => {
+        const dayOfWeek = d.date.getDay(); // 0 is Sun, 6 is Sat
+        const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
+        updated[d.dateKey] = isWeekday ? slot : 'skip';
+      });
+      return updated;
     });
-    setSelections(updated);
-  }, [calendarData.days, selections]);
+  }, [calendarData.days]);
 
-  const handleSelectEntireMonth = useCallback((mealCount: 1 | 2) => {
+  const handleSelectEntireMonthSlot = useCallback((slot: 'lunch' | 'dinner' | 'both') => {
     setCheckoutWarning(null);
-    const updated: Record<string, MealCount> = { ...selections };
-    calendarData.days.forEach((d) => {
-      updated[d.dateKey] = mealCount;
+    setSlots((prev) => {
+      const updated = { ...prev };
+      calendarData.days.forEach((d) => {
+        updated[d.dateKey] = slot;
+      });
+      return updated;
     });
-    setSelections(updated);
-  }, [calendarData.days, selections]);
+  }, [calendarData.days]);
 
-  // Bottom action: Reset
-  const handleReset = useCallback(() => {
+  // Bottom action: Clear All
+  const handleClearAll = useCallback(() => {
     setCheckoutWarning(null);
-    const cleared: Record<string, MealCount> = { ...selections };
-    calendarData.days.forEach((d) => {
-      cleared[d.dateKey] = 0;
+    setSlots((prev) => {
+      const cleared = { ...prev };
+      calendarData.days.forEach((d) => {
+        cleared[d.dateKey] = 'skip';
+      });
+      return cleared;
     });
-    setSelections(cleared);
     if (onReset) onReset();
-  }, [calendarData.days, selections, onReset]);
+  }, [calendarData.days, onReset]);
 
   // Bottom action: Confirm & Checkout
   const handleConfirmCheckout = useCallback(() => {
     if (totalMeals === 0) {
-      setCheckoutWarning('Please select at least 1 meal for this month to proceed.');
+      setCheckoutWarning('Please select at least 1 meal slot for this month to proceed.');
       return;
     }
 
@@ -403,6 +465,7 @@ export function MonthlyCustomPlanBuilder({
       dayNumber: day.dayNumber,
       dayOfWeek: day.dayOfWeek,
       date: day.date,
+      slot: slots[day.dateKey] || 'skip',
       meals: selections[day.dateKey] || 0,
       isToday: day.isToday,
     }));
@@ -412,6 +475,7 @@ export function MonthlyCustomPlanBuilder({
       month: currentMonth,
       monthName: MONTH_NAMES[currentMonth],
       pattern: selections,
+      slots,
       selections,
       dateDetails,
       totalMeals,
@@ -419,6 +483,7 @@ export function MonthlyCustomPlanBuilder({
       monthlyTotal,
       customMealConfig: customMealConfig || undefined,
       vendorId,
+      slotCounts,
     };
 
     if (onConfirmCheckout) {
@@ -426,34 +491,34 @@ export function MonthlyCustomPlanBuilder({
     } else {
       setShowConfirmationModal(true);
     }
-  }, [totalMeals, calendarData.days, selections, currentYear, currentMonth, effectivePricePerMeal, monthlyTotal, customMealConfig, vendorId, onConfirmCheckout]);
+  }, [totalMeals, calendarData.days, slots, selections, currentYear, currentMonth, effectivePricePerMeal, monthlyTotal, customMealConfig, vendorId, slotCounts, onConfirmCheckout]);
 
   return (
     <div
       className={cn(
-        'w-full max-w-4xl mx-auto rounded-3xl bg-white/95 backdrop-blur-md border border-amber-100/80 shadow-xl shadow-amber-900/5 p-4 sm:p-6 md:p-8 transition-all',
+        'w-full max-w-4xl mx-auto rounded-3xl bg-[#FFFDF7] border border-amber-200/80 shadow-xl shadow-amber-900/5 p-4 sm:p-6 md:p-8 transition-all',
         className
       )}
     >
-      {/* ── Heading & Subtitle ────────────────────────────────────────────── */}
+      {/* ── Heading & Brand Tag ────────────────────────────────────────────── */}
       {!hideHeader && (
         <div className="mb-6 text-left sm:text-center">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-bold tracking-wide uppercase mb-2">
-            <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
-            Monthly Meal Planner
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/80 border border-amber-300/80 text-amber-900 text-xs font-black tracking-wider uppercase mb-2 shadow-2xs">
+            <CalendarDays className="w-3.5 h-3.5 text-amber-700" />
+            Dabzzo Monthly Meal Planner
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Customize Your Monthly Plan
+            Design Your Custom Monthly Calendar
           </h2>
           <p className="text-slate-600 text-sm sm:text-base mt-1 font-medium">
-            Select meals for each day this month
+            Pick your exact meals and delivery slots (<span className="text-amber-700 font-bold">☀️ Lunch</span> or <span className="text-indigo-700 font-bold">🌙 Dinner</span>) for each date
           </p>
         </div>
       )}
 
-      {/* ── Active Subscription Pre-populate Banner ───────────────────────── */}
+      {/* ── Active Subscription Banner ────────────────────────────────────── */}
       {existingPlanLoaded && (
-        <div className="mb-5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 animate-fade-in">
+        <div className="mb-5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 animate-fade-in shadow-2xs">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{existingPlanLoaded}</span>
@@ -469,12 +534,12 @@ export function MonthlyCustomPlanBuilder({
       )}
 
       {/* ── Month & Year Navigation Header ─────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-amber-50/90 via-white to-orange-50/70 border border-amber-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 active:scale-95 transition-all shadow-sm"
+            className="w-9 h-9 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
             aria-label="Previous Month"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -482,7 +547,7 @@ export function MonthlyCustomPlanBuilder({
           <button
             type="button"
             onClick={handleNextMonth}
-            className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 active:scale-95 transition-all shadow-sm"
+            className="w-9 h-9 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
             aria-label="Next Month"
           >
             <ChevronRight className="w-5 h-5" />
@@ -494,65 +559,102 @@ export function MonthlyCustomPlanBuilder({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Live Slot Counters in Header */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={handleJumpToToday}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-sm"
+            className="px-3 py-1.5 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 text-xs font-black text-amber-900 active:scale-95 transition-all shadow-2xs"
           >
             Today
           </button>
-          <div className="text-xs font-bold text-amber-800 bg-amber-100/70 px-2.5 py-1.5 rounded-xl border border-amber-200">
-            {calendarData.daysInMonth} Days
+          <div className="inline-flex items-center gap-1 text-[11px] font-black text-amber-900 bg-amber-100/90 px-2.5 py-1.5 rounded-xl border border-amber-200">
+            <span>☀️ {slotCounts.lunch}</span>
+            <span className="text-amber-400">•</span>
+            <span>🌙 {slotCounts.dinner}</span>
+            <span className="text-amber-400">•</span>
+            <span>🍱 {slotCounts.both}</span>
+            <span className="text-amber-400">•</span>
+            <span>{totalMeals} Meals</span>
           </div>
         </div>
       </div>
 
-      {/* ── Quick Month Presets ────────────────────────────────────────────── */}
-      <div className="mb-4 pb-3 border-b border-slate-100 overflow-x-auto no-scrollbar">
+      {/* ── Quick Month Presets (Batch Selectors) ─────────────────────────── */}
+      <div className="mb-4 pb-3 border-b border-amber-100 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 min-w-max text-xs">
-          <span className="text-slate-600 font-semibold mr-1">Quick Select:</span>
+          <span className="text-slate-600 font-bold mr-1 flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-brand" /> Quick Presets:
+          </span>
+
           <button
             type="button"
-            onClick={() => handleSelectAllWorkdays(1)}
-            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200/60 transition-colors active:scale-95"
+            onClick={() => handleSelectWorkdaysSlot('lunch')}
+            className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold border border-amber-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            Mon–Fri (1 Meal)
+            <Sun className="w-3.5 h-3.5 text-amber-600" /> Mon–Fri Lunch
           </button>
+
           <button
             type="button"
-            onClick={() => handleSelectAllWorkdays(2)}
-            className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 font-semibold border border-orange-200/60 transition-colors active:scale-95"
+            onClick={() => handleSelectWorkdaysSlot('dinner')}
+            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 font-bold border border-indigo-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            Mon–Fri (2 Meals)
+            <Moon className="w-3.5 h-3.5 text-indigo-600" /> Mon–Fri Dinner
           </button>
+
           <button
             type="button"
-            onClick={() => handleSelectEntireMonth(1)}
-            className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold border border-slate-200 transition-colors active:scale-95"
+            onClick={() => handleSelectWorkdaysSlot('both')}
+            className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-900 font-bold border border-orange-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            All Month (1 Meal)
+            🍱 Mon–Fri Both
           </button>
+
           <button
             type="button"
-            onClick={() => handleSelectEntireMonth(2)}
-            className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold border border-slate-200 transition-colors active:scale-95"
+            onClick={() => handleSelectEntireMonthSlot('lunch')}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-slate-800 font-bold border border-amber-200/80 transition-all active:scale-95 shadow-2xs"
           >
-            All Month (2 Meals)
+            ☀️ All Month Lunch
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectEntireMonthSlot('dinner')}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-800 font-bold border border-indigo-200/80 transition-all active:scale-95 shadow-2xs"
+          >
+            🌙 All Month Dinner
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectEntireMonthSlot('both')}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-orange-50 text-slate-800 font-bold border border-orange-200/80 transition-all active:scale-95 shadow-2xs"
+          >
+            🍱 All Month Both
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold border border-slate-200 transition-all active:scale-95"
+          >
+            ✕ Clear All
           </button>
         </div>
       </div>
 
       {/* ── Calendar View: Full Mon-Sun Grid ──────────────────────────────── */}
-      <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-50/50 p-2 sm:p-3">
+      <div className="mb-6 overflow-hidden rounded-3xl border border-amber-200/90 bg-amber-50/30 p-2 sm:p-3 shadow-inner">
         {/* Mon-Sun Grid Headers */}
         <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
           {WEEKDAY_HEADERS.map((h, i) => (
             <div
               key={h}
               className={cn(
-                'py-1 text-[11px] sm:text-xs font-bold tracking-wider uppercase',
-                i >= 5 ? 'text-amber-700 font-black' : 'text-slate-600'
+                'py-1 text-[11px] sm:text-xs font-black tracking-wider uppercase',
+                i >= 5 ? 'text-amber-800 font-black' : 'text-slate-600'
               )}
             >
               {h}
@@ -561,105 +663,133 @@ export function MonthlyCustomPlanBuilder({
         </div>
 
         {/* Calendar Day Cells */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2">
-          {/* Empty offset cells for days before the 1st of month */}
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+          {/* Empty offset cells */}
           {Array.from({ length: calendarData.startOffset }).map((_, idx) => (
             <div
               key={`empty-${idx}`}
-              className="min-h-[64px] sm:min-h-[82px] rounded-xl bg-slate-100/40 border border-dashed border-slate-200/50 opacity-40 select-none"
+              className="min-h-[78px] sm:min-h-[96px] rounded-2xl bg-amber-100/20 border border-dashed border-amber-200/40 opacity-40 select-none"
             />
           ))}
 
           {/* Active Month Days */}
           {calendarData.days.map((day) => {
-            const meals = selections[day.dateKey] || 0;
-            const is1Meal = meals === 1;
-            const is2Meals = meals === 2;
-            const isSkipped = meals === 0;
-            const isSelected = meals > 0;
+            const slot = slots[day.dateKey] || 'skip';
+            const isLunch = slot === 'lunch';
+            const isDinner = slot === 'dinner';
+            const isBoth = slot === 'both';
+            const isSkipped = slot === 'skip';
 
             return (
               <div
                 key={day.dateKey}
                 className={cn(
-                  'relative flex flex-col justify-between p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl border transition-all duration-150',
+                  'relative flex flex-col justify-between p-1.5 sm:p-2 rounded-2xl border transition-all duration-150 shadow-2xs select-none',
                   day.isToday && 'ring-2 ring-amber-500 border-amber-500 shadow-md',
-                  isSelected
-                    ? is2Meals
-                      ? 'bg-gradient-to-br from-amber-50 via-orange-50/80 to-amber-100/60 border-orange-400 ring-1 ring-orange-400/40 shadow-sm'
-                      : 'bg-amber-50/85 border-amber-300 ring-1 ring-amber-300/40 shadow-sm'
-                    : 'bg-white border-slate-200 hover:border-slate-300'
+                  isLunch && 'bg-gradient-to-br from-amber-50 via-amber-100/60 to-orange-50/40 border-amber-300 ring-1 ring-amber-300/60',
+                  isDinner && 'bg-gradient-to-br from-indigo-50/90 via-slate-50 to-amber-50/40 border-indigo-300 ring-1 ring-indigo-300/60',
+                  isBoth && 'bg-gradient-to-br from-amber-100 via-orange-100/70 to-amber-50 border-orange-400 ring-1 ring-orange-400/70 shadow-sm',
+                  isSkipped && 'bg-white/95 border-amber-100/80 hover:border-amber-300'
                 )}
               >
-                {/* Top Row: Date Number & Today Visual Distinction */}
+                {/* Top Row: Date Number & Slot Indicator */}
                 <div className="flex items-center justify-between w-full mb-1">
                   <span
                     className={cn(
                       'text-xs sm:text-sm font-black tracking-tight',
-                      day.isToday ? 'text-amber-600' : isSelected ? 'text-slate-900' : 'text-slate-700'
+                      day.isToday ? 'text-amber-700' : isSkipped ? 'text-slate-600' : 'text-slate-900'
                     )}
                   >
                     {day.dayNumber}
                   </span>
 
-                  {day.isToday && (
-                    <span className="hidden sm:inline-flex items-center text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-500 text-white shadow-xs">
-                      Today
+                  {/* Visual Slot Pill */}
+                  {isLunch && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-black text-amber-900 bg-amber-200/80 px-1 sm:px-1.5 py-0.5 rounded-md border border-amber-300/80 shadow-2xs">
+                      ☀️ <span className="hidden sm:inline">Lunch</span>
                     </span>
                   )}
-                  {day.isToday && (
-                    <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  {isDinner && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-black text-indigo-900 bg-indigo-100 px-1 sm:px-1.5 py-0.5 rounded-md border border-indigo-200 shadow-2xs">
+                      🌙 <span className="hidden sm:inline">Dinner</span>
+                    </span>
+                  )}
+                  {isBoth && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-black text-orange-950 bg-orange-200/90 px-1 sm:px-1.5 py-0.5 rounded-md border border-orange-300 shadow-2xs">
+                      🍱 <span className="hidden sm:inline">Both</span>
+                    </span>
+                  )}
+                  {isSkipped && (
+                    <span className="text-[9px] font-semibold text-slate-300">
+                      Skip
+                    </span>
                   )}
                 </div>
 
-                {/* Bottom Row: Toggle Buttons [1] [2] and [Skip] */}
-                <div className="flex items-center gap-1 sm:gap-1.5 justify-between w-full mt-auto">
-                  {/* [1] Toggle Button */}
+                {/* Bottom Row: 4 Intuitive Slot Toggle Buttons */}
+                <div className="grid grid-cols-4 gap-0.5 sm:gap-1 w-full mt-auto pt-1 border-t border-amber-100/60">
+                  {/* Lunch Toggle */}
                   <button
                     type="button"
-                    onClick={() => handleToggleMeal(day.dateKey, 1)}
-                    aria-pressed={is1Meal}
-                    title="1 Meal"
+                    onClick={() => handleSetSlot(day.dateKey, 'lunch')}
+                    aria-pressed={isLunch}
+                    title="Select Lunch (1 Meal)"
                     className={cn(
-                      'flex-1 h-6 sm:h-7 rounded-lg text-[10px] sm:text-xs font-black transition-all flex items-center justify-center active:scale-90 select-none',
-                      is1Meal
-                        ? 'bg-amber-500 text-white shadow-sm ring-1 ring-amber-400'
-                        : 'bg-slate-50 hover:bg-amber-50 text-slate-700 border border-slate-200'
+                      'h-6 sm:h-7 rounded-lg text-[10px] sm:text-xs font-black transition-all flex items-center justify-center active:scale-90 select-none',
+                      isLunch
+                        ? 'bg-amber-500 text-white shadow-xs ring-1 ring-amber-400'
+                        : 'bg-white/80 hover:bg-amber-50 text-slate-700 border border-slate-200/60'
                     )}
                   >
-                    1
+                    ☀️
                   </button>
 
-                  {/* [2] Toggle Button */}
+                  {/* Dinner Toggle */}
                   <button
                     type="button"
-                    onClick={() => handleToggleMeal(day.dateKey, 2)}
-                    aria-pressed={is2Meals}
-                    title="2 Meals"
+                    onClick={() => handleSetSlot(day.dateKey, 'dinner')}
+                    aria-pressed={isDinner}
+                    title="Select Dinner (1 Meal)"
                     className={cn(
-                      'flex-1 h-6 sm:h-7 rounded-lg text-[10px] sm:text-xs font-black transition-all flex items-center justify-center active:scale-90 select-none',
-                      is2Meals
-                        ? 'bg-gradient-to-r from-amber-600 to-orange-500 text-white shadow-sm ring-1 ring-orange-400'
-                        : 'bg-slate-50 hover:bg-orange-50 text-slate-700 border border-slate-200'
+                      'h-6 sm:h-7 rounded-lg text-[10px] sm:text-xs font-black transition-all flex items-center justify-center active:scale-90 select-none',
+                      isDinner
+                        ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-400'
+                        : 'bg-white/80 hover:bg-indigo-50 text-slate-700 border border-slate-200/60'
                     )}
                   >
-                    2
+                    🌙
                   </button>
 
-                  {/* [Skip] Option (Light Gray) */}
+                  {/* Both (Lunch + Dinner) Toggle */}
                   <button
                     type="button"
-                    onClick={() => handleSkipDate(day.dateKey)}
+                    onClick={() => handleSetSlot(day.dateKey, 'both')}
+                    aria-pressed={isBoth}
+                    title="Select Both Lunch & Dinner (2 Meals)"
+                    className={cn(
+                      'h-6 sm:h-7 rounded-lg text-[10px] sm:text-xs font-black transition-all flex items-center justify-center active:scale-90 select-none',
+                      isBoth
+                        ? 'bg-gradient-to-r from-amber-600 to-orange-500 text-white shadow-xs ring-1 ring-orange-400'
+                        : 'bg-white/80 hover:bg-orange-50 text-slate-700 border border-slate-200/60'
+                    )}
+                  >
+                    🍱
+                  </button>
+
+                  {/* Skip Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => handleSetSlot(day.dateKey, 'skip')}
                     aria-pressed={isSkipped}
-                    title="Skip"
+                    title="Skip This Day"
                     className={cn(
-                      'h-6 sm:h-7 px-1 sm:px-1.5 rounded-lg text-[9px] sm:text-[11px] transition-all flex items-center justify-center active:scale-90 select-none',
+                      'h-6 sm:h-7 rounded-lg text-[9px] sm:text-xs font-bold transition-all flex items-center justify-center active:scale-90 select-none',
                       isSkipped
-                        ? 'bg-slate-200 text-slate-700 font-bold border border-slate-300 shadow-inner'
-                        : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                        ? 'bg-slate-200/80 text-slate-600 font-black'
+                        : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                     )}
                   >
-                    Skip
+                    ✕
                   </button>
                 </div>
               </div>
@@ -669,7 +799,7 @@ export function MonthlyCustomPlanBuilder({
       </div>
 
       {/* ── Thali Portions Customizer Section ──────────────────────────────── */}
-      <div className="mb-6 rounded-2xl border border-amber-200/80 bg-white p-4 sm:p-5 shadow-sm">
+      <div className="mb-6 rounded-3xl border border-amber-200/90 bg-white p-4 sm:p-5 shadow-sm">
         <ThaliCustomizer
           baseMealPrice={pricePerMeal}
           planType="monthly"
@@ -681,12 +811,12 @@ export function MonthlyCustomPlanBuilder({
         />
       </div>
 
-      {/* ── Real-time Calculation Below ───────────────────────────────────── */}
-      <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-50/90 via-orange-50/60 to-amber-100/40 border border-amber-200/80 p-4 sm:p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-amber-200/60">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            Real-time Monthly Calculation
+      {/* ── Real-Time Monthly Receipt Breakdown ────────────────────────────── */}
+      <div className="mb-6 rounded-3xl bg-gradient-to-br from-amber-50/95 via-white to-orange-50/70 border border-amber-200 p-4 sm:p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-amber-200/70">
+          <span className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            Monthly Plan Calculation Receipt
           </span>
           {isLoadingPricing && (
             <span className="text-[11px] font-medium text-amber-700 animate-pulse">
@@ -695,20 +825,25 @@ export function MonthlyCustomPlanBuilder({
           )}
         </div>
 
-        <div className="space-y-2.5">
-          {/* Total meals this month: {count} */}
-          <div className="flex items-center justify-between text-sm sm:text-base text-slate-700">
-            <span className="font-medium">Total meals this month:</span>
-            <span className="font-bold text-slate-900 text-base sm:text-lg">
-              {totalMeals}
-            </span>
+        <div className="space-y-3">
+          {/* Total Meals & Slot Breakdown */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-sm sm:text-base text-slate-700">
+            <span className="font-semibold text-slate-800">Total Meals Scheduled:</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-slate-900 text-base sm:text-lg">
+                {totalMeals} Meals
+              </span>
+              <span className="text-xs font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-200">
+                ☀️ {slotCounts.lunch} Lunches • 🌙 {slotCounts.dinner} Dinners • 🍱 {slotCounts.both} Full Days
+              </span>
+            </div>
           </div>
 
-          {/* Price per meal: ₹{effectivePricePerMeal} */}
+          {/* Rate Per Meal */}
           <div className="flex items-center justify-between text-sm sm:text-base text-slate-700">
-            <span className="font-medium">Price per meal:</span>
+            <span className="font-semibold text-slate-800">Price Per Meal:</span>
             <div className="text-right">
-              <span className="font-semibold text-slate-900">
+              <span className="font-bold text-slate-900">
                 ₹{effectivePricePerMeal}
               </span>
               {customMealConfig && (customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
@@ -719,20 +854,33 @@ export function MonthlyCustomPlanBuilder({
             </div>
           </div>
 
-          {/* Monthly total: ₹{total} (in bold, larger font) */}
-          <div className="pt-3 border-t border-amber-200/70 flex items-center justify-between">
-            <span className="text-base sm:text-lg font-bold text-slate-900">
-              Monthly total:
+          {/* Platform Pricing Transparency */}
+          <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-amber-100">
+            <span>Pricing Breakdown per Meal:</span>
+            <span className="font-medium text-slate-700">
+              Kitchen Food Rate + ₹11 Delivery Fee + 5% Platform Margin
             </span>
-            <span className="text-2xl sm:text-3xl font-extrabold text-amber-800 tracking-tight">
+          </div>
+
+          {/* Monthly Total */}
+          <div className="pt-3 border-t border-amber-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-base sm:text-lg font-black text-slate-900 block">
+                Total Monthly Investment:
+              </span>
+              <span className="text-xs text-slate-500">
+                All-inclusive with doorstep delivery & daily hot packaging
+              </span>
+            </div>
+            <span className="text-2xl sm:text-3xl font-black text-amber-800 tracking-tight">
               ₹{monthlyTotal}
             </span>
           </div>
         </div>
 
         {totalMeals === 0 && (
-          <p className="text-xs text-amber-700/80 mt-3 flex items-center gap-1">
-            <Info className="w-3.5 h-3.5 shrink-0" />
+          <p className="text-xs text-amber-800/90 mt-3 flex items-center gap-1.5 bg-amber-100/60 p-2 rounded-xl border border-amber-200">
+            <Info className="w-4 h-4 shrink-0 text-amber-600" />
             Pick meals for any days in {MONTH_NAMES[currentMonth]} to calculate your customized monthly plan.
           </p>
         )}
@@ -745,7 +893,7 @@ export function MonthlyCustomPlanBuilder({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold flex items-center gap-2"
+            className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-2xs"
           >
             <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
             <span>{checkoutWarning}</span>
@@ -753,16 +901,16 @@ export function MonthlyCustomPlanBuilder({
         )}
       </AnimatePresence>
 
-      {/* ── Buttons at Bottom ──────────────────────────────────────────────── */}
+      {/* ── Action Buttons at Bottom ───────────────────────────────────────── */}
       <div className="flex flex-col-reverse sm:flex-row items-center gap-3">
         {/* [Reset] Button */}
         <button
           type="button"
-          onClick={handleReset}
-          className="w-full sm:w-auto px-5 py-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-sm transition-all duration-150 flex items-center justify-center gap-2 active:scale-95 shadow-sm"
+          onClick={handleClearAll}
+          className="w-full sm:w-auto px-5 py-3.5 rounded-2xl border border-amber-200 bg-white hover:bg-amber-50 text-slate-700 hover:text-slate-900 font-bold text-sm transition-all duration-150 flex items-center justify-center gap-2 active:scale-95 shadow-2xs"
         >
-          <RotateCcw className="w-4 h-4 text-slate-500" />
-          Reset
+          <RotateCcw className="w-4 h-4 text-amber-600" />
+          Reset Plan
         </button>
 
         {/* [Confirm & Checkout] Button */}
@@ -770,7 +918,7 @@ export function MonthlyCustomPlanBuilder({
           type="button"
           onClick={handleConfirmCheckout}
           className={cn(
-            'w-full sm:flex-1 py-3.5 px-6 rounded-xl font-black text-sm sm:text-base transition-all duration-150 flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg',
+            'w-full sm:flex-1 py-3.5 px-6 rounded-2xl font-black text-sm sm:text-base transition-all duration-150 flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg',
             totalMeals > 0
               ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/25 cursor-pointer'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
@@ -790,10 +938,12 @@ export function MonthlyCustomPlanBuilder({
           planType: 'monthly',
           totalPrice: monthlyTotal,
           pattern: selections,
+          slots,
           totalMeals,
           pricePerMeal: effectivePricePerMeal,
           planStartDate: new Date(currentYear, currentMonth, 1),
           customMealConfig: customMealConfig || undefined,
+          vendorId,
         }}
       />
     </div>

@@ -1,4 +1,4 @@
-'use client';
+                     'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Utensils, Sparkles, Plus, Minus, Check, RotateCcw } from 'lucide-react';
@@ -275,8 +275,8 @@ export function ThaliCustomizer({
         </button>
       </div>
 
-      {/* Component Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      {/* Component Cards Grid - 2 columns for spacious, unclipped layout */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {activeComponents.map((comp) => {
           const qty = quantities[comp.id] ?? comp.baseQuantity;
           const delta = qty - comp.baseQuantity;
@@ -286,62 +286,64 @@ export function ThaliCustomizer({
           return (
             <div
               key={comp.id}
-              className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+              className={`p-3.5 rounded-2xl border transition-all duration-150 flex items-center justify-between gap-3 ${
                 isIncreased
-                  ? 'bg-emerald-50/40 border-emerald-200/80 shadow-xs'
+                  ? 'bg-gradient-to-br from-emerald-50/50 via-white to-amber-50/20 border-emerald-300 ring-1 ring-emerald-300/40 shadow-xs'
                   : isDecreased
-                  ? 'bg-rose-50/40 border-rose-200/80'
-                  : 'bg-slate-50/60 border-slate-200/70 hover:border-slate-300'
+                  ? 'bg-gradient-to-br from-rose-50/50 via-white to-amber-50/20 border-rose-300 ring-1 ring-rose-300/40 shadow-xs'
+                  : 'bg-white/95 border-amber-100 hover:border-amber-300 hover:shadow-2xs'
               }`}
             >
               {/* Item Info */}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-xs text-slate-900 truncate">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-extrabold text-sm text-slate-900 tracking-tight">
                     {comp.name}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium lowercase">
-                    ({comp.unit})
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-200/60 lowercase">
+                    {comp.unit}
                   </span>
                 </div>
 
-                <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
-                  <span>Base: {comp.baseQuantity}</span>
-                  <span>•</span>
-                  <span>₹{comp.customerRate}/{comp.unit}</span>
+                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">Base: {comp.baseQuantity}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-slate-700">₹{comp.customerRate}/{comp.unit}</span>
                 </div>
 
-                {/* Delta Pill */}
-                <div className="mt-1 text-[10px] font-bold">
+                {/* Delta Status Badge */}
+                <div className="mt-1.5 flex items-center">
                   {isIncreased && (
-                    <span className="text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-200">
                       +{delta} (Adds ₹{delta * comp.customerRate})
                     </span>
                   )}
                   {isDecreased && (
-                    <span className="text-rose-700 bg-rose-100/70 px-1.5 py-0.5 rounded">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-800 bg-rose-100/80 px-2 py-0.5 rounded-md border border-rose-200">
                       {delta} (Saves ₹{Math.abs(delta) * comp.customerRate})
                     </span>
                   )}
                   {delta === 0 && (
-                    <span className="text-slate-400 font-medium">Standard included</span>
+                    <span className="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md">
+                      Standard included
+                    </span>
                   )}
                 </div>
               </div>
 
-              {/* Stepper Buttons */}
-              <div className="flex items-center gap-1.5 shrink-0 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+              {/* Stepper Buttons (Warm Dabzzo Food Branding) */}
+              <div className="flex items-center gap-1.5 shrink-0 bg-amber-50/50 border border-amber-200/80 rounded-2xl p-1 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => handleDecrement(comp)}
                   disabled={qty <= comp.minQuantity}
-                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-colors active:scale-90"
+                  className="w-8 h-8 rounded-xl bg-white hover:bg-amber-100 text-amber-900 disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-all active:scale-90 border border-amber-200/60 shadow-2xs"
                   aria-label={`Decrease ${comp.name}`}
                 >
-                  <Minus className="w-3 h-3" />
+                  <Minus className="w-3.5 h-3.5" />
                 </button>
 
-                <span className="w-6 text-center font-black font-mono text-xs text-slate-900">
+                <span className="w-7 text-center font-black font-mono text-sm text-slate-900 select-none">
                   {qty}
                 </span>
 
@@ -349,10 +351,10 @@ export function ThaliCustomizer({
                   type="button"
                   onClick={() => handleIncrement(comp)}
                   disabled={qty >= comp.maxQuantity}
-                  className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-white disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-colors active:scale-90"
+                  className="w-8 h-8 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-all active:scale-90 shadow-sm shadow-amber-500/25"
                   aria-label={`Increase ${comp.name}`}
                 >
-                  <Plus className="w-3 h-3" />
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -360,28 +362,28 @@ export function ThaliCustomizer({
         })}
       </div>
 
-      {/* Live Calculation Output Breakdown */}
-      <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 font-black text-amber-900">
-            <Sparkles className="w-3.5 h-3.5 text-brand" />
-            <span>Thali Price Breakdown (Per Meal):</span>
+      {/* Live Culinary Price Breakdown & Kitchen Transparency Receipt */}
+      <div className="p-4 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-100/40 border border-amber-200/80 rounded-2xl space-y-3 shadow-xs">
+        <div className="flex items-center justify-between text-xs pb-2 border-b border-amber-200/70">
+          <div className="flex items-center gap-1.5 font-black text-amber-950">
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            <span className="text-xs uppercase tracking-wider">Thali Price Breakdown (Per Meal)</span>
           </div>
-          <span className="font-extrabold text-slate-900 text-sm">
-            ₹{effectiveCustomerPricePerMeal} / meal
+          <span className="font-extrabold text-amber-900 text-base">
+            ₹{effectiveCustomerPricePerMeal} <span className="text-xs font-semibold text-slate-500">/ meal</span>
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-amber-200/60 text-xs">
-          <div className="bg-white/80 p-2 rounded-lg border border-amber-100">
-            <span className="text-[10px] font-semibold text-slate-400 block">Base Thali</span>
-            <span className="font-black text-slate-800">₹{baseMealPrice}</span>
+        <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
+          <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Base Thali</span>
+            <span className="font-black text-slate-800 text-sm mt-0.5 block">₹{baseMealPrice}</span>
           </div>
 
-          <div className="bg-white/80 p-2 rounded-lg border border-amber-100">
-            <span className="text-[10px] font-semibold text-slate-400 block">Custom Adjustment</span>
+          <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Portion Delta</span>
             <span
-              className={`font-black ${
+              className={`font-black text-sm mt-0.5 block ${
                 deltaResult.customerDeltaPerMeal > 0
                   ? 'text-emerald-700'
                   : deltaResult.customerDeltaPerMeal < 0
@@ -397,31 +399,35 @@ export function ThaliCustomizer({
             </span>
           </div>
 
-          <div className="bg-white/80 p-2 rounded-lg border border-amber-100">
-            <span className="text-[10px] font-semibold text-slate-400 block">Effective Rate</span>
-            <span className="font-black text-brand">₹{effectiveCustomerPricePerMeal}</span>
+          <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200/60 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Effective Rate</span>
+            <span className="font-black text-amber-800 text-sm mt-0.5 block">₹{effectiveCustomerPricePerMeal}</span>
           </div>
         </div>
 
         {/* Packing Manifest Preview */}
-        <div className="text-[11px] text-slate-600 font-medium flex items-start gap-1.5 pt-1">
-          <span className="font-bold text-slate-800 shrink-0">📦 Manifest:</span>
-          <span className="font-mono text-slate-700">{manifestSummary}</span>
+        <div className="text-xs text-slate-700 font-medium flex items-start gap-2 pt-1">
+          <span className="font-bold text-slate-900 shrink-0">🍱 Manifest:</span>
+          <span className="font-mono text-slate-800 bg-white/70 px-2 py-0.5 rounded-md border border-amber-100 flex-1">
+            {manifestSummary}
+          </span>
         </div>
 
         {/* Dynamic Margin & Kitchen Cost Badge */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/60 text-[11px] text-slate-600">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-slate-700">Kitchen Raw Cost:</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/70 text-xs text-slate-600">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-700">Raw Kitchen Cost:</span>
             <span className="font-black text-slate-900">₹{rawKitchenCost}</span>
-            <span className="text-slate-400">•</span>
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-              {effectiveVendorMargin}% kitchen margin
+            <span className="text-slate-300">•</span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+              {effectiveVendorMargin}% kitchen ratio
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-slate-500">Vendor Payout:</span>
-            <span className="font-black text-emerald-700">₹{algorithmicPricing.vendorPayout.toFixed(2)}</span>
+            <span className="text-slate-500 font-medium">Vendor Payout:</span>
+            <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              ₹{algorithmicPricing.vendorPayout.toFixed(2)}
+            </span>
           </div>
         </div>
       </div>

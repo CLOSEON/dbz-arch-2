@@ -75,11 +75,11 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   // ── Pricing Algorithm State (system_settings/pricing_algorithm) ──────────────
   const [algoConfig, setAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
   const [initialAlgoConfig, setInitialAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
-  const [deliveryCharge, setDeliveryCharge] = useState<string>('13');
-  const [vendorMarginPct, setVendorMarginPct] = useState<number>(40);
+  const [deliveryCharge, setDeliveryCharge] = useState<string>('11');
+  const [vendorMarginPct, setVendorMarginPct] = useState<number>(46);
   const [dailyPlatformMargin, setDailyPlatformMargin] = useState<string>('15');
   const [weeklyPlatformMargin, setWeeklyPlatformMargin] = useState<string>('12');
-  const [monthlyPlatformMargin, setMonthlyPlatformMargin] = useState<string>('4');
+  const [monthlyPlatformMargin, setMonthlyPlatformMargin] = useState<string>('5');
   const [roundingStrategy, setRoundingStrategy] = useState<'round' | 'ceil'>('round');
   const [savingAlgo, setSavingAlgo] = useState(false);
   const [sampleRawCost, setSampleRawCost] = useState<string>('30');
@@ -129,11 +129,11 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       setMonthlyPrice(String(monthly.pricePerMeal ?? 1400));
       setMonthlyVendorCost(String(monthly.vendorCostPerMeal ?? 900));
 
-      setDeliveryCharge(String(algo.deliveryChargePerMeal ?? 13));
-      setVendorMarginPct(algo.vendorMarginPercent ?? 40);
+      setDeliveryCharge(String(algo.deliveryChargePerMeal ?? 11));
+      setVendorMarginPct(algo.vendorMarginPercent ?? 46);
       setDailyPlatformMargin(String(algo.platformMargins?.daily ?? 15));
       setWeeklyPlatformMargin(String(algo.platformMargins?.weekly ?? 12));
-      setMonthlyPlatformMargin(String(algo.platformMargins?.monthly ?? 4));
+      setMonthlyPlatformMargin(String(algo.platformMargins?.monthly ?? 5));
       setRoundingStrategy(algo.roundingStrategy ?? 'round');
     } catch (err) {
       console.error('[MealPricingConfig] Error loading pricing config:', err);
@@ -512,6 +512,7 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
               </div>
               <p className="text-xs font-medium text-slate-500 mt-1">
                 Controls the core algorithmic formulas: Kitchen Vendor Payouts with fluctuating margin % (default 40%), Delivery Fee (₹13), and Platform Margins across plan tiers.
+                Controls the core algorithmic formulas: Kitchen Vendor Payouts with ratio model (e.g. Priya&apos;s Kitchen ₹65 payout / 46.15% ratio), Delivery Fee (₹11), and Platform Margins (5% monthly veg).
               </p>
             </div>
           </div>
@@ -566,6 +567,7 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
             </div>
             <p className="text-[10px] text-slate-500">
               Default ₹13 per meal added directly to customer final price.
+              Default ₹11 per meal added directly to customer final price.
             </p>
           </div>
 
