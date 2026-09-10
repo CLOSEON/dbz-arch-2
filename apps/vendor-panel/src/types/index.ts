@@ -94,6 +94,9 @@ export interface AppUser {
     beneficiary_name: string;
   };
   platform_fee_pct?: number;
+  custom_component_rates?: Record<string, number | { vendorRate?: number; customerRate?: number }>;
+  vendor_margin_percent?: number;
+  vendor_margin_override?: number;
   // Partner Verification
   verification_status?: 'pending' | 'details_requested' | 'verified' | 'rejected';
   admin_note?: string;
@@ -145,6 +148,8 @@ export interface Subscription {
   razorpay_order_id?: string;
   discount_pct?: number;
   promo_code?: string;
+  custom_meal_config?: CustomMealConfig;
+  meal_components?: string[];
   created_at: FirestoreTimestamp;
   next_billing_date?: FirestoreTimestamp;
   cancelled_at?: FirestoreTimestamp;
@@ -412,3 +417,108 @@ export interface AuditLog {
   metadata?: any;
   created_at: FirestoreTimestamp;
 }
+
+// ─── Meal Component Catalog & Customization ───────────────────────────────────
+
+export type ComponentUnit = 'piece' | 'bowl' | 'portion';
+export type ComponentCategory = 'staple' | 'curry' | 'side' | 'dessert';
+
+export interface MealComponent {
+  id: string;
+  name: string;
+  unit: ComponentUnit;
+  baseQuantity: number;
+  minQuantity: number;
+  maxQuantity: number;
+  customerRate: number;
+  vendorRate: number;
+  isActive: boolean;
+  category: ComponentCategory;
+}
+
+export interface CustomMealConfig {
+  components: Record<string, number>; // componentId -> quantity
+  deltaPricePerMeal: number;
+  deltaVendorCostPerMeal?: number;
+  effectiveCustomerPricePerMeal: number;
+  effectiveVendorCostPerMeal?: number;
+  baseCustomerPricePerMeal: number;
+  baseVendorCostPerMeal?: number;
+  manifestSummary?: string;
+}
+
+export const DEFAULT_MEAL_COMPONENTS: MealComponent[] = [
+  {
+    id: 'roti',
+    name: 'Roti',
+    unit: 'piece',
+    baseQuantity: 4,
+    minQuantity: 0,
+    maxQuantity: 12,
+    customerRate: 5,
+    vendorRate: 3,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'rice',
+    name: 'Rice',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'staple',
+  },
+  {
+    id: 'sabzi',
+    name: 'Sabzi',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    customerRate: 25,
+    vendorRate: 18,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'dal',
+    name: 'Dal',
+    unit: 'bowl',
+    baseQuantity: 1,
+    minQuantity: 0,
+    maxQuantity: 4,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'curry',
+  },
+  {
+    id: 'sweet',
+    name: 'Sweet',
+    unit: 'piece',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 5,
+    customerRate: 15,
+    vendorRate: 10,
+    isActive: true,
+    category: 'dessert',
+  },
+  {
+    id: 'curd_salad',
+    name: 'Curd/Salad',
+    unit: 'portion',
+    baseQuantity: 0,
+    minQuantity: 0,
+    maxQuantity: 5,
+    customerRate: 12,
+    vendorRate: 8,
+    isActive: true,
+    category: 'side',
+  },
+];
+

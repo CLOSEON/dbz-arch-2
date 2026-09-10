@@ -1,12 +1,13 @@
 {
   "name": "functions",
   "scripts": {
-    "build": "tsc",
+    "build": "node ./node_modules/typescript/bin/tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "node ./node_modules/typescript/bin/tsc && node ./node_modules/typescript/bin/tsc src/__tests__/deliveryTriggers.test.ts --rootDir src --outDir lib --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node ./node_modules/jest/bin/jest.js lib/__tests__/deliveryTriggers.test.js"
   },
   "main": "lib/index.js",
   "dependencies": {

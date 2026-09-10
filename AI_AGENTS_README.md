@@ -177,7 +177,6 @@ DBZARCH2/
 ├── capacitor.config.ts         # Capacitor config for mobile
 ├── components.json             # Component registry
 ├── README.md                   # Project overview
-├── DOCUMENTATION.md            # Detailed technical docs
 └── AI_AGENTS_README.md         # This file (agent context)
 ```
 
@@ -191,7 +190,7 @@ DBZARCH2/
 |---|---|---|---|
 | **users** | User profiles + roles | `role`, `name`, `phone`, `location`, `is_approved`, `created_at` | Role-based |
 | **subscriptions** | Active meal plans | `user_id`, `vendor_id`, `status`, `frequency`, `next_billing_date`, `meals` | User + Vendor |
-| **delivery_orders** | Individual delivery instances | `customerId`, `vendorId`, `subscriptionId`, `status`, `scheduledSlot`, `meal`, `createdAt` | Customer + Vendor + Rider |
+| **orders** | Canonical delivery instances | `user_id`, `vendor_id`, `subscription_id`, `status`, `delivery_slot`, `meal_type`, `created_at` | Customer + Vendor + Rider |
 | **user_credits** | Credit wallet (rewards) | `user_id`, `credit_amount`, `source`, `source_reference_id`, `redeemed`, `created_at` | User-specific |
 | **swap_requests** | Swap marketplace | `initiator_user_id`, `target_user_id`, `status`, `meal_type`, `scheduled_slot`, `created_at` | Public create, user update |
 | **daily_menus** | Vendor daily menus | `vendor_id`, `date`, `meals`, `updated_at` | Vendor-specific |
@@ -201,6 +200,7 @@ DBZARCH2/
 | **pickup_discrepancies** | Ops events (count mismatch) | `trip_id`, `batch_id`, `expected_count`, `actual_count`, `created_at` | Admin-only |
 | **failed_delivery_reviews** | Ops events (delivery failed) | `order_id`, `rider_id`, `reason`, `created_at` | Admin-only |
 | **rider_payments** | Earnings ledger | `rider_id`, `trip_id`, `amount`, `status`, `created_at` | Rider + Admin |
+| **offers** | Promotional carousel cards | `imageUrl`, `title`, `linkType`, `linkedKitchenId`, `isActive`, `sortOrder`, `createdBy` | Public read (active), Admin write |
 
 ### Document Status Fields (State Machines)
 
@@ -257,7 +257,7 @@ function isDriver() {
 ```
 
 **Data Isolation Examples:**
-- Customers can CRUD only their own `delivery_orders`
+- Customers can CRUD only their own `orders`
 - Vendors can CRUD only batches assigned to them
 - Riders can CRUD only their assigned trips
 - Admins have full access
@@ -276,7 +276,7 @@ subscription doc created with status='active'
 Cron: Batch Aggregation (Firebase Function)
   ├─ Queries all active subscriptions for vendor V at time T
   ├─ Creates batch doc with total meal count
-  └─ Generates projected delivery_orders for all subscribed customers
+  └─ Generates projected orders for all subscribed customers
   ↓
 Vendor marks batch as "Ready" (Kitchen prep complete)
   ↓
@@ -308,7 +308,7 @@ Completion
 Customer taps "Skip" on upcoming order card
   ↓
 cancelScheduledTiffin(orderId, userId)
-  ├─ If projected: create new delivery_orders doc with status='skipped'
+  ├─ If projected: create new orders doc with status='skipped'
   └─ Else: update existing doc to status='skipped'
   ↓
 Award 0.5 credit to user
@@ -318,7 +318,7 @@ Customer taps "Cancel Skip" (within cutoff time)
 undoSkipScheduledTiffin(orderId, userId)
   ├─ Validate: status === 'skipped' AND slot time > now
   ├─ Delete 0.5 credit (cancellation source)
-  ├─ Update delivery_order.status → 'pending'
+  ├─ Update order.status → 'created'
   ├─ Subscription.next_billing_date -= 1 day (penalty)
   └─ Award 0.5 cancel_skip_refund credit
 ```
@@ -363,13 +363,13 @@ export async function subscribeToVendor(vendorId: string) {
   });
 }
 
-// Example: Create delivery order (transaction to ensure consistency)
-export async function createDeliveryOrder(order: DeliveryOrder) {
+// Example: Create order (transaction to ensure consistency)
+export async function createOrder(order: Order) {
   const batch = writeBatch(db);
   
   // Atomic multi-document write
-  batch.set(doc(db, 'delivery_orders', order.id), order);
-  batch.update(doc(db, 'subscriptions', order.subscriptionId), {
+  batch.set(doc(db, 'orders', order.id), order);
+  batch.update(doc(db, 'subscriptions', order.subscription_id), {
     status: 'active'
   });
   
@@ -581,8 +581,8 @@ npx firebase deploy --only functions
 ```typescript
 // Problem: Firestore doesn't support soft deletes by default
 // Solution: Use status fields instead
-// ✓ delivery_orders { status: 'skipped' | 'cancelled' }
-// ✗ DELETE delivery_orders docs (only admins, use sparingly)
+// ✓ orders { status: 'skipped' | 'cancelled' }
+// ✗ DELETE orders docs (only admins, use sparingly)
 ```
 
 ### 4. Role-Based Access (RBAC)
@@ -654,7 +654,7 @@ npx firebase deploy --only functions
 
 ## 📚 Additional Resources
 
-- **Existing Docs:** Read `DOCUMENTATION.md`, `README.md`, `RIDER_LOGIC.md`
+- **Existing Docs:** Read `AI_AGENTS_README.md`, `README.md`, and `src/lib/auth/README.md`
 - **Firestore Rules:** Check `firestore.rules` for access patterns
 - **Firestore Indexes:** Check `firestore.indexes.json` for query performance
 - **Firebase Config:** Check `firebase.json` for project settings

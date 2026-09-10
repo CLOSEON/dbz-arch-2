@@ -9,6 +9,7 @@ import { EnrichedSubscription } from '@/types';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { TodayMenuCard } from '@/components/vendor/TodayMenuCard';
+import { getBoxManifest } from '@/lib/mealManifest';
 import { Search, Users } from 'lucide-react';
 
 export default function VendorMenuPage() {
@@ -114,25 +115,40 @@ export default function VendorMenuPage() {
           />
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
-            {filtered.map((s) => (
-              <div key={s.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center justify-between hover:border-brand/20 transition-colors">
-                <div>
-                  <h4 className="font-bold text-slate-900">{s.userName}</h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-brand/10 text-brand px-2 py-0.5 rounded-md">
-                      {s.meal_type}
-                    </span>
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {s.userPhone ? `+91 ******${s.userPhone.replace(/\D/g,'').slice(-4)}` : '—'}
-                    </span>
+            {filtered.map((s) => {
+              const manifest = getBoxManifest(s);
+              return (
+                <div key={s.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-start justify-between hover:border-brand/20 transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-900">{s.userName}</h4>
+                      {manifest.isCustomized && (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                          Custom
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-brand/10 text-brand px-2 py-0.5 rounded-md">
+                        {s.meal_type}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {s.userPhone ? `+91 ******${s.userPhone.replace(/\D/g,'').slice(-4)}` : '—'}
+                      </span>
+                    </div>
+                    {manifest.isCustomized && (
+                      <p className="text-[11px] font-medium text-amber-900 mt-1 font-mono">
+                        📦 {manifest.manifestText}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-auto mb-1" />
+                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Active</span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-auto mb-1" />
-                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Active</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

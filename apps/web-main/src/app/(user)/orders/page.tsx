@@ -18,6 +18,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Box, History, CreditCard, Utensils, Calendar, ChevronRight, Navigation, ArrowLeftRight, SkipForward, Clock, XCircle, Sun, Moon } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { generateBoxTag } from '@/lib/boxTag';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
   ssr: false,
@@ -42,7 +43,16 @@ const CountdownTimer = React.memo(function CountdownTimer({
   // Memoize cutoff calculation to prevent recalculations on every render
   const cutoffMoment = useMemo(() => {
     let d: Date;
-    if (delivery.createdAt?.toDate) {
+    if (delivery.date) {
+      if (typeof delivery.date === 'string' && delivery.date.length === 10) {
+        const [y, m, day] = delivery.date.split('-').map(Number);
+        d = new Date(y, m - 1, day);
+      } else if (delivery.date.toDate) {
+        d = delivery.date.toDate();
+      } else {
+        d = new Date(delivery.date);
+      }
+    } else if (delivery.createdAt?.toDate) {
       d = delivery.createdAt.toDate();
     } else if (delivery.createdAt?.seconds) {
       d = new Date(delivery.createdAt.seconds * 1000);
@@ -51,12 +61,12 @@ const CountdownTimer = React.memo(function CountdownTimer({
     }
     
     const deliveryMoment = new Date(d);
+    const slot = delivery.scheduledSlot || delivery.delivery_slot || (delivery.meal?.type === 'lunch' ? '11am' : '8pm');
     
-    if (delivery.scheduledSlot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
-    else if (delivery.scheduledSlot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
-    else if (delivery.scheduledSlot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
-    else if (delivery.meal?.type === 'lunch') deliveryMoment.setHours(13, 0, 0, 0);
-    else deliveryMoment.setHours(20, 0, 0, 0);
+    if (slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
+    else if (slot === '11am' || slot === 'lunch') deliveryMoment.setHours(13, 0, 0, 0);
+    else if (slot === '8pm' || slot === 'dinner') deliveryMoment.setHours(20, 0, 0, 0);
+    else deliveryMoment.setHours(13, 0, 0, 0);
 
     // Skip/Swap has a 4-hour cutoff. Undo Skip has no 4-hour cutoff (can be done until delivery time).
     return actionType === 'skip_swap' 
@@ -150,43 +160,19 @@ export default function OrdersPage() {
       try {
         loadOrders();
 
-        // Real delivery_orders listener
-        // Query both field variants: old docs use 'customerId', new skipped projected docs use 'user_id'
-        const DELIVERY_STATUSES = ['pending', 'preparing', 'ready', 'skipped', 'picked_up', 'out_for_delivery', 'delivered'];
-        const qByCustomerId = query(
-          collection(db, 'delivery_orders'),
-          where('customerId', '==', user.id),
-          where('status', 'in', DELIVERY_STATUSES)
-        );
-        const qByUserId = query(
-          collection(db, 'delivery_orders'),
-          where('user_id', '==', user.id),
-          where('status', 'in', DELIVERY_STATUSES)
+        // Real orders listener
+        const qOrders = query(
+          collection(db, 'orders'),
+          where('user_id', '==', user.id)
         );
 
-        let latestByCustomerId: any[] = [];
-        let latestByUserId: any[] = [];
-
-        const mergeAndSet = () => {
-          // Merge both result sets, deduplicating by doc id
-          const byId = new Map<string, any>();
-          [...latestByCustomerId, ...latestByUserId].forEach(d => byId.set(d.id, d));
-          const merged = Array.from(byId.values());
-          merged.sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
-          setRealOrders(merged);
-        };
-
-        const unsubUpcoming1 = onSnapshot(qByCustomerId, (snap) => {
+        const unsubUpcoming = onSnapshot(qOrders, (snap) => {
           if (!mounted) return;
-          latestByCustomerId = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-          mergeAndSet();
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          list.sort((a, b) => (toMillis(a.created_at || a.createdAt) ?? 0) - (toMillis(b.created_at || b.createdAt) ?? 0));
+          setRealOrders(list);
         });
-        const unsubUpcoming2 = onSnapshot(qByUserId, (snap) => {
-          if (!mounted) return;
-          latestByUserId = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-          mergeAndSet();
-        });
-        unsubscribers.push(unsubUpcoming1, unsubUpcoming2);
+        unsubscribers.push(unsubUpcoming);
 
         // Active subscriptions listener
         const qSubs = query(
@@ -224,7 +210,7 @@ export default function OrdersPage() {
 
               return {
                 ...s,
-                vendorName: vendor.kitchen_name ?? vendor.name ?? 'Vendor',
+                vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
                 vendorImage: vendor.image ?? '',
                 planTitle: title,
                 planPrice: price,
@@ -470,7 +456,7 @@ export default function OrdersPage() {
 
         return {
           ...s,
-          vendorName: vendor.name ?? 'Vendor',
+          vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
           vendorImage: vendor.image ?? '',
           planTitle: title,
           planPrice: price,
@@ -947,20 +933,28 @@ export default function OrdersPage() {
       )}
 
       {/* Tabs */}
-      <div className="pill-container mb-8">
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex mb-6">
         <button 
-          className={`pill ${activeTab === 'active' ? 'active' : ''}`} 
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+            activeTab === 'active' 
+              ? 'bg-slate-900 text-white shadow-xs' 
+              : 'text-slate-500 hover:text-slate-900'
+          }`} 
           onClick={() => setActiveTab('active')}
         >
           <Box className="w-4 h-4" />
-          Active
+          Active Plans
         </button>
         <button 
-          className={`pill ${activeTab === 'history' ? 'active' : ''}`} 
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+            activeTab === 'history' 
+              ? 'bg-slate-900 text-white shadow-xs' 
+              : 'text-slate-500 hover:text-slate-900'
+          }`} 
           onClick={() => setActiveTab('history')}
         >
           <History className="w-4 h-4" />
-          History
+          Order History
         </button>
       </div>
 
@@ -968,10 +962,17 @@ export default function OrdersPage() {
         <SkeletonList count={3} />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={activeTab === 'active' ? <Box className="w-10 h-10 text-slate-300 stroke-[1.25]" /> : <History className="w-10 h-10 text-slate-300 stroke-[1.25]" />}
+          icon={activeTab === 'active' ? <Box className="w-8 h-8 text-brand" /> : <History className="w-8 h-8 text-brand" />}
           title={activeTab === 'active' ? 'No active subscriptions' : 'No cancelled plans'}
-          description={activeTab === 'active' ? 'Browse vendors to find a meal plan' : 'Cancelled plans will appear here'}
-          action={activeTab === 'active' ? <Link href="/dashboard" className="btn-primary inline-flex mt-4 px-8 py-4">Browse Vendors</Link> : undefined}
+          description={activeTab === 'active' ? 'Browse curated home kitchens to start a daily lunch or dinner meal plan' : 'Cancelled meal plans will appear here'}
+          action={activeTab === 'active' ? (
+            <Link 
+              href="/dashboard" 
+              className="px-6 py-3.5 bg-brand hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider rounded-2xl inline-block shadow-md shadow-brand/20 transition-all active:scale-95"
+            >
+              Browse Kitchens & Plans
+            </Link>
+          ) : undefined}
         />
       ) : (
         <div className="space-y-5">
@@ -996,6 +997,33 @@ export default function OrdersPage() {
                       {isActive ? 'Active' : 'Cancelled'}
                     </span>
                   </div>
+
+                  {/* Tiffin Box Tag Banner for Customer Verification */}
+                  {isActive && (
+                    <div className="bg-slate-900 text-white rounded-2xl p-3.5 mb-4 flex items-center justify-between border border-slate-800 shadow-sm">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-400">
+                          🏷️ Your Tiffin Box Tag Code
+                        </span>
+                        <div className="text-xl font-mono font-black text-white tracking-widest mt-0.5">
+                          {generateBoxTag({
+                            customerName: user?.name,
+                            vendorName: order.vendorName || 'Kitchen',
+                            sequenceNumber: 1,
+                            planType: order.planTitle || 'weekly',
+                            cycleNumber: 1,
+                            orderId: order.id
+                          })}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                          Verify this code on your tiffin container when delivered
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                        Match Tag ✓
+                      </span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-2 bg-slate-50/50 border border-slate-100 rounded-2xl p-4 mb-5">
                     <div>

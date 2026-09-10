@@ -22,6 +22,12 @@ const apiBackup = path.join(root, 'src', 'app', '_api_backup');
 
 const originalConfig = fs.readFileSync(nextConfigPath, 'utf8');
 
+const androidStudioJava = '/Applications/Android Studio.app/Contents/jbr/Contents/Home';
+if (!process.env.JAVA_HOME && fs.existsSync(androidStudioJava)) {
+  process.env.JAVA_HOME = androidStudioJava;
+  process.env.PATH = `${androidStudioJava}/bin:${process.env.PATH}`;
+}
+
 // Inject output: 'export' temporarily
 const exportConfig = originalConfig.replace(
   'const nextConfig: NextConfig = {',

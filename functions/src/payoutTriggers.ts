@@ -82,6 +82,17 @@ export const onDeliveryCompletedPayout = onDocumentUpdated(
     );
 
     try {
+      // --- Idempotency check ---
+      const existingPayout = await db.collection('agent_payouts')
+        .where('deliveryId', '==', orderId)
+        .limit(1)
+        .get();
+
+      if (!existingPayout.empty) {
+        console.log(`[onDeliveryCompletedPayout] Payout already exists for delivery ${orderId}. Skipping.`);
+        return;
+      }
+
       // --- Prepare references ---
       const payoutRef = db.collection('agent_payouts').doc(); // auto-ID
       const agentUserRef = db.collection('users').doc(agentId);
@@ -104,8 +115,6 @@ export const onDeliveryCompletedPayout = onDocumentUpdated(
       batch.set(payoutRef, payoutRecord);
 
       // 2. Atomically increment daily_earnings on the agent's user document.
-      //    FieldValue.increment is safe for concurrent updates and creates the
-      //    field if it does not yet exist.
       batch.update(agentUserRef, {
         daily_earnings: admin.firestore.FieldValue.increment(PAYOUT_AMOUNT),
       });
@@ -116,12 +125,84 @@ export const onDeliveryCompletedPayout = onDocumentUpdated(
         `[onDeliveryCompletedPayout] Payout ${payoutRef.id} created and daily_earnings incremented for agent ${agentId}.`
       );
     } catch (err) {
-      // Log but do not re-throw — a failed payout trigger should not crash the
-      // function runtime and can be retried or investigated via logs.
       console.error(
         `[onDeliveryCompletedPayout] Failed to create payout for delivery ${orderId}:`,
         err
       );
+    }
+  }
+);
+
+/**
+ * Firestore trigger: fires whenever a document in the canonical 'orders' collection is updated.
+ * Automatically provisions rider earnings and agent_payout record when order status transitions to 'delivered'.
+ */
+export const onOrderCompletedPayout = onDocumentUpdated(
+  'orders/{orderId}',
+  async (event) => {
+    const change = event.data;
+    if (!change) return;
+
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+
+    if (!beforeData || !afterData) return;
+
+    const beforeStatus = beforeData.status as string;
+    const afterStatus = afterData.status as string;
+
+    // Only proceed on the exact transition to 'delivered'
+    if (beforeStatus === 'delivered' || afterStatus !== 'delivered') {
+      return;
+    }
+
+    const orderId = event.params.orderId;
+    const agentId = (afterData.rider_id || afterData.driverId || afterData.agentId || afterData.agent_id) as string | undefined;
+
+    if (!agentId) {
+      console.log(`[onOrderCompletedPayout] Order ${orderId} has no assigned rider/agent ID. Skipping payout.`);
+      return;
+    }
+
+    const db = admin.firestore();
+    const PAYOUT_AMOUNT = 40; // ₹40 fixed per delivered order
+
+    try {
+      // Idempotency check: ensure payout has not already been created for this order
+      const existingPayout = await db.collection('agent_payouts')
+        .where('deliveryId', '==', orderId)
+        .limit(1)
+        .get();
+
+      if (!existingPayout.empty) {
+        console.log(`[onOrderCompletedPayout] Payout already recorded for order ${orderId}. Skipping.`);
+        return;
+      }
+
+      const payoutRef = db.collection('agent_payouts').doc();
+      const agentUserRef = db.collection('users').doc(agentId);
+
+      const payoutRecord: Omit<AgentPayout, 'id'> = {
+        agentId,
+        deliveryId: orderId,
+        amount: PAYOUT_AMOUNT,
+        date: admin.firestore.Timestamp.now(),
+        status: 'pending',
+      };
+
+      const batch = db.batch();
+      batch.set(payoutRef, payoutRecord);
+      batch.update(agentUserRef, {
+        daily_earnings: admin.firestore.FieldValue.increment(PAYOUT_AMOUNT),
+      });
+
+      await batch.commit();
+
+      console.log(
+        `[onOrderCompletedPayout] Payout ${payoutRef.id} created and daily_earnings incremented for rider ${agentId} on order ${orderId}.`
+      );
+    } catch (err) {
+      console.error(`[onOrderCompletedPayout] Failed to create payout for order ${orderId}:`, err);
     }
   }
 );

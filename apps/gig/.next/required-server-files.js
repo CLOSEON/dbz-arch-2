@@ -105,7 +105,7 @@ self.__SERVER_FILES_MANIFEST={
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/Users/closeon",
+    "outputFileTracingRoot": "/Users/closeon/Desktop/CLOSEON/applications/Webapp/DBZARCH2",
     "cacheComponents": false,
     "cacheLife": {
       "default": {
@@ -309,12 +309,12 @@ self.__SERVER_FILES_MANIFEST={
       "@dabzzo/shared-ui"
     ],
     "turbopack": {
-      "root": "/Users/closeon"
+      "root": "/Users/closeon/Desktop/CLOSEON/applications/Webapp/DBZARCH2"
     },
     "distDirRoot": ".next"
   },
   "appDir": "/Users/closeon/Desktop/CLOSEON/applications/Webapp/DBZARCH2/apps/gig",
-  "relativeAppDir": "Desktop/CLOSEON/applications/Webapp/DBZARCH2/apps/gig",
+  "relativeAppDir": "apps/gig",
   "files": [
     ".next/routes-manifest.json",
     ".next/server/pages-manifest.json",
@@ -323,6 +323,8 @@ self.__SERVER_FILES_MANIFEST={
     ".next/server/functions-config-manifest.json",
     ".next/server/middleware-manifest.json",
     ".next/server/middleware-build-manifest.js",
+    ".next/server/middleware-react-loadable-manifest.js",
+    ".next/react-loadable-manifest.json",
     ".next/server/app-paths-manifest.json",
     ".next/app-path-routes-manifest.json",
     ".next/server/server-reference-manifest.js",

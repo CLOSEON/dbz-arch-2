@@ -5,7 +5,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { getDailyMenu, saveDailyMenu, getTodayStr } from '@/lib/queries/menu';
 import { DailyMenu, MenuItem, DietaryCategory } from '@/types';
-import { Utensils, Plus, Trash2, Calendar, Leaf, Drumstick } from 'lucide-react';
+import { Utensils, Plus, Trash2, Calendar } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 
 export function TodayMenuCard() {
   const user = useAuthStore((s) => s.user);
@@ -199,7 +200,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Menu
+            <VegIcon size={16} /> Pure Veg Menu
           </button>
           <button
             type="button"
@@ -210,7 +211,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Menu
+            <NonVegIcon size={16} /> Non-Veg Menu
           </button>
         </div>
       )}
@@ -296,7 +297,7 @@ export function TodayMenuCard() {
           }`}>
             <div className="flex items-center justify-between mb-3 border-b border-slate-200/50 pb-2">
               <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                {activeTab === 'veg' ? <Leaf className="w-3.5 h-3.5 text-emerald-600" /> : <Drumstick className="w-3.5 h-3.5 text-rose-600" />}
+                {activeTab === 'veg' ? <VegIcon size={14} /> : <NonVegIcon size={14} />}
                 {activeTab === 'veg' ? 'Vegetarian Menu' : 'Non-Vegetarian Menu'}
               </span>
               <span className="text-[10px] font-bold text-slate-400">

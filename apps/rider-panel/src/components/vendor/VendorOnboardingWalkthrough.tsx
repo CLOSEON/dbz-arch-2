@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, ChevronRight, ChevronLeft, ChefHat, Phone, Mail, MapPin, 
-  DollarSign, Image as ImageIcon, Loader2, Sparkles, CheckCircle2, UploadCloud
+  IndianRupee, Image as ImageIcon, Loader2, Sparkles, CheckCircle2, UploadCloud
 } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import toast from 'react-hot-toast';

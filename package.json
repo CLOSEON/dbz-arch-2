@@ -13,7 +13,7 @@
     "dev:vendor": "npm run dev --workspace=vendor-panel",
     "dev:rider": "npm run dev --workspace=rider-panel",
     "dev:gig": "npm run dev --workspace=gig",
-    "build": "next build",
+    "build": "next build --webpack",
     "build:all": "npm run build --workspaces --if-present",
     "build:web": "node scripts/build-web.mjs",
     "deploy:all": "npm run build:all && npx firebase deploy --only hosting",

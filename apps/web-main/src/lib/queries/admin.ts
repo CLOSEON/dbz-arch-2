@@ -1,5 +1,6 @@
 import { collection, getDocs, query, where, orderBy, limit, getCountFromServer } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
 
 export async function getAdminStats() {
   // Use getCountFromServer to avoid full collection downloads (highly optimized)
@@ -105,4 +106,144 @@ export async function getActiveDeliveryPartners() {
   return usersSnap.docs
     .map(d => ({ id: d.id, ...d.data() } as any))
     .filter(u => u.location && u.location.lat && u.location.lng);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom Plan Business Insights Query
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MostCommonPatternData {
+  pattern: Record<string, any>;
+  usersCount: number;
+}
+
+export interface CustomPlanStats {
+  totalCustomWeeklySubscriptions: number;
+  totalCustomMonthlySubscriptions: number;
+  averageMealsPerWeekOrdered: number;
+  averageRevenuePerCustomSubscription: number;
+  mostCommonPattern: MostCommonPatternData | null;
+  totalActiveCustomPlanSubscriptions: number;
+  totalCustomSubscriptions: number;
+  updatedAt?: string;
+}
+
+export async function fetchCustomPlanStats(): Promise<CustomPlanStats> {
+  // 1. Try Firebase Callable Cloud Function (getCustomPlanStats)
+  try {
+    const callable = httpsCallable<void, CustomPlanStats>(functions, 'getCustomPlanStats');
+    const result = await callable();
+    if (result && result.data) {
+      return result.data;
+    }
+  } catch (callableErr: any) {
+    console.warn('[AdminQueries] Callable getCustomPlanStats fallback to client aggregation:', callableErr?.message || callableErr);
+  }
+
+  // 2. Client-side fallback aggregation
+  const subsSnap = await getDocs(collection(db, 'subscriptions'));
+  let totalWeekly = 0;
+  let totalMonthly = 0;
+  let totalActive = 0;
+  let totalRevenue = 0;
+  let totalCustomCount = 0;
+  let weeklyMealsSum = 0;
+  let weeklyMealsCount = 0;
+
+  const patternFrequencyMap = new Map<string, { pattern: Record<string, any>; count: number }>();
+
+  subsSnap.docs.forEach((d) => {
+    const sub = d.data();
+    const isCustom =
+      sub.isCustomPlan === true ||
+      sub.is_custom_plan === true ||
+      sub.subscriptionType === 'custom_weekly' ||
+      sub.subscriptionType === 'custom_monthly' ||
+      sub.plan_id === 'custom_weekly' ||
+      sub.plan_id === 'custom_monthly';
+
+    if (!isCustom) return;
+
+    totalCustomCount += 1;
+    const isWeekly =
+      sub.billingCycle === 'weekly' ||
+      sub.frequency === 'weekly' ||
+      sub.subscriptionType === 'custom_weekly' ||
+      sub.plan_id === 'custom_weekly';
+
+    if (isWeekly) {
+      totalWeekly += 1;
+    } else {
+      totalMonthly += 1;
+    }
+
+    if (sub.status === 'active') {
+      totalActive += 1;
+    }
+
+    const price =
+      Number(sub.customPlan?.totalPrice) ||
+      Number(sub.total_price) ||
+      Number(sub.price) ||
+      0;
+    totalRevenue += price;
+
+    const rawPattern =
+      sub.customPlan?.pattern ||
+      sub.deliveryPattern ||
+      sub.delivery_pattern ||
+      {};
+
+    const patternMeals = Object.values(rawPattern).reduce<number>((sum, val) => {
+      const num = Number(val);
+      return !isNaN(num) && num > 0 ? sum + num : sum;
+    }, 0);
+
+    const subTotalMeals =
+      Number(sub.customPlan?.totalMeals) ||
+      Number(sub.totalMeals) ||
+      patternMeals;
+
+    if (isWeekly && subTotalMeals > 0) {
+      weeklyMealsSum += subTotalMeals;
+      weeklyMealsCount += 1;
+    }
+
+    if (Object.keys(rawPattern).length > 0) {
+      const sorted = Object.entries(rawPattern)
+        .filter(([_, v]) => Number(v) > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+      const key = sorted.map(([k, v]) => `${k}:${v}`).join(',');
+      if (key) {
+        const item = patternFrequencyMap.get(key);
+        if (item) item.count += 1;
+        else patternFrequencyMap.set(key, { pattern: rawPattern, count: 1 });
+      }
+    }
+  });
+
+  let mostCommonPattern: MostCommonPatternData | null = null;
+  let highestCount = 0;
+  patternFrequencyMap.forEach(({ pattern, count }) => {
+    if (count > highestCount) {
+      highestCount = count;
+      mostCommonPattern = { pattern, usersCount: count };
+    }
+  });
+
+  return {
+    totalCustomWeeklySubscriptions: totalWeekly,
+    totalCustomMonthlySubscriptions: totalMonthly,
+    averageMealsPerWeekOrdered:
+      weeklyMealsCount > 0 ? Math.round((weeklyMealsSum / weeklyMealsCount) * 10) / 10 : 0,
+    averageRevenuePerCustomSubscription:
+      totalCustomCount > 0 ? Math.round(totalRevenue / totalCustomCount) : 0,
+    mostCommonPattern: mostCommonPattern || {
+      pattern: { monday: 1, tuesday: 1, wednesday: 1, thursday: 1, friday: 1, saturday: 2, sunday: 2 },
+      usersCount: 0,
+    },
+    totalActiveCustomPlanSubscriptions: totalActive,
+    totalCustomSubscriptions: totalCustomCount,
+    updatedAt: new Date().toISOString(),
+  };
 }

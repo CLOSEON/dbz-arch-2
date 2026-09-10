@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, MapPin, ArrowLeft, ShieldCheck, CreditCard, Plus, Check, Leaf, Drumstick, Sparkles } from 'lucide-react';
+import { Loader2, MapPin, Navigation, ArrowLeft, ShieldCheck, CreditCard, Plus, Check, Sparkles } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
 import { AppUser, SubscriptionFrequency, MealType, DietaryCategory, SelectedAddon } from '@/types';
 import { updateUser } from '@/lib/queries/users';
 import { createSubscription } from '@/lib/queries/subscriptions';
@@ -12,6 +13,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
+import { reverseGeocode } from '@/lib/geo';
+import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 
 type RazorpayPaymentResponse = {
   razorpay_payment_id: string;
@@ -24,6 +27,7 @@ interface SubscriptionOnboardingModalProps {
   onClose: () => void;
   vendor: AppUser;
   initialPlanId: string;
+  initialStep?: number;
   category?: DietaryCategory;
   selectedFrequency: SubscriptionFrequency;
   appliedDiscount: { code: string; discount_pct: number } | null;
@@ -35,6 +39,7 @@ export function SubscriptionOnboardingModal({
   onClose,
   vendor,
   initialPlanId,
+  initialStep = 1,
   category: initialCategory = 'veg',
   selectedFrequency,
   appliedDiscount,
@@ -44,13 +49,18 @@ export function SubscriptionOnboardingModal({
   const setUser = useAuthStore((s) => s.setUser);
   const addToast = useUiStore((s) => s.addToast);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initialStep);
   const [address, setAddress] = useState(user?.address || '');
+  const [flatBuilding, setFlatBuilding] = useState('');
+  const [areaStreet, setAreaStreet] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [cityPincode, setCityPincode] = useState('');
   const [location, setLocation] = useState(user?.location || null);
   const [detectingLoc, setDetectingLoc] = useState(false);
   const [planId, setPlanId] = useState(initialPlanId || 'lunch');
   const [dietaryCategory, setDietaryCategory] = useState<DietaryCategory>(initialCategory);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
   const [deliveryPreference, setDeliveryPreference] = useState<'8am' | '11am' | null>(user?.deliveryPreference || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'creating_order' | 'awaiting_payment' | 'verifying' | 'activating' | 'done'>('idle');
@@ -62,13 +72,29 @@ export function SubscriptionOnboardingModal({
   useEffect(() => {
     if (isOpen) {
       setStep(1);
+      setStep(initialStep || 1);
       setPlanId(initialPlanId || 'lunch');
       setDietaryCategory(initialCategory || 'veg');
       setSelectedAddonIds([]);
+      setCustomMealConfig(null);
       setAddress(user?.address || '');
       setLocation(user?.location || null);
       setDeliveryPreference(user?.deliveryPreference || null);
       setPaymentStatus('idle');
+
+      if (user?.address) {
+        const parts = user.address.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (parts.length === 1) {
+          setFlatBuilding(parts[0]);
+        } else if (parts.length === 2) {
+          setFlatBuilding(parts[0]);
+          setCityPincode(parts[1]);
+        } else {
+          setFlatBuilding(parts[0]);
+          setAreaStreet(parts.slice(1, -1).join(', '));
+          setCityPincode(parts[parts.length - 1]);
+        }
+      }
     }
   }, [isOpen, initialPlanId, initialCategory, user]);
 
@@ -164,8 +190,10 @@ export function SubscriptionOnboardingModal({
 
   const { credit: prorationCredit, activeSubMeal } = getProrationCredit();
   const basePrice = getBasePlanPrice(planId);
+  const mealsCount = selectedFrequency === 'monthly' ? (planId === 'both' ? 60 : 30) : selectedFrequency === 'weekly' ? (planId === 'both' ? 14 : 7) : (planId === 'both' ? 2 : 1);
+  const thaliDeltaTotal = (customMealConfig?.customerDeltaPerMeal || 0) * mealsCount;
   const discountAmt = appliedDiscount ? Math.round((basePrice * appliedDiscount.discount_pct) / 100) : 0;
-  const finalPrice = Math.max(0, basePrice + totalAddonsPrice - discountAmt - prorationCredit);
+  const finalPrice = Math.max(0, basePrice + totalAddonsPrice + thaliDeltaTotal - discountAmt - prorationCredit);
   const amountPaise = finalPrice * 100;
 
   const handleToggleAddon = (id: string) => {
@@ -177,23 +205,74 @@ export function SubscriptionOnboardingModal({
   const handleDetectLocation = () => {
     setDetectingLoc(true);
     if (!navigator.geolocation) {
-      addToast('Geolocation not supported', 'error');
+      addToast('Geolocation not supported on this browser', 'error');
       setDetectingLoc(false);
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, updated_at: Date.now() });
-        setDetectingLoc(false);
-        addToast('Location detected!', 'success');
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({ lat, lng, updated_at: Date.now() });
+
+        try {
+          const geo = await reverseGeocode(lat, lng);
+          
+          const areaParts = [
+            geo.building,
+            geo.road,
+            geo.neighbourhood,
+            geo.suburb,
+            geo.locality
+          ].filter(Boolean);
+
+          const uniqueArea: string[] = [];
+          areaParts.forEach((p) => {
+            if (p && !uniqueArea.some((u) => u.toLowerCase() === p.toLowerCase())) {
+              uniqueArea.push(p);
+            }
+          });
+
+          if (uniqueArea.length > 0) {
+            setAreaStreet(uniqueArea.join(', '));
+          }
+
+          const cityParts = [geo.city, geo.state, geo.pincode ? `PIN ${geo.pincode}` : ''].filter(Boolean);
+          if (cityParts.length > 0) {
+            setCityPincode(cityParts.join(', '));
+          }
+
+          if (geo.completeAddress) {
+            setAddress(geo.completeAddress);
+          }
+          addToast('GPS location & area detected! 📍', 'success');
+        } catch (e) {
+          addToast('Location coordinates captured!', 'success');
+        } finally {
+          setDetectingLoc(false);
+        }
       },
-      () => { setDetectingLoc(false); addToast('Please allow location access.', 'error'); },
-      { enableHighAccuracy: true, timeout: 10000 }
+      () => { 
+        setDetectingLoc(false); 
+        addToast('Please allow location access in your browser settings.', 'error'); 
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
     );
   };
 
   const handleConfirmStep1 = () => {
-    if (!address.trim()) { addToast('Please enter an address', 'error'); return; }
+    const computed = [
+      flatBuilding.trim(),
+      landmark.trim() ? `(Landmark: ${landmark.trim()})` : '',
+      areaStreet.trim(),
+      cityPincode.trim()
+    ].filter(Boolean).join(', ') || address.trim();
+
+    if (!computed.trim()) {
+      addToast('Please enter your delivery doorstep address', 'error');
+      return;
+    }
+    setAddress(computed);
     setStep(2);
   };
   const handleConfirmStep2 = () => setStep(3);
@@ -228,6 +307,7 @@ export function SubscriptionOnboardingModal({
     await createSubscription({
       user_id: user.id,
       vendor_id: vendor.id,
+      vendor_name: vendor.kitchen_name || vendor.name,
       plan_id: planId,
       meal_type: planId as MealType,
       category: dietaryCategory,
@@ -235,12 +315,14 @@ export function SubscriptionOnboardingModal({
       selected_addons: structuredAddons,
       base_price: basePrice,
       addons_price: totalAddonsPrice,
-      total_price: basePrice + totalAddonsPrice,
+      total_price: basePrice + totalAddonsPrice + thaliDeltaTotal,
       discount_pct: appliedDiscount?.discount_pct,
       promo_code: appliedDiscount?.code,
       payment_id: response.razorpay_payment_id,
       razorpay_order_id: response.razorpay_order_id,
       paid_amount: finalPrice,
+      custom_meal_config: customMealConfig || undefined,
+      meal_components: customMealConfig?.manifestSummary ? [customMealConfig.manifestSummary] : undefined,
     });
 
     setPaymentStatus('done');
@@ -408,29 +490,99 @@ export function SubscriptionOnboardingModal({
 
                 {/* ── Step 1: Location ─────────────────────────────────────── */}
                 {step === 1 && (
-                  <div className="space-y-5 animate-fade-in">
-                    <button
-                      onClick={handleDetectLocation}
-                      disabled={detectingLoc}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-brand-50 text-brand rounded-2xl font-bold transition-colors hover:bg-brand-100"
-                    >
-                      {detectingLoc ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className="w-5 h-5" />}
-                      {location ? 'Location Detected (Update)' : 'Detect Current Location'}
-                    </button>
+                  <div className="space-y-4 animate-fade-in">
+                    {/* Live GPS Header Card */}
+                    <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          location ? 'bg-emerald-100 text-emerald-700' : 'bg-brand/10 text-brand'
+                        }`}>
+                          <Navigation className={`w-5 h-5 ${detectingLoc ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-slate-900 leading-tight">
+                            {location ? 'GPS Location Pinned' : 'Delivery Coordinates'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">
+                            {detectingLoc 
+                              ? 'Locating high-precision GPS...' 
+                              : cityPincode || (location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Tap to pin current location')}
+                          </p>
+                        </div>
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Complete Address</label>
-                      <textarea
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder="Flat/House No, Building, Street, Landmark"
-                        rows={3}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-medium outline-none focus:border-brand/40 transition-colors resize-none"
-                      />
+                      <button
+                        type="button"
+                        onClick={handleDetectLocation}
+                        disabled={detectingLoc}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 active:scale-95 shadow-xs"
+                      >
+                        {detectingLoc ? 'Locating…' : location ? 'Re-Pin GPS' : 'Use GPS'}
+                      </button>
                     </div>
 
-                    <button onClick={handleConfirmStep1} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
-                      Confirm Location
+                    {/* Form Fields for Maximum Rider Accuracy */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                          Flat / House / Floor No. & Building <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={flatBuilding}
+                          onChange={(e) => setFlatBuilding(e.target.value)}
+                          placeholder="e.g. Flat 402, Sunshine Heights, Wing B"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                          Area / Street / Colony <span className="text-slate-400 font-normal">(Auto-Detected)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={areaStreet}
+                          onChange={(e) => setAreaStreet(e.target.value)}
+                          placeholder="e.g. Near Medical Square, Rambagh"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                            Landmark <span className="text-slate-400 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={landmark}
+                            onChange={(e) => setLandmark(e.target.value)}
+                            placeholder="e.g. Opp. SBI Bank"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                            City & Pincode
+                          </label>
+                          <input
+                            type="text"
+                            value={cityPincode}
+                            onChange={(e) => setCityPincode(e.target.value)}
+                            placeholder="e.g. Nagpur, Maharashtra - 440008"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all shadow-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleConfirmStep1} 
+                      className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-[0.98] shadow-md mt-2"
+                    >
+                      Confirm Delivery Address
                     </button>
                   </div>
                 )}
@@ -450,7 +602,7 @@ export function SubscriptionOnboardingModal({
                               : 'text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg
+                          <VegIcon size={16} /> Pure Veg
                         </button>
                         <button
                           type="button"
@@ -461,7 +613,7 @@ export function SubscriptionOnboardingModal({
                               : 'text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg
+                          <NonVegIcon size={16} /> Non-Veg
                         </button>
                       </div>
                     )}
@@ -513,11 +665,28 @@ export function SubscriptionOnboardingModal({
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Sparkles className="w-4 h-4 text-amber-500" />
-                        <h3 className="text-sm font-black text-slate-900">Customise Your Tiffin with Add-Ons</h3>
+                        <h3 className="text-sm font-black text-slate-900">Customise Your Tiffin with Add-Ons & Portions</h3>
                       </div>
                       <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                        Add daily sweets, extra curd, or special side dishes directly to your recurring subscription.
+                        Adjust your daily thali portions (extra rotis, rice, dal) and select recurring sweets or sides.
                       </p>
+                    </div>
+
+                    {/* Thali Portions Customizer */}
+                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/20 p-3.5">
+                      <ThaliCustomizer
+                        baseMealPrice={Math.max(10, Math.round(basePrice / Math.max(1, mealsCount)))}
+                        planType={selectedFrequency === 'monthly' ? 'monthly' : selectedFrequency === 'weekly' ? 'weekly' : 'daily'}
+                        vendorOverrides={vendor.custom_component_rates}
+                        vendorMarginOverride={vendor.vendor_margin_percent ?? vendor.vendor_margin_override}
+                        onChange={(config) => setCustomMealConfig(config)}
+                        compact
+                        title="Customize Daily Thali Portions"
+                      />
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Kitchen Extras & Add-Ons</h4>
                     </div>
 
                     {activeVendorAddons.length === 0 ? (
@@ -567,6 +736,11 @@ export function SubscriptionOnboardingModal({
                     <div className="pt-2">
                       <button onClick={handleConfirmStep3} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
                         {selectedAddonIds.length > 0 ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` : 'Skip Add-Ons'}
+                        {customMealConfig && customMealConfig.customerDeltaPerMeal !== 0
+                          ? `Continue with Custom Portions (${customMealConfig.customerDeltaPerMeal > 0 ? '+' : ''}₹${customMealConfig.customerDeltaPerMeal}/meal)`
+                          : selectedAddonIds.length > 0 
+                            ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` 
+                            : 'Continue to Delivery Slot'}
                       </button>
                     </div>
                   </div>
@@ -649,6 +823,18 @@ export function SubscriptionOnboardingModal({
                         <span className="text-slate-500 font-medium">Base Plan Price</span>
                         <span className="font-bold text-slate-900">₹{basePrice}</span>
                       </div>
+                      {customMealConfig && customMealConfig.manifestSummary && (
+                        <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/60 text-xs">
+                          <span className="font-bold text-amber-900 block mb-0.5">📦 Customized Thali Portions:</span>
+                          <span className="text-amber-800 text-[11px] font-medium leading-tight block">{customMealConfig.manifestSummary}</span>
+                        </div>
+                      )}
+                      {thaliDeltaTotal !== 0 && (
+                        <div className="flex justify-between text-sm text-amber-800">
+                          <span className="font-medium">Thali Portions Delta ({mealsCount} meals)</span>
+                          <span className="font-bold">{thaliDeltaTotal > 0 ? `+₹${thaliDeltaTotal}` : `-₹${Math.abs(thaliDeltaTotal)}`}</span>
+                        </div>
+                      )}
                       {totalAddonsPrice > 0 && (
                         <div className="flex justify-between text-sm text-amber-800">
                           <span className="font-medium">Add-Ons Total</span>

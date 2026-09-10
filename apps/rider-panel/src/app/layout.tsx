@@ -32,7 +32,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#FFF7ED] text-slate-900 antialiased font-sans">
+      <body className="bg-[#FEFCE8] text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />
         <AuthProvider>

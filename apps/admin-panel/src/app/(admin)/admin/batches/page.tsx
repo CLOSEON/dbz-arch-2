@@ -58,7 +58,8 @@ export default function AdminVendorOpsPage() {
   if (!isHydrated) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand" /></div>;
 
   const filteredBatches = batches.filter(b => {
-    const vName = (vendors[b.vendor_id]?.name || '').toLowerCase();
+    const v = vendors[b.vendor_id];
+    const vName = (v?.kitchen_name || v?.name || '').toLowerCase();
     const vId = b.vendor_id.toLowerCase();
     const bId = b.id.toLowerCase();
     const searchMatches = !searchQuery || vName.includes(searchQuery.toLowerCase()) || vId.includes(searchQuery.toLowerCase()) || bId.includes(searchQuery.toLowerCase());
@@ -133,7 +134,7 @@ export default function AdminVendorOpsPage() {
                         <Store className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-black text-slate-900 leading-tight">{vendor?.name || 'Unknown Vendor'}</h3>
+                        <h3 className="font-black text-slate-900 leading-tight">{vendor?.kitchen_name || vendor?.name || 'Unknown Vendor'}</h3>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{batch.slot}</p>
                       </div>
                     </div>

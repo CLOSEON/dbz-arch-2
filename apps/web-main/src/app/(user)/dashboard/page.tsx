@@ -12,6 +12,7 @@ import { getApprovedVendors } from '@/lib/queries/users';
 import { getDocs, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { VendorCard } from '@/components/vendor/VendorCard';
+import { OffersCarousel } from '@/components/home/OffersCarousel';
 import { SkeletonList } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import type { SelectedLocation } from '@/components/shared/LocationSheet';
@@ -106,10 +107,9 @@ export default function UserDashboard() {
       // Listen to today's active delivery order
       const ACTIVE_STATUSES = ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery'];
       let ordersList: any[] = [];
-      let deliveryOrdersList: any[] = [];
 
       const updateActiveDelivery = () => {
-        const allActive = [...ordersList, ...deliveryOrdersList];
+        const allActive = [...ordersList];
         if (allActive.length > 0) {
           const priorityOrder: Record<string, number> = {
             out_for_delivery: 1,
@@ -140,27 +140,12 @@ export default function UserDashboard() {
         },
         (err) => console.warn('Dashboard orders listener warning:', err.message)
       );
-
-      const qDeliveries = query(
-        collection(db, 'delivery_orders'),
-        where('customerId', '==', user.id),
-        where('status', 'in', ACTIVE_STATUSES)
-      );
-      unsubDeliveries = onSnapshot(
-        qDeliveries,
-        (snap) => {
-          deliveryOrdersList = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          updateActiveDelivery();
-        },
-        (err) => console.warn('Dashboard delivery_orders listener warning:', err.message)
-      );
     }, 100);
 
     return () => {
       clearTimeout(timer);
       unsubSubs();
       unsubOrders();
-      unsubDeliveries();
     };
   }, [user]);
 
@@ -200,6 +185,7 @@ export default function UserDashboard() {
       const q = search.toLowerCase();
       list = list.filter(
         (v) =>
+          (v.kitchen_name ?? '').toLowerCase().includes(q) ||
           v.name.toLowerCase().includes(q) ||
           (v.cuisine_type ?? '').toLowerCase().includes(q)
       );
@@ -224,10 +210,10 @@ export default function UserDashboard() {
             HERO — Solid Orange with Crisp 2D Graphics
         ════════════════════════════════════════ */}
         <section
-          className="relative rounded-b-[36px] overflow-hidden"
+          className="relative rounded-b-[32px] overflow-hidden"
           style={{
             background: '#E68A00',
-            paddingBottom: '44px',
+            paddingBottom: '32px',
             paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
           }}
         >
@@ -245,20 +231,6 @@ export default function UserDashboard() {
             <div className="absolute -left-12 bottom-6 w-48 h-48 rounded-full border-2 border-white/10" />
             <div className="absolute -left-6 bottom-12 w-32 h-32 rounded-full bg-white/8" />
 
-            {/* Subtle 2D Decorative Dots & Vector Accents */}
-            <div className="absolute left-8 top-28 flex flex-col gap-2 opacity-25">
-              <div className="flex gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              </div>
-              <div className="flex gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              </div>
-            </div>
-
             <div className="absolute right-12 bottom-20 opacity-20">
               <svg
                 width="24"
@@ -275,9 +247,9 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          <div className="relative z-10 px-5 sm:px-6">
+          <div className="relative z-10 px-4 sm:px-5">
             {/* ── Top bar ── */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               {/* Location — opens dynamic sheet */}
               <button
                 type="button"
@@ -328,100 +300,24 @@ export default function UserDashboard() {
               </div>
             </div>
 
-            {/* ── Headline ── */}
-            <div className="mb-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-100/90 mb-1">
-                {greeting()}, {firstName}!
-              </p>
-              <h1
-                className="font-black leading-[1.08] tracking-[-0.025em] text-white"
-                style={{ fontSize: 'clamp(28px, 8vw, 36px)' }}
-              >
-                Fresh Home Tiffins
-                <br />
-                Delivered Daily.
-              </h1>
+            {/* ── Polished Hero Offers Carousel Card ── */}
+            <div className="w-full mt-2">
+              <OffersCarousel
+                activeDelivery={activeDelivery}
+                activeSubs={activeSubs}
+                firstName={firstName}
+                greetingText={greeting()}
+              />
             </div>
-
-            {/* ── Status / Subscription Card ── */}
-            {activeDelivery ? (
-              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                      Live Delivery Status
-                    </span>
-                  </div>
-                  <span className="text-[9.5px] font-bold text-white/50 uppercase">Today</span>
-                </div>
-                <p className="text-white font-bold text-base leading-tight">
-                  {activeDelivery.partnerName || 'Your Kitchen'}
-                </p>
-                <p className="text-slate-400 text-xs mt-1 capitalize">
-                  Status: {activeDelivery.status?.replace(/_/g, ' ') || 'Preparing'}
-                </p>
-                <div className="mt-3.5 flex gap-2">
-                  <Link
-                    href="/track"
-                    className="flex-1 text-center py-2.5 bg-brand text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-brand-650 transition-all duration-200 active:scale-[0.98]"
-                  >
-                    Track Live Delivery
-                  </Link>
-                </div>
-              </div>
-            ) : activeSubs.length > 0 ? (
-              <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-4.5 shadow-lg border border-white/10 animate-fade-in">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
-                      Subscription Active
-                    </span>
-                  </div>
-                  <span className="text-[9.5px] font-bold text-white/50 uppercase">
-                    {activeSubs.length} Active Plan{activeSubs.length > 1 ? 's' : ''}
-                  </span>
-                </div>
-                <p className="text-white font-bold text-base leading-tight">
-                  {activeSubs[0].meal_type
-                    ? `${activeSubs[0].meal_type.charAt(0).toUpperCase() + activeSubs[0].meal_type.slice(1)} Subscriptions`
-                    : 'Daily Meals'}
-                </p>
-                <p className="text-slate-400 text-xs mt-1">
-                  Your kitchen meals are scheduled and tracking automatically.
-                </p>
-                <div className="mt-3.5">
-                  <Link
-                    href="/orders"
-                    className="block w-full text-center py-2.5 bg-white/10 text-white font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-white/15 transition-all duration-200 active:scale-[0.98] border border-white/5"
-                  >
-                    Manage Weekly Planner
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="relative overflow-hidden rounded-2xl bg-black/15 backdrop-blur-md p-4.5 border border-white/15 shadow-sm">
-                <span className="rounded-md px-2 py-0.5 text-[9.5px] font-bold tracking-wider uppercase bg-white/15 text-white">
-                  Premium Meal Service
-                </span>
-                <h2 className="mt-2 text-base font-bold text-white leading-snug">
-                  Healthy Home Tiffins. Pause or Swap Anytime.
-                </h2>
-                <p className="mt-1 text-[11.5px] text-white/80 leading-relaxed font-normal">
-                  Switch kitchens easily if you want a change, or pause when you are away.
-                </p>
-              </div>
-            )}
           </div>
         </section>
 
         {/* ════════════════════════════════════════
             BODY — Clean Slate Canvas
         ════════════════════════════════════════ */}
-        <div className="px-5 pb-8 sm:px-6">
+        <div className="px-4 pb-8 sm:px-5">
           {/* ── Search Bar ── */}
-          <div className="group relative -mt-7 mb-5">
+          <div className="group relative -mt-6 mb-5">
             <div className="pointer-events-none absolute left-4.5 top-1/2 z-10 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-brand">
               <Search className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </div>
@@ -488,7 +384,7 @@ export default function UserDashboard() {
           </div>
 
           {/* ── Vendor Section Header ── */}
-          <div className="mb-4 flex items-center justify-between">
+          <div id="nearest-kitchens" className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-[18px] font-black tracking-tight text-slate-900">
                 Nearest Kitchens

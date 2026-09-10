@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   output: 'export',
@@ -10,6 +11,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     optimizePackageImports: ['lucide-react', 'date-fns', 'framer-motion'],
+  },
+  turbopack: {
+    root: path.resolve(__dirname, '../../'),
   },
 };
 

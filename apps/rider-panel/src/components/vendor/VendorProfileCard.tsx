@@ -8,6 +8,7 @@ import { uploadImage, getImageUrl } from '@/lib/storage';
 import Image from 'next/image';
 import { MapPin, ChefHat, Tag, Phone, Navigation, Loader2, Sparkles, CheckCircle2, UploadCloud } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { reverseGeocode } from '@/lib/geo';
 
 export function VendorProfileCard() {
   const user = useAuthStore((s) => s.user);
@@ -19,8 +20,9 @@ export function VendorProfileCard() {
     name: user?.name || '',
     cuisine_type: user?.cuisine_type || '',
     phone: user?.phone || '',
-    image: user?.image || '',
+    address: user?.address || (user?.location as any)?.address || '',
     capacity: user?.capacity !== undefined && user?.capacity !== null ? String(user.capacity) : '',
+    image: user?.image || '',
   });
   
   const [syncingLoc, setSyncingLoc] = useState(false);
@@ -33,8 +35,9 @@ export function VendorProfileCard() {
         name: user.name || '',
         cuisine_type: user.cuisine_type || '',
         phone: user.phone || '',
-        image: user.image || '',
+        address: user.address || (user.location as any)?.address || '',
         capacity: user.capacity !== undefined && user.capacity !== null ? String(user.capacity) : '',
+        image: user.image || '',
       });
     }
   }, [user]);
@@ -57,11 +60,25 @@ export function VendorProfileCard() {
         try {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const locationData = { lat, lng, updated_at: Date.now() };
+          const geo = await reverseGeocode(lat, lng);
+          const locationData = { 
+            lat, 
+            lng, 
+            address: geo.completeAddress,
+            updated_at: Date.now() 
+          };
           
-          await updateUser(user.id, { location: locationData });
-          setUser({ ...user, location: locationData });
-          addToast('Location coordinates synced! 📍', 'success');
+          const updates: any = { 
+            location: locationData,
+          };
+          if (geo.completeAddress) {
+            updates.address = geo.completeAddress;
+            setProfile(prev => ({ ...prev, address: geo.completeAddress }));
+          }
+
+          await updateUser(user.id, updates);
+          setUser({ ...user, ...updates });
+          addToast('Kitchen location & address auto-filled! 📍', 'success');
         } catch (err) {
           setLocError('Failed to save location to database');
           addToast('Failed to save location', 'error');

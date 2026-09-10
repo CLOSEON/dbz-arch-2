@@ -34,7 +34,26 @@ export default function AdminVendors() {
     setLoading(true);
     try {
       const list = await getAllUsers();
-      setUsers(list.filter(u => u.role === 'vendor'));
+      const rawVendors = list.filter(u => u.role === 'vendor' || (u as any).roles?.vendor);
+      
+      // Deduplicate vendors by unique account ID (each vendor is a distinct kitchen)
+      const seen = new Set<string>();
+      const deduped: AppUser[] = [];
+      const sorted = [...rawVendors].sort((a, b) => {
+        if ((a as any).banner_url || (a as any).logo_url) return -1;
+        if ((b as any).banner_url || (b as any).logo_url) return 1;
+        return 0;
+      });
+
+      for (const v of sorted) {
+        const key = v.id;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(v);
+        }
+      }
+
+      setUsers(deduped);
     } catch (err) {
       addToast('Failed to load vendors', 'error');
     } finally {
@@ -248,6 +267,9 @@ export default function AdminVendors() {
                       >
                         {v.kitchen_name || `${v.name}'s Kitchen`}
                       </Link>
+                      {v.kitchen_name && v.name && v.kitchen_name.toLowerCase() !== v.name.toLowerCase() && (
+                        <span className="text-[11px] text-slate-400 font-medium">({v.name})</span>
+                      )}
 
                       {isSuspended ? (
                         <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">Suspended</span>

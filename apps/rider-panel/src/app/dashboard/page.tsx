@@ -1,20 +1,36 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useDeliveryStore } from '@/store/deliveryStore';
-import { Camera, Navigation, MapPin, Search, PackageOpen, Truck, Store, LogOut, Phone, X, Loader2 } from 'lucide-react';
+import { 
+  Navigation, 
+  MapPin, 
+  PackageOpen, 
+  Truck, 
+  Store, 
+  LogOut, 
+  Phone, 
+  Loader2, 
+  CheckCircle2, 
+  ShieldCheck, 
+  Compass, 
+  ListOrdered
+} from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { updateUser } from '@/lib/queries/users';
 import toast from 'react-hot-toast';
-import { collection, getDocs, query, where, doc, getDoc, writeBatch, updateDoc, onSnapshot, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, doc, getDoc, writeBatch, updateDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { db, functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import dynamic from 'next/dynamic';
-import { SwipeToConfirm } from '@/components/ui/SwipeToConfirm';
+import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
+import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
+import { generateBoxTag } from '@/lib/boxTag';
+import { LocationTracker } from '@/lib/delivery/locationTracker';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { ssr: false });
-
-import { PendingVerificationScreen } from '@/components/shared/PendingVerificationScreen';
 
 export default function RiderDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -23,86 +39,99 @@ export default function RiderDashboard() {
   const activeTrip = useDeliveryStore((s) => s.activeTrip);
   const agentOrders = useDeliveryStore((s) => s.agentOrders);
 
-  const isRiderRole = user?.role === 'delivery' || user?.role === 'admin';
-  const isVerifiedRider = (user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
-
-  if (user && (!isRiderRole || !isVerifiedRider)) {
-    return <PendingVerificationScreen role="delivery" />;
-  }
+  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
+  const isRiderRole = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || (user as any)?.roles?.delivery || user?.role === 'admin' || isSuper;
+  const isVerifiedRider = isSuper || ((user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested');
 
   const [isMounting, setIsMounting] = useState(true);
   const [loadingImage, setLoadingImage] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  const [todayEarnings, setTodayEarnings] = useState(0);
-  const failedOrdersRef = useRef<Set<string>>(new Set()); // Fix 10: prevent double-fire
+  const [viewTab, setViewTab] = useState<'active' | 'itinerary'>('active');
+  const failedOrdersRef = useRef<Set<string>>(new Set());
 
-  // Vendor Pickup OTP modal & Count
-  const [showOTPModal, setShowOTPModal] = useState(false);
+  // Kitchen Pickup Verification state
   const [vendorOTP, setVendorOTP] = useState('');
-  const [verifyingOTP, setVerifyingOTP] = useState(false);
-  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+  const [verifyingVendorOTP, setVerifyingVendorOTP] = useState(false);
   const [pickupStep, setPickupStep] = useState<'otp' | 'count'>('otp');
   const [vendorDeclaredCount, setVendorDeclaredCount] = useState<number>(0);
   const [riderConfirmedCount, setRiderConfirmedCount] = useState<string>('');
 
-  // Customer Drop-off OTP modal
-  const [showDropoffModal, setShowDropoffModal] = useState(false);
+  // Customer Drop-off Verification state
   const [dropoffOTP, setDropoffOTP] = useState('');
   const [verifyingDropoffOTP, setVerifyingDropoffOTP] = useState(false);
-  const [currentDropoffOrderId, setCurrentDropoffOrderId] = useState<string | null>(null);
 
+  // Customer unavailability timer state
   const [unavailabilityStartTimes, setUnavailabilityStartTimes] = useState<Record<string, number>>({});
   const [nowTick, setNowTick] = useState(Date.now());
-  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
-  const [photoProof, setPhotoProof] = useState<File | null>(null);
-  const [uploadingPhotoProof, setUploadingPhotoProof] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Offline-First Sync Loop
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // Current rider coordinates from active GPS
+  const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [customerProfiles, setCustomerProfiles] = useState<Record<string, { name: string; phone?: string; image?: string; address?: string }>>({});
+  const [navigatingVendorId, setNavigatingVendorId] = useState<string | null>(null);
 
-    async function syncOfflineQueue() {
-      if (!navigator.onLine) return;
-      const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-      if (queue.length === 0) return;
+  // ── Kitchen Navigation with Instant Fresh Coordinates Check ────────────────
+  const handleNavigateToKitchen = async (
+    vendorId: string,
+    fallbackLat?: number,
+    fallbackLng?: number,
+    fallbackAddress?: string
+  ) => {
+    let targetLat = fallbackLat;
+    let targetLng = fallbackLng;
+    let targetAddress = fallbackAddress;
 
-      console.log(`[Offline Sync] Found ${queue.length} deliveries to sync.`);
-      const successfulSyncs: string[] = [];
-
-      for (const item of queue) {
-        try {
-          await updateDoc(doc(db, 'orders', item.orderId), {
-            status: 'delivered',
-            delivery_photo_url: item.photoUrl || null,
-            updated_at: new Date(),
-            'timestamps.deliveredAt': new Date(),
-            delivery_method: item.photoUrl ? 'photo_proof_offline' : 'otp_offline'
+    if (vendorId) {
+      setNavigatingVendorId(vendorId);
+      try {
+        const snap = await getDoc(doc(db, 'users', vendorId));
+        if (snap.exists()) {
+          const freshData = snap.data();
+          const liveLat = freshData.location?.lat ?? freshData.lat;
+          const liveLng = freshData.location?.lng ?? freshData.lng;
+          const liveAddr = freshData.address || freshData.location?.address;
+          if (typeof liveLat === 'number' && typeof liveLng === 'number') {
+            targetLat = liveLat;
+            targetLng = liveLng;
+          }
+          if (liveAddr) {
+            targetAddress = liveAddr;
+          }
+          // Immediately sync local state so card and map reflect the fresh position
+          setVendors(prev => {
+            const exists = prev.some(v => v.id === vendorId);
+            if (exists) {
+              return prev.map(v => (v.id === vendorId ? { ...v, ...freshData } : v));
+            }
+            return [...prev, { id: vendorId, ...freshData }];
           });
-          successfulSyncs.push(item.orderId);
-        } catch (err) {
-          console.error('[Offline Sync] Failed to sync order:', item.orderId, err);
         }
-      }
-
-      const remaining = queue.filter((item: any) => !successfulSyncs.includes(item.orderId));
-      localStorage.setItem('offline_deliveries', JSON.stringify(remaining));
-      if (successfulSyncs.length > 0) {
-        toast.success(`Synced ${successfulSyncs.length} offline deliveries! 📶`);
+      } catch (err) {
+        console.warn('[handleNavigateToKitchen] Fresh lookup failed, using cached coords:', err);
+      } finally {
+        setNavigatingVendorId(null);
       }
     }
 
-    const interval = setInterval(syncOfflineQueue, 15000); // Check every 15s
-    window.addEventListener('online', syncOfflineQueue);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('online', syncOfflineQueue);
-    };
-  }, []);
+    let url = '';
+    if (typeof targetLat === 'number' && typeof targetLng === 'number') {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}`;
+    } else if (targetAddress) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(targetAddress)}`;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error('Kitchen location is not available yet');
+    }
+  };
+
+  // ── 1. Offline Sync Queue (Removed to prevent spoofing) ─────────────────────
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsMounting(false), 800);
+    const timer = setTimeout(() => setIsMounting(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -111,40 +140,7 @@ export default function RiderDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fix 10: auto-fail expired customer unavailability timers from a useEffect (not render)
-  useEffect(() => {
-    const expired = Object.entries(unavailabilityStartTimes).filter(
-      ([, start]) => Date.now() - start >= 600_000
-    );
-    expired.forEach(([orderId]) => {
-      void handleCustomerUnavailable(orderId);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowTick]);
-
-  // Fix 1: Real-time today earnings from rider_payments
-  useEffect(() => {
-    if (!user?.id) return;
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const q = query(
-      collection(db, 'rider_payments'),
-      where('riderId', '==', user.id),
-      orderBy('calculatedAt', 'desc')
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      let total = 0;
-      snap.docs.forEach(d => {
-        const p = d.data();
-        const t = p.calculatedAt?.toDate?.()?.getTime?.() || 0;
-        if (t >= startOfToday.getTime()) total += p.totalPayment || 0;
-      });
-      setTodayEarnings(total);
-    }, () => { /* silently fail — rider may have no payments yet */ });
-    return () => unsub();
-  }, [user?.id]);
-
-  // Fix 2: Sync isOnline state from Firestore on mount
+  // ── 2. Sync isOnline state from Firestore ─────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     const profileRef = doc(db, 'driver_profiles', user.id);
@@ -155,38 +151,104 @@ export default function RiderDashboard() {
           setIsOnline(data.isActive);
         }
       }
-    }, () => { /* silently fail */ });
+    }, () => { /* silently ignore */ });
     return () => unsub();
   }, [user?.id]);
 
-  // Fix 2: Toggle online state and persist to Firestore
   const handleToggleOnline = useCallback(async (newValue: boolean) => {
     setIsOnline(newValue);
     if (!user?.id) return;
     try {
-      await updateDoc(doc(db, 'driver_profiles', user.id), {
+      await setDoc(doc(db, 'driver_profiles', user.id), {
+        id: user.id,
+        uid: user.id,
+        name: user.name || 'Dabzzo Rider',
+        phone: user.phone || '',
+        vehicleType: user.vehicle_type || 'Motorcycle',
         isActive: newValue,
         lastActive: new Date()
-      });
-    } catch {
-      // If driver_profiles doc doesn't exist yet, create it
-      try {
-        const { setDoc } = await import('firebase/firestore');
-        await setDoc(doc(db, 'driver_profiles', user.id), {
-          id: user.id,
-          isActive: newValue,
-          lastActive: new Date()
-        }, { merge: true });
-      } catch (e) {
-        console.warn('Could not update online status:', e);
+      }, { merge: true });
+      if (!newValue) {
+        await LocationTracker.stopTripTracking();
       }
+      toast.success(newValue ? 'You are Online & On Duty 🛵' : 'You are Offline');
+    } catch (e) {
+      console.warn('Could not update online status:', e);
     }
-  }, [user?.id]);
+  }, [user]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // ── 3. Battery-Smart GPS: Watch position ONLY while an active trip is ongoing ─
+  useEffect(() => {
+    const hasActiveTrip = isOnline && activeTrip && activeTrip.status !== 'completed';
+    if (!hasActiveTrip || !user?.id) {
+      LocationTracker.stopTripTracking().catch(() => {});
+      return;
+    }
 
-  // ── Customer profiles for drop-off enrichment ─────────────────────────────
-  const [customerProfiles, setCustomerProfiles] = useState<Record<string, { name: string; phone?: string; image?: string; address?: string }>>({});
+    let watchId: number | null = null;
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setRiderLocation(loc);
+          setDoc(doc(db, 'driver_profiles', user.id), {
+            id: user.id,
+            isActive: true,
+            currentLocation: loc,
+            lastActive: new Date()
+          }, { merge: true }).catch((err) => console.warn('Location push failed:', err.message));
+        },
+        (err) => console.warn('Geolocation error:', err.message),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+      );
+    }
+
+    return () => {
+      if (watchId !== null && typeof navigator !== 'undefined') {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [isOnline, activeTrip?.id, activeTrip?.status, user?.id]);
+
+  // ── 4. Fetch Vendors & Customer Profiles (Lightweight 20s Polling Sync) ────
+  const fetchVendors = useCallback(async () => {
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
+      const snap = await getDocs(q);
+      setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error('[RiderDashboard] Failed to fetch vendors:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    // Initial fetch
+    fetchVendors();
+
+    // Periodic sync every 20s (within 10-30s, zero realtime listener burden)
+    const interval = setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        fetchVendors();
+      }
+    }, 20_000);
+
+    // Sync immediately whenever rider returns to or focuses this window/tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchVendors();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', fetchVendors);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', fetchVendors);
+    };
+  }, [user?.id, fetchVendors]);
 
   useEffect(() => {
     if (!agentOrders.length) return;
@@ -206,8 +268,7 @@ export default function RiderDashboard() {
       results.forEach(r => { if (r) map[r[0]] = r[1]; });
       setCustomerProfiles(map);
     }).catch(err => {
-      console.error('[RiderDashboard] Failed to update driver profile:', err);
-      toast.error('Failed to update your location. Please check permissions.');
+      console.error('[RiderDashboard] Failed to fetch customer profiles:', err);
     });
   }, [agentOrders]);
 
@@ -229,378 +290,178 @@ export default function RiderDashboard() {
     }
   }
 
-  const [riderLocation, setRiderLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [vendors, setVendors] = useState<any[]>([]);
+  // ── 5. Active Stop Derivation ─────────────────────────────────────────────
+  const pickupStopsList = activeTrip?.pickupStops || [];
+  const pendingPickups = pickupStopsList.filter((s: any) => s.status !== 'completed');
 
-  // ── GPS: watch position & push to Firestore ───────────────────────────────
-  useEffect(() => {
-    const pushLocation = (loc: {lat: number, lng: number}) => {
-      setRiderLocation(loc);
-      if (user?.id) {
-        import('firebase/firestore').then(({ doc: d, setDoc }) => {
-          setDoc(d(db, 'driver_profiles', user.id), {
-            id: user.id,
-            isActive: true,
-            currentLocation: loc,
-            lastActive: new Date()
-          }, { merge: true }).catch(err => console.warn('Failed to update driver profile:', err.message));
-        });
-      }
-    };
+  let remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
+  if (activeTrip?.dropStops) {
+    remainingDrops.sort((a, b) => {
+      const stopA = activeTrip!.dropStops!.find((s: any) => s.orderId === a.id);
+      const stopB = activeTrip!.dropStops!.find((s: any) => s.orderId === b.id);
+      return (stopA?.sequence || 999) - (stopB?.sequence || 999);
+    });
+  }
 
-    if (navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => pushLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => {
-          console.warn("Geolocation error, retrying...", err.message);
-          // Only show toast if it's not a timeout or position unavailable so we don't spam the user on desktop
-          if (err.code !== err.TIMEOUT && err.code !== err.POSITION_UNAVAILABLE) {
-            toast.error("GPS Signal Lost. Please ensure location services are enabled.");
-          }
-        },
-        // We removed the short timeout, giving the device more time to get a real lock
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
-      );
-      return () => navigator.geolocation.clearWatch(watchId);
-    } else {
-      toast.error("Geolocation is not supported by your browser");
+  let currentState: 'IDLE' | 'PICKUP' | 'DELIVERY' = 'IDLE';
+  let nextPickup: any = null;
+  let currentDropOrder: any = null;
+
+  if (activeTrip && activeTrip.status !== 'completed') {
+    if (pendingPickups.length > 0) {
+      currentState = 'PICKUP';
+      nextPickup = pendingPickups[0];
+    } else if (remainingDrops.length > 0) {
+      currentState = 'DELIVERY';
+      currentDropOrder = remainingDrops[0];
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  useEffect(() => {
-    const fetchVendors = async () => {
-      try {
-        const q = query(collection(db, 'users'), where('role', '==', 'vendor'));
-        const snap = await getDocs(q);
-        setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error("[RiderDashboard] Failed to fetch vendors:", err);
-        toast.error("Failed to load vendor details");
-      }
-    };
-    if (user?.id) fetchVendors();
-  }, [user?.id]);
-
-  function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
   }
 
-  const mapMarkers: any[] = [];
-  if (riderLocation) {
-    mapMarkers.push({
-      id: 'rider', lat: riderLocation.lat, lng: riderLocation.lng,
-      title: 'You are here', isCurrentLocation: true
-    });
-  }
-  
-  const vendorsWithDistance = vendors
-    .filter(v => v.location?.lat && v.location?.lng)
-    .map(v => ({
-      ...v,
-      dist: riderLocation ? getDistance(riderLocation.lat, riderLocation.lng, v.location.lat, v.location.lng) : Infinity
-    }))
-    .sort((a, b) => a.dist - b.dist);
+  const completedDropsCount = agentOrders.filter(o => o.status === 'delivered').length;
+  const totalDropsCount = agentOrders.length;
+  const totalPickupsCount = pickupStopsList.length;
+  const completedPickupsCount = pickupStopsList.filter((s: any) => s.status === 'completed').length;
+  const totalTasks = totalPickupsCount + totalDropsCount;
+  const completedTasks = completedPickupsCount + completedDropsCount;
+  const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  vendorsWithDistance.forEach((v, idx) => {
-    const isClosest = riderLocation && idx === 0;
-    mapMarkers.push({
-      id: v.id,
-      lat: v.location.lat,
-      lng: v.location.lng,
-      title: v.business_name || v.name || 'Kitchen',
-      subtitle: riderLocation ? `${v.dist.toFixed(1)} km away ${isClosest ? '(⭐ Closest)' : ''}` : 'Kitchen',
-    });
-  });
-
-  // ── Vendor Pickup OTP Verify & Confirm ───────────────────────────────────
-  const handleOTPVerify = async () => {
-    if (!activeTrip || !currentVendorId || vendorOTP.length !== 4) return;
-    setVerifyingOTP(true);
+  // ── 6. Kitchen Pickup OTP & Quantity Verification ────────────────────────
+  const handleVerifyVendorOTP = async () => {
+    if (!activeTrip || !nextPickup || vendorOTP.length !== 4) {
+      toast.error('Please enter the 4-digit Kitchen OTP');
+      return;
+    }
+    setVerifyingVendorOTP(true);
     try {
       const tripRef = doc(db, 'rider_trips', activeTrip.id);
       const tripSnap = await getDoc(tripRef);
       if (!tripSnap.exists()) throw new Error('Trip not found');
       const tripData = tripSnap.data();
 
-      // 1. Verify OTP
       let isValid = false;
       const batchIds = tripData.batch_ids || [];
-      let batchDocs: any[] = [];
-      
-      // Check batch OTPs
       if (batchIds.length > 0) {
-        batchDocs = await Promise.all(batchIds.map((id: string) => getDoc(doc(db, 'batches', id))));
+        const batchDocs = await Promise.all(batchIds.map((id: string) => getDoc(doc(db, 'batches', id))));
         const validOTPs = batchDocs.map(d => String(d.data()?.pickup_otp)).filter(Boolean);
-        isValid = validOTPs.includes(String(vendorOTP));
+        if (validOTPs.includes(String(vendorOTP))) isValid = true;
       }
 
-      // Check pickupStops OTPs directly (for test orders without batches)
       if (!isValid && tripData.pickupStops) {
-        const vendorStop = tripData.pickupStops.find((s: any) => s.vendorId === currentVendorId);
-        if (vendorStop && String(vendorStop.pickupOTP) === String(vendorOTP)) {
+        const vStop = tripData.pickupStops.find((s: any) => s.vendorId === nextPickup.vendorId);
+        if (vStop && String(vStop.pickupOTP) === String(vendorOTP)) {
           isValid = true;
         }
       }
 
+      if (!isValid && nextPickup.pickupOTP && String(nextPickup.pickupOTP) === String(vendorOTP)) {
+        isValid = true;
+      }
+
       if (!isValid) {
-        toast.error("Invalid Pickup OTP. Please check with the vendor.");
+        toast.error('Invalid Kitchen OTP. Please ask chef for the code on vendor screen.');
         return;
       }
 
-      // Instead of completing, transition to count confirmation
-      const vendorStop = tripData.pickupStops?.find((s: any) => s.vendorId === currentVendorId);
-      const expectedCount = vendorStop?.expectedTiffinCount || 0;
+      const expectedCount = nextPickup.expectedTiffinCount || agentOrders.length || 1;
       setVendorDeclaredCount(expectedCount);
       setRiderConfirmedCount(String(expectedCount));
       setPickupStep('count');
-
+      toast.success('Kitchen OTP Verified! ✓ Confirm tiffin count.');
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Failed to verify OTP');
+      toast.error(err.message || 'Verification failed');
     } finally {
-      setVerifyingOTP(false);
+      setVerifyingVendorOTP(false);
     }
   };
 
-  const handleCountConfirm = async () => {
-    if (!activeTrip || !currentVendorId) return;
-    const confirmedCountInt = parseInt(riderConfirmedCount, 10);
-    if (isNaN(confirmedCountInt) || confirmedCountInt < 0) {
-      toast.error("Please enter a valid count.");
+  const handleConfirmPickupCount = async () => {
+    if (!activeTrip || !nextPickup) return;
+    const countInt = parseInt(riderConfirmedCount, 10);
+    if (isNaN(countInt) || countInt <= 0) {
+      toast.error('Please enter a valid count');
       return;
     }
-
-    setVerifyingOTP(true);
+    setVerifyingVendorOTP(true);
     try {
       const tripRef = doc(db, 'rider_trips', activeTrip.id);
       const tripSnap = await getDoc(tripRef);
       if (!tripSnap.exists()) throw new Error('Trip not found');
       const tripData = tripSnap.data();
 
-      const batchIds = tripData.batch_ids || [];
-      const batchDocs = batchIds.length > 0 ? await Promise.all(batchIds.map((id: string) => getDoc(doc(db, 'batches', id)))) : [];
-
       const batch = writeBatch(db);
-
-      // Record discrepancy if mismatched
-      if (confirmedCountInt !== vendorDeclaredCount) {
-        const discrepancyRef = doc(collection(db, 'pickup_discrepancies'));
-        batch.set(discrepancyRef, {
-          batch_id: batchIds[0] || 'unknown',
-          rider_trip_id: activeTrip.id,
-          vendor_declared_count: vendorDeclaredCount,
-          rider_confirmed_count: confirmedCountInt,
-          flagged_at: new Date(),
-          resolved: false
-        });
-        toast.error(`Discrepancy flagged! Expected ${vendorDeclaredCount}, got ${confirmedCountInt}. Ops notified.`, { duration: 5000 });
-      }
-
-      // 2. Mark pickup stop as completed
+      const currentVendorId = nextPickup.vendorId;
       const pickupStops = tripData.pickupStops || [];
-      let justCompletedVendorId: string | null = null;
-      let allPickupsCompleted = true;
+      let allDone = true;
 
       const updatedStops = pickupStops.map((stop: any) => {
-        if (stop.status !== 'completed' && stop.vendorId === currentVendorId && !justCompletedVendorId) {
-          justCompletedVendorId = stop.vendorId;
-          return { ...stop, status: 'completed', confirmedCount: confirmedCountInt };
+        if (stop.vendorId === currentVendorId && stop.status !== 'completed') {
+          return { ...stop, status: 'completed', confirmedCount: countInt, verifiedAt: new Date() };
         }
-        if (stop.status !== 'completed') allPickupsCompleted = false;
+        if (stop.status !== 'completed') allDone = false;
         return stop;
       });
 
-      const newTripStatus = allPickupsCompleted ? 'pickup_complete' : 'picking_up';
-      
       batch.update(tripRef, {
         pickupStops: updatedStops,
-        status: newTripStatus,
+        status: allDone ? 'pickup_complete' : 'picking_up',
         updatedAt: new Date()
       });
 
-      // 3. Update all assigned orders
-      let assignedOrderIds: string[] = tripData.assignedOrderIds || [];
-      if (assignedOrderIds.length === 0 && tripData.dropoffStops) {
-        assignedOrderIds = tripData.dropoffStops.map((s: any) => s.orderId).filter(Boolean);
-      }
-
+      const assignedOrderIds: string[] = tripData.assignedOrderIds || agentOrders.map(o => o.id);
       for (const oId of assignedOrderIds) {
-        const oData = agentOrders.find(o => o.id === oId) as any;
-        // If the order belongs to the vendor we just picked up from, advance its status
-        if (oData && (oData.vendor_id === justCompletedVendorId || oData.vendorId === justCompletedVendorId)) {
+        const ord = agentOrders.find(o => o.id === oId) as any;
+        if (ord && (ord.vendor_id === currentVendorId || ord.vendorId === currentVendorId || allDone)) {
           batch.update(doc(db, 'orders', oId), {
-            status: allPickupsCompleted ? 'out_for_delivery' : 'picked_up',
+            status: allDone ? 'out_for_delivery' : 'picked_up',
             updated_at: new Date()
           });
-        } else if (oData && allPickupsCompleted) {
-          batch.update(doc(db, 'orders', oId), {
-            status: 'out_for_delivery',
-            updated_at: new Date()
-          });
-        }
-      }
-
-      // 4. Mark batch(es) completed for this vendor
-      for (const b of batchDocs) {
-        if (b.data()?.vendor_id === justCompletedVendorId) {
-          batch.update(doc(db, 'batches', b.id), { status: 'completed', updated_at: new Date() });
         }
       }
 
       await batch.commit();
-      toast.success("Pickup confirmed! 🎉 Heading to customer.");
-      setShowOTPModal(false);
-      setPickupStep('otp');
+      toast.success(allDone ? 'All Kitchen Meals Collected! Proceeding to Customer Deliveries 🛵' : 'Kitchen Pickup Completed! Proceeding to next stop.');
       setVendorOTP('');
+      setPickupStep('otp');
     } catch (err: any) {
-      console.error(err);
       toast.error(err.message || 'Failed to confirm pickup');
     } finally {
-      setVerifyingOTP(false);
+      setVerifyingVendorOTP(false);
     }
   };
 
-  // ── Customer Drop-off OTP Verify & Complete ───────────────────────────────
-  const handleDropoffVerify = async () => {
-    if (!activeTrip || !currentDropoffOrderId || dropoffOTP.length !== 4) return;
+  // ── 7. Customer Drop-off OTP Verification ────────────────────────────────
+  const handleVerifyDropoffOTP = async () => {
+    if (!activeTrip || !currentDropOrder || dropoffOTP.length !== 4) {
+      toast.error('Please enter the 4-digit Customer Delivery OTP');
+      return;
+    }
     setVerifyingDropoffOTP(true);
     try {
-      // 1. Verify OTP against order document
-      const orderSnap = await getDoc(doc(db, 'orders', currentDropoffOrderId));
-      if (!orderSnap.exists()) throw new Error('Order not found');
-      const orderData = orderSnap.data();
-      const expectedOTP = orderData?.otp;
-
-      if (!expectedOTP || expectedOTP !== dropoffOTP) {
-        toast.error("Invalid Drop-off OTP. Please check with the customer.");
+      const verifyFn = httpsCallable(functions, 'verifyDeliveryOTP');
+      const result = await verifyFn({ orderId: currentDropOrder.id, otp: dropoffOTP });
+      const data = result.data as { success: boolean; message: string };
+      if (!data.success) {
+        toast.error(data.message || 'Invalid OTP. Please check the 4-digit PIN on customer tracking screen.');
         return;
       }
-
-      // Try online update
-      try {
-        // 2. Mark order as delivered
-        await updateDoc(doc(db, 'orders', currentDropoffOrderId), {
-          status: 'delivered',
-          updated_at: new Date(),
-          'timestamps.deliveredAt': new Date()
-        });
-
-        // 3. Check if all drops done → complete the trip
-        const remainingDrops = agentOrders.filter(o => o.id !== currentDropoffOrderId && o.status !== 'delivered' && o.status !== 'failed');
-        if (remainingDrops.length === 0) {
-          await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
-            status: 'completed',
-            updatedAt: new Date()
-          });
-        }
-        toast.success('Delivery completed! 🎉');
-      } catch (networkErr) {
-        // Queue for offline sync
-        const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-        queue.push({ orderId: currentDropoffOrderId, timestamp: Date.now() });
-        localStorage.setItem('offline_deliveries', JSON.stringify(queue));
-        toast.success('Offline: Delivery queued for auto-sync! 📶');
+      // Cloud function already marked order delivered
+      // Just update local UI state
+      const remaining = agentOrders.filter(o => o.id !== currentDropOrder.id && o.status !== 'delivered' && o.status !== 'failed');
+      if (remaining.length === 0) {
+        toast.success('All Deliveries Completed! Excellent run! 🎉');
+      } else {
+        toast.success(`Delivery #${completedDropsCount + 1} completed! Proceeding to next stop.`);
       }
-
-      setShowDropoffModal(false);
       setDropoffOTP('');
-      setCurrentDropoffOrderId(null);
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Failed to complete delivery');
+      toast.error('OTP verification failed: ' + (err?.message || 'Unknown error'));
     } finally {
       setVerifyingDropoffOTP(false);
     }
   };
 
-  const handlePhotoProofSubmit = async () => {
-    if (!activeTrip || !currentDropoffOrderId || !photoProof) return;
-    setUploadingPhotoProof(true);
-    try {
-      let photoUrl = '';
-      
-      if (navigator.onLine) {
-        // Online: upload immediately
-        const uploadedUrl = await uploadImage(photoProof, `delivery_proofs/${currentDropoffOrderId}`);
-        if (!uploadedUrl) throw new Error('Photo upload failed');
-        photoUrl = uploadedUrl;
-        
-        await updateDoc(doc(db, 'orders', currentDropoffOrderId), {
-          status: 'delivered',
-          delivery_photo_url: photoUrl,
-          updated_at: new Date(),
-          'timestamps.deliveredAt': new Date(),
-          delivery_method: 'photo_proof'
-        });
-
-        const remainingDrops = agentOrders.filter(o => o.id !== currentDropoffOrderId && o.status !== 'delivered' && o.status !== 'failed');
-        if (remainingDrops.length === 0) {
-          await updateDoc(doc(db, 'rider_trips', activeTrip.id), {
-            status: 'completed',
-            updatedAt: new Date()
-          });
-        }
-        toast.success('Delivery completed with Photo Proof! 🎉');
-      } else {
-        // Fix 7: Offline — compress image before storing to avoid localStorage quota
-        const compressImage = (file: File): Promise<string> =>
-          new Promise((resolve, reject) => {
-            const img = new window.Image();
-            const objectUrl = URL.createObjectURL(file);
-            img.onload = () => {
-              const MAX = 800;
-              const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.round(img.width * scale);
-              canvas.height = Math.round(img.height * scale);
-              const ctx = canvas.getContext('2d');
-              ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-              URL.revokeObjectURL(objectUrl);
-              resolve(canvas.toDataURL('image/jpeg', 0.8));
-            };
-            img.onerror = reject;
-            img.src = objectUrl;
-          });
-
-        try {
-          const compressed = await compressImage(photoProof);
-          const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-          queue.push({
-            orderId: currentDropoffOrderId,
-            photoUrl: compressed,
-            timestamp: Date.now(),
-          });
-          localStorage.setItem('offline_deliveries', JSON.stringify(queue));
-        } catch {
-          // If even compressed doesn't fit, queue without photo
-          const queue = JSON.parse(localStorage.getItem('offline_deliveries') || '[]');
-          queue.push({ orderId: currentDropoffOrderId, timestamp: Date.now() });
-          localStorage.setItem('offline_deliveries', JSON.stringify(queue));
-        }
-        toast.success('Offline: Delivery queued for sync! 📶');
-      }
-
-      setShowDropoffModal(false);
-      setDropoffOTP('');
-      setCurrentDropoffOrderId(null);
-      setPhotoProof(null);
-      setShowPhotoUpload(false);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Failed to complete delivery with photo');
-    } finally {
-      setUploadingPhotoProof(false);
-    }
-  };
-
   const handleCustomerUnavailable = useCallback(async (orderId: string) => {
     if (!activeTrip) return;
-    // Fix 10: prevent double-fire
     if (failedOrdersRef.current.has(orderId)) return;
     failedOrdersRef.current.add(orderId);
     try {
@@ -608,7 +469,6 @@ export default function RiderDashboard() {
       if (!orderSnap.exists()) throw new Error('Order not found');
       
       const batch = writeBatch(db);
-      
       batch.update(doc(db, 'orders', orderId), {
         status: 'failed',
         failure_reason: 'customer_unavailable',
@@ -624,9 +484,8 @@ export default function RiderDashboard() {
         reviewed: false
       });
 
-      // Check if all drops done → complete the trip
-      const remainingDrops = agentOrders.filter(o => o.id !== orderId && o.status !== 'delivered' && o.status !== 'failed');
-      if (remainingDrops.length === 0) {
+      const remaining = agentOrders.filter(o => o.id !== orderId && o.status !== 'delivered' && o.status !== 'failed');
+      if (remaining.length === 0) {
         batch.update(doc(db, 'rider_trips', activeTrip.id), {
           status: 'completed',
           updatedAt: new Date()
@@ -635,558 +494,735 @@ export default function RiderDashboard() {
 
       await batch.commit();
       toast.error('Delivery marked as failed (Customer Unavailable)');
-      
-      // Cleanup timer if exists
       setUnavailabilityStartTimes(prev => {
-        const newTimers = { ...prev };
-        delete newTimers[orderId];
-        return newTimers;
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
       });
-
     } catch (err: any) {
-      console.error(err);
-      failedOrdersRef.current.delete(orderId); // allow retry on error
-      toast.error(err.message || 'Failed to mark as unavailable');
+      failedOrdersRef.current.delete(orderId);
+      toast.error(err.message || 'Failed to mark customer unavailable');
     }
   }, [activeTrip, agentOrders]);
 
-  // ── Derive UI state ───────────────────────────────────────────────────────
-  let currentState = 'IDLE';
-  let nextPickup: any = null;
-  let remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
-
-  if (activeTrip?.dropStops) {
-    remainingDrops.sort((a, b) => {
-      const stopA = activeTrip!.dropStops!.find((s: any) => s.orderId === a.id);
-      const stopB = activeTrip!.dropStops!.find((s: any) => s.orderId === b.id);
-      return (stopA?.sequence || 999) - (stopB?.sequence || 999);
-    });
-  }
-
-  if (activeTrip) {
-    const pendingPickups = activeTrip.pickupStops?.filter((s: any) => s.status !== 'completed');
-    if (pendingPickups && pendingPickups.length > 0) {
-      currentState = 'ASSIGNED';
-      nextPickup = pendingPickups[0];
-    } else if (remainingDrops.length > 0) {
-      currentState = 'DELIVERING';
+  // ── 8. Map Markers ────────────────────────────────────────────────────────
+  const mapMarkers = useMemo(() => {
+    const markers: any[] = [];
+    if (riderLocation) {
+      markers.push({
+        id: 'rider',
+        lat: riderLocation.lat,
+        lng: riderLocation.lng,
+        title: 'Your Location (Live GPS)',
+        isCurrentLocation: true
+      });
     }
-  }
+
+    pickupStopsList.forEach((stop: any, idx: number) => {
+      const v = vendors.find(ven => ven.id === stop.vendorId);
+      const lat = v?.location?.lat ?? v?.lat ?? stop.location?.lat;
+      const lng = v?.location?.lng ?? v?.lng ?? stop.location?.lng;
+      if (lat && lng) {
+        markers.push({
+          id: `pickup-${stop.vendorId || idx}`,
+          lat,
+          lng,
+          title: `Stop ${idx + 1} (Kitchen): ${v?.kitchen_name || v?.name || 'Kitchen'}`,
+          subtitle: stop.status === 'completed' ? 'Picked Up ✓' : (v?.address || v?.location?.address || stop.location?.address || 'Kitchen Pickup')
+        });
+      }
+    });
+
+    remainingDrops.forEach((order, idx) => {
+      const addressData = (order as any).address || (order as any).delivery_address;
+      const custId = (order as any).customerId || (order as any).user_id || '';
+      const cust = customerProfiles[custId];
+      if (addressData?.lat && addressData?.lng) {
+        markers.push({
+          id: `drop-${order.id}`,
+          lat: addressData.lat,
+          lng: addressData.lng,
+          title: `Drop ${totalPickupsCount + idx + 1}: ${cust?.name || 'Customer'}`,
+          subtitle: addressData.line1 || 'Customer Doorstep'
+        });
+      }
+    });
+
+    return markers;
+  }, [riderLocation, pickupStopsList, vendors, remainingDrops, totalPickupsCount, customerProfiles]);
+
+  const shiftWindow = useMemo(() => {
+    const activeSlot = (activeTrip?.slot || (agentOrders[0] as any)?.delivery_slot || (agentOrders[0] as any)?.meal_type || '').toLowerCase();
+    if (activeSlot === '11am' || activeSlot === 'lunch' || activeSlot === '1pm') {
+      return { slot: 'Lunch Shift', time: '11:00 AM – 1:30 PM', active: true };
+    }
+    if (activeSlot === '8pm' || activeSlot === 'dinner') {
+      return { slot: 'Dinner Shift', time: '7:30 PM – 9:30 PM', active: true };
+    }
+    const hour = new Date().getHours();
+    if (hour < 15) {
+      return { slot: 'Lunch Shift', time: '11:00 AM – 1:30 PM', active: hour >= 10 && hour <= 14 };
+    }
+    return { slot: 'Dinner Shift', time: '7:30 PM – 9:30 PM', active: hour >= 19 && hour <= 22 };
+  }, [activeTrip?.slot, agentOrders]);
 
   if (isMounting) {
     return (
-      <div className="space-y-6 pb-6 animate-pulse px-2">
-        {/* Header Shimmer */}
-        <div className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white border border-slate-100 rounded-full" />
-            <div className="space-y-2">
-              <div className="h-4 w-28 bg-white border border-slate-100 rounded" />
-              <div className="h-3 w-16 bg-white border border-slate-100 rounded" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <div className="w-16 h-8 bg-white border border-slate-100 rounded-full" />
-            <div className="w-8 h-8 bg-white border border-slate-100 rounded-full" />
-          </div>
-        </div>
-        
-        {/* Map Shimmer */}
-        <div>
-          <div className="w-full h-48 bg-white border border-slate-100 rounded-3xl" />
-        </div>
-
-        {/* Card Shimmer */}
-        <div>
-          <div className="w-full h-56 bg-white bg-white border border-slate-100 rounded-3xl p-6 space-y-4 flex flex-col justify-center">
-            <div className="h-4 w-1/3 bg-slate-50 border border-slate-100 rounded mx-auto" />
-            <div className="h-8 w-2/3 bg-slate-50 border border-slate-100 rounded mx-auto" />
-            <div className="h-4 w-1/2 bg-slate-50 border border-slate-100 rounded mx-auto" />
-            <div className="flex gap-3 pt-4">
-              <div className="flex-1 h-12 bg-slate-50 border border-slate-100 rounded-2xl" />
-              <div className="flex-1 h-12 bg-slate-50 border border-slate-100 rounded-2xl" />
-            </div>
-          </div>
-        </div>
+      <div className="space-y-4 max-w-xl mx-auto px-2 animate-pulse pt-2">
+        <div className="h-28 bg-white border border-slate-200/80 rounded-3xl" />
+        <div className="h-44 bg-white border border-slate-200/80 rounded-3xl" />
+        <div className="h-60 bg-white border border-slate-200/80 rounded-3xl" />
       </div>
     );
   }
 
-  const completedCount = agentOrders.filter(o => o.status === 'delivered').length;
-  const totalCount = agentOrders.length;
-  const pct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-  const radius = 16;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (pct / 100) * circumference;
+  if (user && (!isRiderRole || !isVerifiedRider)) {
+    return <PendingVerificationScreen role="delivery" />;
+  }
 
   return (
-    <div className="space-y-6 pb-24 text-slate-900">
-      <div className="flex items-center justify-between px-2 pt-2">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="relative w-12 h-12 overflow-hidden rounded-full border border-slate-100 bg-white"
-          >
-            {user?.image ? (
-              <Image src={getImageUrl(user.image)} alt={user.name || ''} fill className="object-cover" />
-            ) : (
-              <UserPlaceholder name={user?.name} />
-            )}
-            {loadingImage && <div className="absolute inset-0 bg-slate-100 flex items-center justify-center" />}
-          </button>
-          <div>
-            <h1 className="font-black text-slate-900 leading-none">{user?.name}</h1>
-            <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">₹{todayEarnings.toFixed(2)} Today</p>
-          </div>
-          {totalCount > 0 && (
-            <div className="relative w-10 h-10 flex items-center justify-center bg-white border border-slate-100 rounded-full shadow-inner shrink-0" title={`${completedCount}/${totalCount} Completed`}>
-              <svg className="w-full h-full transform -rotate-90">
-                <circle
-                  cx="20"
-                  cy="20"
-                  r={radius}
-                  className="text-slate-100"
-                  strokeWidth="3"
-                  stroke="currentColor"
-                  fill="transparent"
-                />
-                <circle
-                  cx="20"
-                  cy="20"
-                  r={radius}
-                  className="text-brand transition-all duration-500 ease-out"
-                  strokeWidth="3"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="transparent"
-                />
-              </svg>
-              <span className="absolute text-[9px] font-black text-slate-800">{completedCount}/{totalCount}</span>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
-          <button 
-            onClick={() => handleToggleOnline(!isOnline)}
-            className={`text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-full transition-all ${isOnline ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-white text-slate-500 border border-slate-100'}`}
-          >
-            {isOnline ? 'Online' : 'Offline'}
-          </button>
-          <button onClick={() => logout()} className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 bg-white border border-slate-100 rounded-full transition-colors" title="Log Out">
-            <LogOut size={16} />
-          </button>
-        </div>
-      </div>
-      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
-
-      <div className="px-2">
-        {!isOnline ? (
-          <div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center text-center border border-slate-100">
-            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 text-slate-500 border border-slate-100">
-              <Truck size={32} />
-            </div>
-            <h2 className="font-black text-xl text-slate-900 mb-1">You are offline</h2>
-            <p className="text-sm font-medium text-slate-500 mb-6">Go online to start receiving delivery trips.</p>
-            <button onClick={() => setIsOnline(true)} className="btn-primary w-full max-w-[200px]">Go Online</button>
-          </div>
-        ) : currentState === 'IDLE' ? (
-          <div className="relative overflow-hidden bg-white border border-slate-100 rounded-3xl p-8 flex flex-col items-center justify-center text-center min-h-[300px] shadow-2xl">
-            <div className="absolute inset-0 opacity-10">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-emerald-400 animate-ping" style={{ animationDuration: '3s' }} />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border border-emerald-400 animate-ping" style={{ animationDuration: '3s', animationDelay: '1s' }} />
-            </div>
-            <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-center mb-4 text-emerald-600 z-10 shadow-inner">
-              <Truck size={32} />
-            </div>
-            <h2 className="font-black text-xl text-slate-900 mb-2 z-10">Ready for Pickup</h2>
-            <p className="text-sm font-medium text-slate-500 z-10">You&apos;re online and available. Trips are assigned automatically.</p>
-          </div>
-        ) : currentState === 'ASSIGNED' && nextPickup ? (
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-1 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-            <div className="bg-gradient-to-b from-brand/5 via-brand/5 to-white rounded-t-[22px] p-6 text-center border-b border-slate-100">
-              <span className="inline-block px-3.5 py-1.5 bg-brand/10 text-brand text-[10px] font-black uppercase tracking-widest rounded-full mb-4">
-                Pickup Requested
-              </span>
-              <h2 className="font-black text-2xl text-slate-900 mb-1">
-                {vendors.find(v => v.id === nextPickup.vendorId)?.business_name || 
-                 vendors.find(v => v.id === nextPickup.vendorId)?.name || 
-                 `Vendor ${nextPickup.vendorId?.slice(-4)}`}
-              </h2>
-              <p className="text-slate-500 font-bold text-sm flex items-center justify-center gap-1.5">
-                <Navigation size={14} className="text-brand" /> {(nextPickup.distanceKm ?? 0).toFixed(1)} km away
+    <div className="space-y-4 pb-28 text-slate-900 max-w-xl mx-auto px-2 sm:px-0">
+      {/* ── 1. Top Salary Fleet Partner Card ───────────────────────────────── */}
+      <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="relative w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-sm shadow-xs overflow-hidden shrink-0 border border-slate-100"
+              title="Change Profile Photo"
+            >
+              {user?.image ? (
+                <Image src={getImageUrl(user.image)} alt={user.name || ''} fill className="object-cover" />
+              ) : (
+                <span>{((user?.name === 'Test Vendor' ? 'Test Rider' : user?.name) || 'DR').slice(0, 2).toUpperCase()}</span>
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="font-black text-base text-slate-900 leading-tight truncate">
+                  {user?.name === 'Test Vendor' ? 'Test Rider' : (user?.name || 'Dabzzo Rider')}
+                </h1>
+                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 shrink-0">
+                  <ShieldCheck className="w-3 h-3" /> Salary Fleet
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-500 mt-0.5 truncate flex items-center gap-1.5">
+                <Phone className="w-3 h-3 text-slate-400" /> {user?.phone || '+91 99009 90044'} • {user?.vehicle_type || 'Motorcycle'}
               </p>
             </div>
-            <div className="p-4 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                {nextPickup.vendorPhone && (
-                  <a href={`tel:${nextPickup.vendorPhone}`} className="flex-1 py-3 bg-slate-50 text-indigo-600 border  rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors">
-                    <Phone size={18} /> Call
-                  </a>
-                )}
-                {nextPickup.location?.lat && nextPickup.location?.lng && (
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${nextPickup.location.lat},${nextPickup.location.lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-3 bg-slate-50 text-blue-600 border  rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
-                  >
-                    <Navigation size={18} /> Navigate
-                  </a>
-                )}
-              </div>
-              <SwipeToConfirm
-                key={`pickup-${nextPickup.vendorId}-${showOTPModal}`}
-                onConfirm={() => {
-                  setCurrentVendorId(nextPickup.vendorId);
-                  setShowOTPModal(true);
-                }}
-                text="Swipe: Arrived at Kitchen"
-                confirmText="Arrived"
-                disabled={isUpdating}
-                className="w-full mt-2"
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => handleToggleOnline(!isOnline)}
+              className={`text-xs font-black uppercase tracking-wider px-3.5 py-2 rounded-full transition-all flex items-center gap-1.5 shadow-xs active:scale-95 ${
+                isOnline 
+                  ? 'bg-emerald-600 text-white shadow-emerald-600/20' 
+                  : 'bg-slate-100 text-slate-500 border border-slate-200'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
+              {isOnline ? 'Online' : 'Offline'}
+            </button>
+            <button 
+              onClick={() => logout()} 
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 bg-slate-50 border border-slate-200/80 rounded-2xl transition-colors" 
+              title="Log Out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        </div>
+        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
+
+        {/* Shift Attendance Status Pill */}
+        <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-wider text-slate-900">
+                {shiftWindow.slot} ({shiftWindow.time})
+              </p>
+              <p className="text-[10px] font-semibold text-slate-500">
+                {isOnline ? 'Attendance Logged: Present & Standing By ✓' : 'Shift Offline • Toggle online to mark attendance'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-white border border-slate-200/80 text-slate-700">
+            Fixed Salary
+          </span>
+        </div>
+
+        {/* Active Progress Bar */}
+        {activeTrip && totalTasks > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Run Progress</span>
+              <span className="text-slate-900 font-black">{completedTasks} / {totalTasks} Stops Done ({progressPct}%)</span>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-brand transition-all duration-500 rounded-full"
+                style={{ width: `${progressPct}%` }}
               />
             </div>
           </div>
-        ) : currentState === 'DELIVERING' ? (
-          <div className="space-y-4">
-            <h2 className="font-black text-xl text-slate-900 px-2 flex items-center gap-2">
-              <PackageOpen className="text-brand" /> Drop-offs ({remainingDrops.length})
-            </h2>
-            <div className="space-y-3">
-              {remainingDrops.map((order, idx) => {
-                const custId = (order as any).customerId || (order as any).user_id || '';
-                const cust = customerProfiles[custId];
-                const addressData = (order as any).address || (order as any).delivery_address;
-                return (
-                <div key={order.id} className="bg-white border border-slate-100 rounded-[24px] shadow-2xl overflow-hidden flex flex-col">
-                  {/* Customer header */}
-                  <div className="bg-slate-50 border-b border-slate-100 p-4 flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center text-xl shrink-0 text-slate-900">
-                      🏠
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="w-5 h-5 rounded-full bg-brand/20 text-brand flex items-center justify-center text-[10px] font-black shrink-0">
-                          {idx + 1}
-                        </span>
-                        <span className="font-black text-slate-900 text-base leading-tight truncate">
-                          {cust?.name || `Customer …${custId.slice(-4)}`}
-                        </span>
-                      </div>
-                      <p className="text-slate-900/60 text-xs font-medium truncate mb-0.5">
-                        {addressData?.line1 || cust?.address || 'No Address provided'}
-                      </p>
-                      {cust?.phone && (
-                        <p className="text-emerald-600 text-xs font-bold tracking-wide">
-                          {cust.phone}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {cust?.phone && (
-                        <a
-                          href={`tel:${cust.phone}`}
-                          className="w-12 h-12 rounded-2xl bg-emerald-500 text-slate-900 flex items-center justify-center shadow-lg active:scale-95 transition-all shrink-0"
-                        >
-                          <Phone size={20} />
-                        </a>
-                      )}
-                      {(addressData?.lat || cust?.address || addressData?.line1) ? (
-                        <a
-                          href={addressData?.lat && addressData?.lng 
-                            ? `https://www.google.com/maps/dir/?api=1&destination=${addressData.lat},${addressData.lng}` 
-                            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressData?.line1 || cust?.address || '')}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-12 h-12 rounded-2xl bg-blue-500 text-slate-900 flex items-center justify-center shadow-lg active:scale-95 transition-all shrink-0"
-                        >
-                          <Navigation size={20} />
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
+        )}
+      </div>
 
-                  {/* Address detail + CTA */}
-                  <div className="p-4 bg-white flex flex-col gap-4 border-t border-slate-100">
-                    {addressData?.line2 && (
-                      <div className="flex items-start gap-2">
-                        <MapPin size={14} className="text-slate-500 shrink-0 mt-0.5" />
-                        <p className="text-slate-500 text-xs font-medium leading-relaxed">
-                          {addressData.line2}
-                          {addressData?.landmark && ` · Near ${addressData.landmark}`}
+      {/* ── 2. Active Stop vs Route Itinerary Segmented Switch ─────────────── */}
+      {activeTrip && (
+        <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex">
+          <button 
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              viewTab === 'active' 
+                ? 'bg-slate-900 text-white shadow-xs' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`} 
+            onClick={() => setViewTab('active')}
+          >
+            <Compass className="w-4 h-4" />
+            Active Stop
+          </button>
+          <button 
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              viewTab === 'itinerary' 
+                ? 'bg-slate-900 text-white shadow-xs' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`} 
+            onClick={() => setViewTab('itinerary')}
+          >
+            <ListOrdered className="w-4 h-4" />
+            Route Sequence ({totalTasks})
+          </button>
+        </div>
+      )}
+
+      {/* ── 3. Content Viewport ────────────────────────────────────────────── */}
+      {!isOnline ? (
+        <div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center text-center border border-slate-200/80 shadow-xs space-y-4">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+            <Truck size={32} />
+          </div>
+          <div>
+            <h2 className="font-black text-xl text-slate-900 mb-1">You are Offline</h2>
+            <p className="text-xs font-medium text-slate-500 max-w-xs mx-auto leading-relaxed">
+              Toggle online during shift hours to log your salary attendance and receive assigned kitchen pickup routes.
+            </p>
+          </div>
+          <button 
+            onClick={() => handleToggleOnline(true)} 
+            className="px-6 py-3.5 bg-brand hover:bg-[#C2410C] text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-md shadow-brand/20 active:scale-95 transition-all"
+          >
+            Start Shift / Go Online 🛵
+          </button>
+        </div>
+      ) : currentState === 'IDLE' ? (
+        <div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center text-center border border-slate-200/80 shadow-xs space-y-4">
+          <div className="relative">
+            <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center text-brand">
+              <Truck size={32} />
+            </div>
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
+          </div>
+          <div>
+            <h2 className="font-black text-xl text-slate-900 mb-1">Standing By for Dispatch</h2>
+            <p className="text-xs font-medium text-slate-500 max-w-xs mx-auto leading-relaxed">
+              You are online and logged PRESENT for today&apos;s shift. When kitchens finish packing meals, your optimized route will appear here.
+            </p>
+          </div>
+          <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/70 w-full max-w-xs text-left space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Next Meal Slot</p>
+            <p className="text-xs font-bold text-slate-900">{shiftWindow.slot} ({shiftWindow.time})</p>
+            <p className="text-[10px] text-emerald-600 font-bold">Battery-Smart GPS: Geolocation paused to save battery until run starts</p>
+          </div>
+        </div>
+      ) : viewTab === 'itinerary' ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+              <ListOrdered className="w-4 h-4 text-brand" /> Optimized Route Itinerary
+            </h3>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Pickups First ➔ Doorstep Next
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {pickupStopsList.map((stop: any, idx: number) => {
+              const v = vendors.find(ven => ven.id === stop.vendorId);
+              const isDone = stop.status === 'completed';
+              const isCurrent = currentState === 'PICKUP' && nextPickup?.vendorId === stop.vendorId;
+              const lat = v?.location?.lat ?? v?.lat ?? stop.location?.lat;
+              const lng = v?.location?.lng ?? v?.lng ?? stop.location?.lng;
+              const kitchenAddress = v?.address || v?.location?.address || stop.location?.address || 'Kitchen Address on record';
+              const phone = stop.vendorPhone || v?.phone;
+              const isNavigatingThis = navigatingVendorId === stop.vendorId;
+
+              return (
+                <div 
+                  key={`itinerary-pickup-${idx}`}
+                  className={`bg-white rounded-3xl p-4 border transition-all ${
+                    isCurrent 
+                      ? 'border-brand ring-2 ring-brand/20 shadow-md' 
+                      : isDone 
+                      ? 'border-slate-200/60 opacity-60 bg-slate-50/50' 
+                      : 'border-slate-200/80 shadow-xs'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
+                        isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-brand/10 text-brand'
+                      }`}>
+                        {isDone ? <CheckCircle2 className="w-5 h-5" /> : `P${idx + 1}`}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-brand">Kitchen Pickup</span>
+                          {isCurrent && <span className="text-[9px] font-black uppercase tracking-wider bg-brand text-white px-2 py-0.2 rounded-full">Current Stop</span>}
+                        </div>
+                        <h4 className="font-black text-sm text-slate-900 leading-tight truncate mt-0.5">
+                          {v?.kitchen_name || v?.name || `Kitchen ${stop.vendorId?.slice(-4)}`}
+                        </h4>
+                        <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                          {kitchenAddress}
                         </p>
                       </div>
-                    )}
-                    <div className="flex gap-2 w-full">
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {phone && (
+                        <a 
+                          href={`tel:${phone}`}
+                          className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
+                          title="Call Kitchen"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      )}
                       <button
-                        onClick={() => {
-                          if (unavailabilityStartTimes[order.id]) {
-                            handleCustomerUnavailable(order.id);
-                          } else {
-                            setUnavailabilityStartTimes(prev => ({ ...prev, [order.id]: Date.now() }));
-                          }
-                        }}
-                        disabled={isUpdating}
-                        className={`flex-1 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 transition-all border ${unavailabilityStartTimes[order.id] ? 'bg-red-950/40 text-red-400 border-red-900/60 hover:bg-red-900/40' : 'bg-orange-950/20 text-orange-400 border-orange-900/20 hover:bg-orange-950/40'}`}
+                        type="button"
+                        onClick={() => handleNavigateToKitchen(stop.vendorId, lat, lng, kitchenAddress)}
+                        disabled={isNavigatingThis}
+                        className="w-9 h-9 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs cursor-pointer disabled:opacity-75"
+                        title="Navigate to Kitchen"
                       >
-                        {(() => {
-                          const start = unavailabilityStartTimes[order.id];
-                          if (!start) return <>Customer Unavailable</>;
-                          const remaining = Math.max(0, 600 - Math.floor((nowTick - start) / 1000));
-                          // Fix 10: auto-fail handled by useEffect, NOT render function
-                          const m = Math.floor(remaining / 60);
-                          const s = remaining % 60;
-                          if (remaining === 0) return <>Timing out...</>;
-                          return <>Confirm Skip ({m}:{s.toString().padStart(2, '0')})</>;
-                        })()}
+                        {isNavigatingThis ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        ) : (
+                          <Navigation className="w-4 h-4" />
+                        )}
                       </button>
-                      <SwipeToConfirm
-                        key={`${order.id}-${showDropoffModal}`}
-                        onConfirm={() => {
-                          setCurrentDropoffOrderId(order.id);
-                          setDropoffOTP('');
-                          setShowDropoffModal(true);
-                        }}
-                        text="Swipe to Deliver"
-                        confirmText="Verifying..."
-                        disabled={isUpdating || !!unavailabilityStartTimes[order.id]}
-                        className="flex-1"
-                      />
                     </div>
                   </div>
                 </div>
               );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
+            })}
 
-      <div className="px-2">
-        <div className="overflow-hidden p-0 h-48 relative rounded-3xl border border-slate-100 bg-white shadow-2xl">
-          <DeliveryMap 
-            markers={mapMarkers} 
-            centerLat={riderLocation?.lat} 
-            centerLng={riderLocation?.lng} 
-          />
-          <div className="absolute top-3 left-3 bg-slate-100 border border-slate-100 backdrop-blur-xl px-3 py-1.5 rounded-full shadow-sm">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-1.5">
-              <MapPin size={12} className="text-brand" /> Live Map
-            </span>
-          </div>
-        </div>
-      </div>
+            {agentOrders.map((order: any, idx: number) => {
+              const custId = order.customerId || order.user_id || '';
+              const cust = customerProfiles[custId];
+              const addressData = order.address || order.delivery_address;
+              const isDone = order.status === 'delivered';
+              const isCurrent = currentState === 'DELIVERY' && currentDropOrder?.id === order.id;
+              const lat = addressData?.lat;
+              const lng = addressData?.lng;
+              const phone = cust?.phone || order.customerPhone;
 
-      {/* ── Vendor Pickup OTP Modal ── */}
-      {showOTPModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-50 backdrop-blur-sm p-4">
-          <div className="bg-white border border-slate-100 rounded-[32px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => { setShowOTPModal(false); setVendorOTP(''); setVerifyingOTP(false); }}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-500 hover:bg-slate-700 transition-colors"
-            >
-              <X size={18} />
-            </button>
-            <div className="w-16 h-16 bg-brand/10 text-brand rounded-2xl flex items-center justify-center mb-6 mx-auto">
-              <Store size={32} />
-            </div>
-            {pickupStep === 'otp' ? (
-              <>
-                <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Vendor Pickup</h3>
-                <p className="text-slate-500 text-sm font-medium text-center mb-8">
-                  Please ask the vendor for the 4-digit pickup OTP to confirm you are receiving the correct tiffins.
-                </p>
-                <input 
-                  type="text" 
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoFocus
-                  value={vendorOTP}
-                  onChange={(e) => setVendorOTP(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="0000"
-                  disabled={verifyingOTP}
-                  className="w-full text-center text-4xl tracking-[0.5em] font-mono font-black text-slate-900 bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 focus:border-brand focus:ring-0 transition-colors mb-6 disabled:opacity-60"
-                />
-                <button 
-                  onClick={handleOTPVerify}
-                  disabled={vendorOTP.length !== 4 || verifyingOTP}
-                  className="w-full py-4 bg-brand text-slate-900 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand/90 disabled:opacity-50 transition-all"
+              return (
+                <div 
+                  key={`itinerary-drop-${order.id}`}
+                  className={`bg-white rounded-3xl p-4 border transition-all ${
+                    isCurrent 
+                      ? 'border-brand ring-2 ring-brand/20 shadow-md' 
+                      : isDone 
+                      ? 'border-slate-200/60 opacity-60 bg-slate-50/50' 
+                      : 'border-slate-200/80 shadow-xs'
+                  }`}
                 >
-                  {verifyingOTP ? (
-                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying...</>
-                  ) : 'Verify OTP'}
-                </button>
-              </>
-            ) : (
-              <>
-                <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Confirm Count</h3>
-                <p className="text-slate-500 text-sm font-medium text-center mb-8">
-                  Vendor declared <strong className="text-slate-900">{vendorDeclaredCount}</strong> tiffins. Please confirm the actual number you received.
-                </p>
-                <input 
-                  type="number" 
-                  value={riderConfirmedCount}
-                  onChange={(e) => setRiderConfirmedCount(e.target.value)}
-                  placeholder="Actual count"
-                  disabled={verifyingOTP}
-                  className="w-full text-center text-4xl font-mono font-black text-slate-900 bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 focus:border-brand focus:ring-0 transition-colors mb-6 disabled:opacity-60"
-                />
-                <button 
-                  onClick={handleCountConfirm}
-                  disabled={riderConfirmedCount === '' || verifyingOTP}
-                  className="w-full py-4 bg-brand text-slate-900 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-brand/90 disabled:opacity-50 transition-all"
-                >
-                  {verifyingOTP ? (
-                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing...</>
-                  ) : 'Confirm Pickup'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
+                        isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-900 text-white'
+                      }`}>
+                        {isDone ? <CheckCircle2 className="w-5 h-5" /> : `D${idx + 1}`}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Customer Drop-off</span>
+                          {isCurrent && <span className="text-[9px] font-black uppercase tracking-wider bg-brand text-white px-2 py-0.2 rounded-full">Current Stop</span>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <h4 className="font-black text-sm text-slate-900 leading-tight truncate">
+                            {cust?.name || `Customer ${custId.slice(-4)}`}
+                          </h4>
+                          <span className="text-[10px] font-mono font-black bg-slate-900 text-amber-400 px-2 py-0.5 rounded-md tracking-wider">
+                            {generateBoxTag({
+                              customerName: cust?.name,
+                              vendorName: 'Kitchen',
+                              sequenceNumber: idx + 1,
+                              planType: order.plan_type || 'weekly',
+                              cycleNumber: order.cycle_number || 1
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                          {addressData?.line1 || cust?.address || 'Doorstep Address'}
+                        </p>
+                      </div>
+                    </div>
 
-      {/* ── Customer Drop-off OTP Modal ── */}
-      {showDropoffModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-50 backdrop-blur-sm p-4">
-          <div className="bg-white border border-slate-100 rounded-[32px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => { 
-                setShowDropoffModal(false); 
-                setDropoffOTP(''); 
-                setVerifyingDropoffOTP(false); 
-                setShowPhotoUpload(false);
-                setPhotoProof(null);
-              }}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-            >
-              <X size={18} />
-            </button>
-
-            {showPhotoUpload ? (
-              <div className="space-y-6">
-                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
-                  <Camera size={32} />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {phone && (
+                        <a 
+                          href={`tel:${phone}`}
+                          className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
+                          title="Call Customer"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      )}
+                      {lat && lng ? (
+                        <a 
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
+                          title="Navigate"
+                        >
+                          <Navigation className="w-4 h-4" />
+                        </a>
+                      ) : (addressData?.line1 || cust?.address) ? (
+                        <a 
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressData?.line1 || cust?.address || '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center active:scale-95 transition-all shadow-xs"
+                          title="Navigate"
+                        >
+                          <Navigation className="w-4 h-4" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Photo Proof</h3>
-                <p className="text-slate-500 text-sm font-medium text-center mb-4">
-                  Take a clear photo of the tiffin dropped off at the customer's door.
+              );
+            })}
+          </div>
+        </div>
+      ) : currentState === 'PICKUP' && nextPickup ? (
+        (() => {
+          const v = vendors.find(ven => ven.id === nextPickup.vendorId);
+          const kitchenName = v?.kitchen_name || v?.name || `Kitchen ${nextPickup.vendorId?.slice(-4)}`;
+          const kitchenAddress = v?.address || v?.location?.address || nextPickup.location?.address || 'Address on record with Dabzzo';
+          const lat = v?.location?.lat ?? v?.lat ?? nextPickup.location?.lat;
+          const lng = v?.location?.lng ?? v?.lng ?? nextPickup.location?.lng;
+          const phone = nextPickup.vendorPhone || v?.phone;
+          const expectedCount = nextPickup.expectedTiffinCount || agentOrders.length || 1;
+          const isNavigatingThis = navigatingVendorId === nextPickup.vendorId;
+
+          return (
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)] space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <span className="px-3 py-1 bg-amber-50 text-brand border border-amber-200/80 text-[10px] font-black uppercase tracking-wider rounded-full flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5" /> Stop 1: Kitchen Pickup
+                </span>
+                <span className="text-xs font-black text-slate-900">
+                  {completedPickupsCount + 1} of {totalPickupsCount} Kitchens
+                </span>
+              </div>
+
+              <div>
+                <h2 className="font-black text-xl text-slate-900 leading-tight">
+                  {kitchenName}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                  {kitchenAddress}
                 </p>
-                
-                <input 
-                  type="file" 
-                  ref={photoInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  capture="environment"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setPhotoProof(file);
-                  }}
-                />
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-3.5 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Tiffins to Collect</p>
+                  <p className="font-black text-base text-slate-900 mt-0.5">{expectedCount} Packed Tiffins</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                    <VegIcon size={14} /> <span>Veg</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
+                    <NonVegIcon size={14} /> <span>Non-Veg</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {phone ? (
+                  <a 
+                    href={`tel:${phone}`}
+                    className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-95 transition-all"
+                  >
+                    <Phone size={16} /> Call Kitchen
+                  </a>
+                ) : (
+                  <button disabled className="py-3.5 bg-slate-100 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
+                    <Phone size={16} /> No Phone
+                  </button>
+                )}
 
                 <button
-                  onClick={() => photoInputRef.current?.click()}
-                  className="w-full h-40 border-2 border-dashed border-slate-200 hover:border-brand rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50 overflow-hidden relative"
+                  type="button"
+                  onClick={() => handleNavigateToKitchen(nextPickup.vendorId, lat, lng, kitchenAddress)}
+                  disabled={isNavigatingThis}
+                  className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all cursor-pointer disabled:opacity-80"
                 >
-                  {photoProof ? (
-                    <Image 
-                      src={URL.createObjectURL(photoProof)} 
-                      alt="Tiffin Proof" 
-                      fill 
-                      className="object-cover"
-                    />
+                  {isNavigatingThis ? (
+                    <Loader2 size={16} className="animate-spin" />
                   ) : (
-                    <>
-                      <Camera className="w-8 h-8 text-slate-400 animate-pulse" />
-                      <span className="text-xs font-bold text-slate-500">Capture / Select Photo</span>
-                    </>
+                    <Navigation size={16} />
                   )}
+                  <span>Navigate</span>
                 </button>
+              </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setShowPhotoUpload(false); setPhotoProof(null); }}
-                    className="flex-1 py-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all active:scale-[0.98] border border-slate-100"
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-3">
+                {pickupStep === 'otp' ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-brand">
+                        Enter 4-Digit Kitchen Pickup OTP
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Ask Chef</span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                      Enter the 4-digit code shown on the vendor kitchen terminal to verify meal handover.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        maxLength={4}
+                        value={vendorOTP}
+                        onChange={(e) => setVendorOTP(e.target.value.replace(/\D/g, ''))}
+                        placeholder="• • • •"
+                        className="flex-1 text-center tracking-[0.4em] text-2xl font-black py-2.5 bg-white border border-amber-300 rounded-2xl focus:outline-none focus:border-brand text-slate-900"
+                      />
+                      <button
+                        disabled={vendorOTP.length !== 4 || verifyingVendorOTP}
+                        onClick={handleVerifyVendorOTP}
+                        className="py-3 px-5 bg-brand hover:bg-[#C2410C] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-sm shadow-brand/20 transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
+                      >
+                        {verifyingVendorOTP ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify Code'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                        Confirm Tiffins Received
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Expected: {vendorDeclaredCount}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="number"
+                        value={riderConfirmedCount}
+                        onChange={(e) => setRiderConfirmedCount(e.target.value)}
+                        className="w-24 text-center text-xl font-black py-2.5 bg-white border border-emerald-300 rounded-2xl focus:outline-none focus:border-emerald-600 text-slate-900"
+                      />
+                      <button
+                        disabled={!riderConfirmedCount || verifyingVendorOTP}
+                        onClick={handleConfirmPickupCount}
+                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-sm shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 active:scale-95"
+                      >
+                        {verifyingVendorOTP ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm & Depart 🚀'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()
+      ) : currentState === 'DELIVERY' && currentDropOrder ? (
+        (() => {
+          const custId = currentDropOrder.customerId || currentDropOrder.user_id || '';
+          const cust = customerProfiles[custId];
+          const addressData = currentDropOrder.address || currentDropOrder.delivery_address;
+          const phone = cust?.phone || currentDropOrder.customerPhone;
+          const mealType = currentDropOrder.meal_type || currentDropOrder.meal?.type || 'Lunch';
+          const lat = addressData?.lat;
+          const lng = addressData?.lng;
+
+          return (
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)] space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <span className="px-3 py-1 bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-full flex items-center gap-1.5">
+                  <PackageOpen className="w-3.5 h-3.5" /> Next Drop: #{completedDropsCount + 1}
+                </span>
+                <span className="text-xs font-black text-slate-900">
+                  {completedDropsCount + 1} of {totalDropsCount} Deliveries
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-black text-xl text-slate-900 leading-tight">
+                    {cust?.name || `Customer ${custId.slice(-4)}`}
+                  </h2>
+                  <span className="text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-700 px-2.5 py-1 rounded-xl">
+                    {mealType}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                  {addressData?.line1 || cust?.address || 'Doorstep delivery address on record'}
+                </p>
+                {addressData?.landmark && (
+                  <p className="text-xs text-brand font-bold mt-1 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" /> Landmark: {addressData.landmark}
+                  </p>
+                )}
+              </div>
+
+              {/* Tiffin Box Tag Banner */}
+              <div className="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between border border-slate-800 shadow-md">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    🏷️ Match Tiffin Tag From Bag
+                  </span>
+                  <div className="text-2xl font-mono font-black text-white tracking-widest mt-0.5">
+                    {generateBoxTag({
+                      customerName: cust?.name,
+                      vendorName: 'Kitchen',
+                      sequenceNumber: completedDropsCount + 1,
+                      planType: currentDropOrder.plan_type || 'weekly',
+                      cycleNumber: currentDropOrder.cycle_number || 1
+                    })}
+                  </div>
+                  <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                    Hand over this exact tagged box to customer
+                  </p>
+                </div>
+                <DietaryBadge type={currentDropOrder.meal_type === 'non_veg' ? 'non_veg' : 'veg'} size={18} />
+              </div>
+
+              {/* 1-Tap Action Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                {phone ? (
+                  <a 
+                    href={`tel:${phone}`}
+                    className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-95 transition-all"
                   >
-                    Back to OTP
+                    <Phone size={16} /> Call Customer
+                  </a>
+                ) : (
+                  <button disabled className="py-3.5 bg-slate-100 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
+                    <Phone size={16} /> No Phone
                   </button>
-                  <button
-                    onClick={handlePhotoProofSubmit}
-                    disabled={!photoProof || uploadingPhotoProof}
-                    className="flex-1 py-3.5 bg-emerald-500 text-slate-950 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-all text-xs"
+                )}
+
+                {lat && lng ? (
+                  <a 
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
                   >
-                    {uploadingPhotoProof ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-slate-950" /> Uploading...
-                      </>
-                    ) : 'Complete Drop'}
+                    <Navigation size={16} /> Navigate
+                  </a>
+                ) : (addressData?.line1 || cust?.address) ? (
+                  <a 
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressData?.line1 || cust?.address || '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
+                  >
+                    <Navigation size={16} /> Navigate
+                  </a>
+                ) : null}
+              </div>
+
+              {/* Direct In-Card Customer OTP Verification */}
+              <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800">
+                    Customer Doorstep OTP PIN
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">Ask Customer</span>
+                </div>
+                <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                  Ask customer for the 4-digit Delivery PIN shown on their live tracking screen.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text" 
+                    maxLength={4}
+                    value={dropoffOTP}
+                    onChange={(e) => setDropoffOTP(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • •"
+                    className="flex-1 text-center tracking-[0.4em] text-2xl font-black py-2.5 bg-white border border-emerald-300 rounded-2xl focus:outline-none focus:border-emerald-600 text-slate-900"
+                  />
+                  <button
+                    disabled={dropoffOTP.length !== 4 || verifyingDropoffOTP}
+                    onClick={handleVerifyDropoffOTP}
+                    className="py-3 px-5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-sm shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
+                  >
+                    {verifyingDropoffOTP ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete ✓'}
                   </button>
                 </div>
               </div>
-            ) : (
-              <>
-                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
-                  <PackageOpen size={32} />
-                </div>
-                {(() => {
-                  const currentDropoffOrder = agentOrders.find(o => o.id === currentDropoffOrderId);
-                  const dropoffCustId = currentDropoffOrder ? ((currentDropoffOrder as any).customerId || (currentDropoffOrder as any).user_id) : '';
-                  const dropoffCust = customerProfiles[dropoffCustId];
-                  return (
-                    <>
-                      <h3 className="text-2xl font-black text-slate-900 text-center mb-2">Drop-off for {dropoffCust?.name || 'Customer'}</h3>
-                      <p className="text-slate-500 text-sm font-medium text-center mb-8">
-                        Ask {dropoffCust?.name || 'the customer'} for their 4-digit Handover PIN to complete this delivery.
-                      </p>
-                    </>
-                  );
-                })()}
-                <input 
-                  type="text" 
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoFocus
-                  value={dropoffOTP}
-                  onChange={(e) => setDropoffOTP(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="0000"
-                  disabled={verifyingDropoffOTP}
-                  className="w-full text-center text-4xl tracking-[0.5em] font-mono font-black text-slate-900 bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 focus:border-emerald-500 focus:ring-0 transition-colors mb-4 disabled:opacity-60"
-                />
-                <button 
-                  onClick={handleDropoffVerify}
-                  disabled={dropoffOTP.length !== 4 || verifyingDropoffOTP}
-                  className="w-full py-4 bg-emerald-500 text-slate-950 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-all mb-3 text-sm"
-                >
-                  {verifyingDropoffOTP ? (
-                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying...</>
-                  ) : 'Verify OTP & Complete Delivery'}
-                </button>
+
+              {/* Customer Not Answering Timer */}
+              <div>
                 <button
-                  onClick={() => setShowPhotoUpload(true)}
-                  className="w-full py-2.5 bg-slate-50 border border-slate-200/50 hover:bg-slate-100 rounded-2xl font-bold text-xs text-slate-600 transition-all uppercase tracking-wider"
+                  onClick={() => {
+                    if (unavailabilityStartTimes[currentDropOrder.id]) {
+                      handleCustomerUnavailable(currentDropOrder.id);
+                    } else {
+                      setUnavailabilityStartTimes(prev => ({ ...prev, [currentDropOrder.id]: Date.now() }));
+                    }
+                  }}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    unavailabilityStartTimes[currentDropOrder.id] 
+                      ? 'bg-rose-50 text-rose-600 border border-rose-200 animate-pulse' 
+                      : 'bg-slate-50 text-slate-400 hover:text-slate-600 border border-slate-200/60'
+                  }`}
                 >
-                  Cannot get OTP? Deliver with Photo
+                  {(() => {
+                    const start = unavailabilityStartTimes[currentDropOrder.id];
+                    if (!start) return <>Customer Not Answering (10m Timer)</>;
+                    const remaining = Math.max(0, 600 - Math.floor((nowTick - start) / 1000));
+                    const m = Math.floor(remaining / 60);
+                    const s = remaining % 60;
+                    if (remaining === 0) return <>Mark as Customer Unavailable</>;
+                    return <>Confirm Customer Unavailable ({m}:{s.toString().padStart(2, '0')})</>;
+                  })()}
                 </button>
-              </>
-            )}
+              </div>
+            </div>
+          );
+        })()
+      ) : null}
+
+      {/* ── 4. Live Route GPS Map ──────────────────────────────────────────── */}
+      {isOnline && (
+        <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.04)] space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-brand" /> Live Route Map
+            </h3>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              {activeTrip ? 'GPS Navigation Active' : 'Fleet Standing By'}
+            </span>
+          </div>
+
+          <div className="rounded-2xl overflow-hidden border border-slate-100 h-64">
+            <DeliveryMap markers={mapMarkers} />
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function UserPlaceholder({ name }: { name?: string | null }) {
-  const initial = name?.charAt(0)?.toUpperCase() ?? '?';
-  return (
-    <div className="w-full h-full flex items-center justify-center bg-brand/10 text-brand font-black text-lg">
-      {initial}
     </div>
   );
 }

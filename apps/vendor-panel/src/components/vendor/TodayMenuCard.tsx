@@ -3,16 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
+import { useVendorData } from './VendorDataProvider';
 import { getDailyMenu, saveDailyMenu, getTodayStr } from '@/lib/queries/menu';
 import { DailyMenu, MenuItem, DietaryCategory } from '@/types';
-import { Utensils, Plus, Trash2, Calendar, Leaf, Drumstick } from 'lucide-react';
+import { Utensils, Plus, Trash2, Calendar } from 'lucide-react';
+import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
+import { getBoxManifest } from '@/lib/mealManifest';
 
 export function TodayMenuCard() {
   const user = useAuthStore((s) => s.user);
+  const { managedVendor, subscriptions = [] } = useVendorData();
+  const currentVendor = managedVendor || user;
   const addToast = useUiStore((s) => s.addToast);
 
-  const hasVeg = !user?.dietary_categories || user.dietary_categories.includes('veg');
-  const hasNonVeg = user?.dietary_categories?.includes('non_veg');
+  const hasVeg = !currentVendor?.dietary_categories || currentVendor.dietary_categories.includes('veg');
+  const hasNonVeg = currentVendor?.dietary_categories?.includes('non_veg');
   const hasBoth = hasVeg && hasNonVeg;
 
   const [activeTab, setActiveTab] = useState<DietaryCategory>(hasVeg ? 'veg' : 'non_veg');
@@ -35,16 +40,16 @@ export function TodayMenuCard() {
   });
 
   useEffect(() => {
-    if (user?.id) {
+    if (currentVendor?.id) {
       loadMenu();
     }
-  }, [user?.id]);
+  }, [currentVendor?.id]);
 
   async function loadMenu() {
-    if (!user) return;
+    if (!currentVendor?.id) return;
     setLoading(true);
     try {
-      const data = await getDailyMenu(user.id, todayStr);
+      const data = await getDailyMenu(currentVendor.id, todayStr);
       setMenu(data);
       if (data) {
         const toMenuItems = (list?: (MenuItem | string)[]): MenuItem[] => 
@@ -130,7 +135,7 @@ export function TodayMenuCard() {
 
     setSaving(true);
     try {
-      await saveDailyMenu(user.id, todayStr, {
+      await saveDailyMenu(currentVendor.id, todayStr, {
         items_veg: cleanVeg,
         items_non_veg: cleanNonVeg,
         note_veg: vegNote.trim(),
@@ -199,7 +204,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Leaf className="w-4 h-4 text-emerald-600" /> Pure Veg Menu
+            <VegIcon size={16} /> Pure Veg Menu
           </button>
           <button
             type="button"
@@ -210,7 +215,7 @@ export function TodayMenuCard() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Drumstick className="w-4 h-4 text-rose-600" /> Non-Veg Menu
+            <NonVegIcon size={16} /> Non-Veg Menu
           </button>
         </div>
       )}
@@ -296,7 +301,7 @@ export function TodayMenuCard() {
           }`}>
             <div className="flex items-center justify-between mb-3 border-b border-slate-200/50 pb-2">
               <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                {activeTab === 'veg' ? <Leaf className="w-3.5 h-3.5 text-emerald-600" /> : <Drumstick className="w-3.5 h-3.5 text-rose-600" />}
+                {activeTab === 'veg' ? <VegIcon size={14} /> : <NonVegIcon size={14} />}
                 {activeTab === 'veg' ? 'Vegetarian Menu' : 'Non-Vegetarian Menu'}
               </span>
               <span className="text-[10px] font-bold text-slate-400">
@@ -335,6 +340,91 @@ export function TodayMenuCard() {
           </button>
         </div>
       )}
+
+      {/* ── Today's Custom Box Manifests (Kitchen Packing Guide) ──────────── */}
+      {(() => {
+        const todayCustomBoxes = (subscriptions || [])
+          .map((sub: any, idx: number) => {
+            const manifest = getBoxManifest(sub);
+            return {
+              sub,
+              boxNumber: idx + 1,
+              customerName: sub.userName || sub.name || 'Customer',
+              slot: (sub.delivery_slot || sub.meal_type || 'lunch').toUpperCase(),
+              manifest,
+            };
+          })
+          .filter((item) => item.manifest.isCustomized);
+
+        return (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-300 ring-1 ring-amber-400/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🍱</span>
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">
+                    Today's Custom Box Manifests
+                  </h4>
+                  <p className="text-[11px] text-amber-800 font-medium">
+                    Packing alerts: pack these specific boxes with customized meal portions
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-xs">
+                {todayCustomBoxes.length} Custom {todayCustomBoxes.length === 1 ? 'Box' : 'Boxes'}
+              </span>
+            </div>
+
+            {todayCustomBoxes.length === 0 ? (
+              <div className="bg-white/90 rounded-xl p-3 border border-amber-200/60 text-xs text-slate-600">
+                <span className="font-bold text-slate-700">All current subscriptions are on Standard Base Thali portions.</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">Standard pack: 4× Roti, 1× Rice, 1× Dal, 1× Sabzi.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {todayCustomBoxes.map(({ sub, boxNumber, customerName, slot, manifest }) => (
+                  <div
+                    key={sub.id}
+                    className="bg-white rounded-xl p-3 border border-amber-300/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-slate-900">
+                          📦 Box #{String(boxNumber).padStart(2, '0')} • {customerName}
+                        </span>
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
+                          {slot}
+                        </span>
+                      </div>
+                      <div className="text-xs font-black text-amber-950 mt-1 font-mono">
+                        {manifest.manifestText}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Kitchen Packing Standard Reference ────────────────────────────── */}
+      <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/70 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+            📦 Standard Thali Portions & Kitchen Reference
+          </span>
+          <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+            Default Base
+          </span>
+        </div>
+        <p className="text-xs text-slate-600 leading-relaxed font-medium">
+          <strong>Default Portions:</strong> 4× Roti, 1× Steamed Rice, 1× Dal Bowl, 1× Sabzi Bowl.
+        </p>
+        <p className="text-[11px] text-amber-800/80 leading-normal">
+          💡 <em>Notice: Customers who customize their meal (e.g. 6× Roti, No Rice, Sweets) have their exact box manifests listed above and on printable tags in the <strong>🏷️ Box Tags & Pack</strong> tab.</em>
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
-import { signInWithGoogle } from '@/lib/auth';
+import { signInWithGoogle, isSuperadminEmail, extractUserEmail } from '@/lib/auth';
 import { resolveUserProfile, completeOnboarding } from '@/lib/queries/users';
-import type { UserRole } from '@/types';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { UserRole, AppUser } from '@/types';
 import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
 
@@ -25,6 +27,7 @@ const GoogleIcon = () => (
 export default function VendorLoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
+  const currentUser = useAuthStore((s) => s.user);
   const addToast = useUiStore((s) => s.addToast);
 
   const [step, setStep] = useState<AuthStep>('social');
@@ -37,11 +40,64 @@ export default function VendorLoginPage() {
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // If already logged in with vendor access, redirect directly
+  useEffect(() => {
+    if (currentUser && (currentUser.role === 'vendor' || isSuperadminEmail(currentUser.email))) {
+      router.replace('/dashboard');
+    }
+  }, [currentUser, router]);
+
   const handleAuthSuccess = useCallback(async (firebaseUser: User) => {
     try {
+      const email = extractUserEmail(firebaseUser);
+      const isSuper = isSuperadminEmail(email);
+
+      // Superadmin auto-link to the exact Test Vendor account (+919900990022)
+      if (isSuper) {
+        const testVendorProfile: AppUser = {
+          id: firebaseUser.uid,
+          email: email,
+          name: 'Test Vendor',
+          kitchen_name: 'Test Vendor',
+          phone: '+919900990022',
+          image: firebaseUser.photoURL || undefined,
+          role: 'vendor' as UserRole,
+          is_approved: true,
+          is_superadmin: true,
+          verification_status: 'verified',
+          capacity: 10,
+          subscriberCount: 2,
+          fssai_license: 'FSSAI-12345678901234',
+          address: 'Sector 62, Noida, Uttar Pradesh',
+          rate_onetime: 150,
+          rate_lunch_weekly: 900,
+          rate_lunch_monthly: 3600,
+          rate_dinner_weekly: 900,
+          rate_dinner_monthly: 3600,
+          rate_both_weekly: 1750,
+          rate_both_monthly: 6800,
+          cuisine_type: 'Home Style',
+          bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
+          rating: 4.5,
+          rating_avg: 4.5,
+          review_count: 14,
+        };
+
+        try {
+          await setDoc(doc(db, 'users', firebaseUser.uid), testVendorProfile, { merge: true });
+        } catch (e) {
+          console.warn('[VendorLogin] Syncing test vendor profile:', e);
+        }
+
+        setUser(testVendorProfile);
+        addToast('Connected to Test Vendor! 🎉', 'success');
+        router.replace('/dashboard');
+        return;
+      }
+
       const { user: profile, isNewUser } = await resolveUserProfile(
         firebaseUser.uid,
-        firebaseUser.email,
+        email || null,
         firebaseUser.displayName,
         firebaseUser.photoURL,
       );
@@ -55,7 +111,7 @@ export default function VendorLoginPage() {
 
       setPendingUser(firebaseUser);
       setPrefillName(profile.name || firebaseUser.displayName || '');
-      setPrefillEmail(firebaseUser.email || null);
+      setPrefillEmail(email || null);
       setPrefillPhoto(firebaseUser.photoURL || null);
       setKitchenName(profile.kitchen_name || '');
       setStep('onboarding');

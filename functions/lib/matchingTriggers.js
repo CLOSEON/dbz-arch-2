@@ -39,7 +39,7 @@ const functions = __importStar(require("firebase-functions/v1"));
 const geo_1 = require("./utils/geo");
 const events_1 = require("./utils/events");
 const db = admin.firestore();
-const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchId) => {
+const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 10.0, batchId) => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     let ordersQuery = db.collection('orders')
@@ -82,6 +82,12 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
         const data = doc.data();
         if (data.location?.lat && data.location?.lng) {
             vendorLocations.set(doc.id, { lat: data.location.lat, lng: data.location.lng });
+        }
+        else if (data.coordinates?.lat && data.coordinates?.lng) {
+            vendorLocations.set(doc.id, { lat: data.coordinates.lat, lng: data.coordinates.lng });
+        }
+        else {
+            vendorLocations.set(doc.id, { lat: 21.1458, lng: 79.0882 });
         }
     });
     const driversSnap = await db.collection('driver_profiles')
@@ -127,8 +133,13 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
             continue;
         const selectedRider = activeRiders[nearestRiderIdx];
         activeRiders.splice(nearestRiderIdx, 1);
+        const batchDocRef = db.collection('batches').doc(bId);
+        const batchSnap = await batchDocRef.get();
+        let pickupOTP = batchSnap.data()?.pickup_otp;
+        if (!pickupOTP) {
+            pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+        }
         const tripRef = db.collection('rider_trips').doc();
-        const pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
         const pickupStops = [{
                 vendorId: batchInfo.vendorId,
                 location: vLoc,
@@ -144,19 +155,29 @@ const coreAssignRiderTrips = async (vendorId, slot, overrideRadius = 2.0, batchI
             vendorIds: [batchInfo.vendorId],
             batch_ids: [bId],
             pickupStops,
+            slot: batchInfo.orders[0]?.delivery_slot || '11am',
             status: 'pickup_pending',
             isPartialLoad: false,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+        batch.update(batchDocRef, {
+            trip_id: tripRef.id,
+            rider_id: selectedRider.id,
+            rider_name: selectedRider.name || 'Dabzzo Rider',
+            pickup_otp: pickupOTP,
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+        });
         for (const order of batchInfo.orders) {
             const orderRef = db.collection('orders').doc(order.id);
             batch.update(orderRef, {
                 rider_trip_id: tripRef.id,
+                trip_id: tripRef.id,
                 driverId: selectedRider.id,
+                rider_id: selectedRider.id,
                 agentName: selectedRider.name || 'Dabzzo Rider',
                 agentPhone: selectedRider.phone || selectedRider.phoneNumber || '9999999999',
-                vehicleNumber: selectedRider.vehicleNumber || 'MH12 AB1234',
+                vehicleNumber: selectedRider.vehicle_number || selectedRider.vehicleNumber || 'MH12 AB1234',
                 status: 'rider_assigned',
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -283,7 +304,7 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
             throw new functions.https.HttpsError('not-found', 'Trip not found');
         }
         const tripData = tripSnap.data();
-        if (tripData?.riderId !== context.auth.uid && context.auth.token.role !== 'admin') {
+        if (tripData?.riderId !== context.auth.uid && context.auth.token?.role !== 'admin') {
             throw new functions.https.HttpsError('permission-denied', 'Only the assigned rider or admin can verify the pickup OTP.');
         }
         const pickupStops = tripData?.pickupStops || [];
@@ -326,10 +347,23 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
             });
         });
+        const tripBatchIds = tripData?.batch_ids || [];
+        if (batchIds.size === 0 && tripBatchIds.length > 0) {
+            for (const bId of tripBatchIds) {
+                const batchDoc = await t.get(db.collection('batches').doc(bId));
+                if (batchDoc.exists) {
+                    const bData = batchDoc.data();
+                    if (bData?.vendor_id === vendorId || bData?.vendorId === vendorId) {
+                        batchIds.add(bId);
+                    }
+                }
+            }
+        }
         batchIds.forEach(batchId => {
             const batchRef = db.collection('batches').doc(batchId);
             t.update(batchRef, {
-                status: 'completed',
+                status: 'picked_up',
+                picked_up_at: admin.firestore.FieldValue.serverTimestamp(),
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
         });
@@ -348,7 +382,7 @@ exports.regeneratePickupOTP = functions.https.onCall(async (data, context) => {
     if (!tripId || !vendorId) {
         throw new functions.https.HttpsError('invalid-argument', 'Missing tripId or vendorId');
     }
-    if (vendorId !== context.auth.uid && context.auth.token.role !== 'admin') {
+    if (vendorId !== context.auth.uid && context.auth.token?.role !== 'admin') {
         throw new functions.https.HttpsError('permission-denied', 'Only the vendor associated with this stop or an admin can regenerate the OTP.');
     }
     const tripRef = db.collection('rider_trips').doc(tripId);

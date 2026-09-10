@@ -174,13 +174,6 @@
       "trailingSlash": false,
       "rewrites": [
         {
-          "source": "/api/razorpay/**",
-          "function": {
-            "functionId": "razorpayApi",
-            "region": "us-central1"
-          }
-        },
-        {
           "source": "**",
           "destination": "/index.html"
         }

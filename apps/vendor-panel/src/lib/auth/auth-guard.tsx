@@ -9,21 +9,26 @@ interface AuthGuardProps {
   allowedRoles?: string[];
 }
 
-export function AuthGuard({ children }: AuthGuardProps) {
+export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
+  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
+  const userRole = (user?.role as string) || '';
+  const isVendorRole = userRole === 'vendor' || (user as any)?.roles?.vendor?.status === 'verified' || (user as any)?.roles?.vendor === true || isSuper;
+  const isAllowed = !allowedRoles || allowedRoles.length === 0 || isSuper || (allowedRoles.includes('vendor') && isVendorRole) || allowedRoles.includes(userRole);
+
   useEffect(() => {
     if (!isHydrated) return;
 
-    if (!user) {
+    if (!user || !isAllowed) {
       router.replace('/login');
       return;
     }
-  }, [user, isHydrated, router]);
+  }, [user, isHydrated, isAllowed, router]);
 
-  if (!isHydrated || !user) {
+  if (!isHydrated || !user || !isAllowed) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-ivory">
         <div className="flex flex-col items-center gap-3">

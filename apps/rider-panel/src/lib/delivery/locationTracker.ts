@@ -229,6 +229,10 @@ class LocationTrackerService {
       }
     }
   }
+
+  public async stopTripTracking(force: boolean = false): Promise<void> {
+    return this.stopTracking(force);
+  }
 }
 
 export const LocationTracker = new LocationTrackerService();

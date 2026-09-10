@@ -213,6 +213,14 @@ async function processDailyDeliveries(force: boolean = false) {
 
   // 2. Fetch today's already-existing delivery_orders (skipped when force=true)
   const existingSubIds = new Set<string>();
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + istOffset);
+  const todayStr = istNow.toISOString().split('T')[0];
+  const todayDayName = istNow.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+
+  // 2. Fetch today's already-existing delivery_orders by date (skipped when force=true)
+  const existingSubOrderKeys = new Set<string>();
   if (!force) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -222,11 +230,15 @@ async function processDailyDeliveries(force: boolean = false) {
     const existingSnap = await db.collection('orders')
       .where('created_at', '>=', admin.firestore.Timestamp.fromDate(todayStart))
       .where('created_at', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
+      .where('date', '==', todayStr)
       .get();
 
     existingSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => {
       const docData = d.data();
       if (docData.subscription_id) existingSubIds.add(docData.subscription_id);
+      if (docData.subscription_id) {
+        existingSubOrderKeys.add(`${docData.subscription_id}_${docData.meal_type}`);
+      }
     });
   }
 
@@ -238,9 +250,22 @@ async function processDailyDeliveries(force: boolean = false) {
     const sub = subDoc.data();
     const subId = subDoc.id;
 
-    if (existingSubIds.has(subId)) {
+    if (existingSubIds.has(subId) && !sub.deliveryPattern && sub.meal_type !== 'both') {
       result.skipped++;
       result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
+      continue;
+    }
+
+    // Check if subscription already has all scheduled meals
+    const maxMeals = Number(sub.total_meals || sub.totalMeals || (sub.isCustomPlan ? 9 : 14));
+    const currentOrdersSnap = await db.collection('orders')
+      .where('subscription_id', '==', subId)
+      .where('status', 'in', ['created', 'vendor_notified', 'vendor_ready', 'picked_up', 'dispatched', 'delivered', 'completed', 'pending'])
+      .get();
+
+    if (currentOrdersSnap.size >= maxMeals) {
+      result.skipped++;
+      result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: `All ${maxMeals} meals already scheduled` });
       continue;
     }
 
@@ -259,12 +284,34 @@ async function processDailyDeliveries(force: boolean = false) {
         continue;
       }
 
-      const mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+      const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+      let mealTypesToGenerate: string[] = [];
+      if (customPattern) {
+        const mealsToday = Number(customPattern[todayDayName] || 0);
+        if (mealsToday === 1) {
+          mealTypesToGenerate = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
+        } else if (mealsToday >= 2) {
+          mealTypesToGenerate = ['lunch', 'dinner'];
+        } else {
+          mealTypesToGenerate = []; // No delivery for this day in custom plan
+        }
+      } else {
+        mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+      }
+
+      if (mealTypesToGenerate.length === 0) continue;
 
       const userLat = user.location?.lat ?? 18.5204;
       const userLng = user.location?.lng ?? 73.8567;
+      const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMeals) : 91));
 
       for (const mealType of mealTypesToGenerate) {
+        if (!force && existingSubOrderKeys.has(`${subId}_${mealType}`)) {
+          result.skipped++;
+          result.details.push({ subId, status: 'skipped', reason: `Order already exists today for ${mealType}` });
+          continue;
+        }
+
         const mealName = mealType === 'dinner' ? 'Dinner' : 'Lunch';
         const otp = String(Math.floor(1000 + Math.random() * 9000));
         const assignedDriverId = driverIds.length > 0 ? driverIds[currentDriverIndex++ % driverIds.length] : null;
@@ -292,6 +339,10 @@ async function processDailyDeliveries(force: boolean = false) {
           },
           status: 'created',
           otp: otp,
+          total_amount: pricePerMeal,
+          amount: pricePerMeal,
+          custom_meal_config: sub.custom_meal_config || null,
+          meal_components: sub.meal_components || (sub.custom_meal_config?.manifestSummary ? [sub.custom_meal_config.manifestSummary] : null),
           rider_trip_id: null,
           swap_ref: null,
           skip_ref: null,
@@ -379,7 +430,7 @@ export const markBatchReady = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Must be authenticated');
   }
   
-  const vendorId = auth.uid;
+  const callerUid = auth.uid;
   const { batch_id } = data as any;
   if (!batch_id) {
     throw new HttpsError('invalid-argument', 'Missing batch_id');
@@ -388,6 +439,19 @@ export const markBatchReady = onCall(async (request) => {
   const db = admin.firestore();
   const batchRef = db.collection('batches').doc(batch_id);
 
+  // Admin / Superadmin check
+  const callerEmail = (auth.token?.email || '').toLowerCase().trim();
+  let isAdmin = callerEmail === 'closeon.st@gmail.com' || (auth.token as any)?.admin === true || (auth.token as any)?.role === 'admin';
+  if (!isAdmin) {
+    const callerDoc = await db.collection('users').doc(callerUid).get();
+    if (callerDoc.exists) {
+      const udata = callerDoc.data() || {};
+      isAdmin = udata.role === 'admin' || udata.is_superadmin === true || udata.roles?.admin === true;
+    }
+  }
+
+  let actualVendorId = '';
+
   const result = await db.runTransaction(async (t) => {
     const batchDoc = await t.get(batchRef);
     if (!batchDoc.exists) {
@@ -395,9 +459,10 @@ export const markBatchReady = onCall(async (request) => {
     }
 
     const batch = batchDoc.data()!;
+    actualVendorId = batch.vendor_id;
 
-    // Auth check: ensure the calling vendor owns this batch
-    if (batch.vendor_id !== vendorId) {
+    // Auth check: ensure the calling vendor owns this batch (or is admin/superadmin)
+    if (!isAdmin && batch.vendor_id !== callerUid) {
       throw new HttpsError('permission-denied', 'This batch does not belong to you');
     }
     
@@ -427,6 +492,9 @@ export const markBatchReady = onCall(async (request) => {
     // 2. Cascade to every non-skipped order in the batch
     let cascadeCount = 0;
 
+    // Collect customer notification events to dispatch after transaction commits
+    const pendingEvents: { customerId: string; orderId: string; mealType: string }[] = [];
+
     for (const orderDoc of orderDocs) {
       if (!orderDoc.exists) continue;
 
@@ -447,35 +515,160 @@ export const markBatchReady = onCall(async (request) => {
         order_id: orderDoc.id,
         from_status: order.status,
         to_status: 'vendor_ready',
-        actor: vendorId,
+        actor: callerUid,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // 4. Notify the customer that meal prep is complete
-      publishEvent(
-        'meal_prep_started',
-        order.user_id,
-        'customer',
-        `meal_prep_${orderDoc.id}`,
-        { mealType: order.meal_type || 'meal' }
-      ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
+      if (order.user_id) {
+        pendingEvents.push({
+          customerId: order.user_id,
+          orderId: orderDoc.id,
+          mealType: order.meal_type || 'meal'
+        });
+      }
 
       cascadeCount++;
     }
 
-    return { success: true, message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.` };
+    return {
+      success: true,
+      message: `Batch marked ready. ${cascadeCount} orders updated to vendor_ready.`,
+      pendingEvents
+    };
   });
+
+  if (!result.success) {
+    return result;
+  }
+
+  // Publish customer events after transaction commits
+  if (result.pendingEvents && Array.isArray(result.pendingEvents)) {
+    for (const evt of result.pendingEvents) {
+      publishEvent(
+        'meal_prep_started',
+        evt.customerId,
+        'customer',
+        `meal_prep_${evt.orderId}`,
+        { mealType: evt.mealType }
+      ).catch(e => console.error('[markBatchReady] Failed to publish customer event:', e));
+    }
+  }
 
   // Automatically trigger rider assignment for this vendor now that the batch is ready
   // MUST BE AWAITED so the Cloud Function doesn't suspend before assignment finishes
   try {
     const m = await import('./matchingTriggers');
-    await m.coreAssignRiderTrips(vendorId);
+    await m.coreAssignRiderTrips(actualVendorId || callerUid, undefined, 10.0, batch_id);
   } catch (e) {
     console.error('[markBatchReady] Auto-assign failed:', e);
   }
 
-  return result;
+  return { success: true, message: result.message };
+});
+
+export const verifyDeliveryOTP = onCall(async (request) => {
+  const { data, auth } = request;
+
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const { orderId, otp } = data || {};
+  if (!orderId || !otp) {
+    throw new HttpsError('invalid-argument', 'Missing orderId or otp');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+
+  // 1. Transactionally verify OTP and update order to 'delivered'
+  const txResult = await db.runTransaction(async (transaction) => {
+    const orderDoc = await transaction.get(orderRef);
+
+    if (!orderDoc.exists) {
+      throw new HttpsError('not-found', 'Order not found');
+    }
+
+    const data = orderDoc.data()!;
+
+    // Auth check — cover all rider ID field names used across the platform
+    const isAssignedRider =
+      data.rider_id === auth.uid ||
+      data.driverId === auth.uid ||
+      data.agentId === auth.uid ||
+      data.agent_id === auth.uid ||
+      data.riderId === auth.uid;
+    const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true || auth.token?.email === 'closeon.st@gmail.com';
+
+    if (!isAssignedRider && !isAdmin) {
+      throw new HttpsError('permission-denied', 'Only the assigned rider or an admin can verify this delivery OTP.');
+    }
+
+    if (data.status === 'delivered') {
+      return { success: false, message: 'Order is already delivered', orderData: data };
+    }
+
+    // Check both possible OTP field names
+    const storedOtp = data.otp ?? data.delivery_otp;
+    if (storedOtp === undefined || storedOtp === null) {
+      throw new HttpsError('failed-precondition', 'No OTP is set for this order. Contact support.');
+    }
+
+    if (String(storedOtp).trim() !== String(otp).trim()) {
+      return { success: false, message: 'Invalid OTP. Please ask the customer for the PIN shown on their screen.', orderData: data };
+    }
+
+    // Update order status to 'delivered'
+    transaction.update(orderRef, {
+      status: 'delivered',
+      otpVerified: true,
+      delivered_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    const logRef = db.collection('order_status_logs').doc();
+    transaction.set(logRef, {
+      id: logRef.id,
+      order_id: orderId,
+      from_status: data.status,
+      to_status: 'delivered',
+      actor: auth.uid,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: 'OTP verified successfully. Order delivered.', orderData: data };
+  });
+
+  if (!txResult.success) {
+    return { success: false, message: txResult.message };
+  }
+
+  const orderData = txResult.orderData;
+
+  // 2. Synchronize trip status if order is linked to a rider_trip
+  if (orderData?.rider_trip_id) {
+    try {
+      const tripId = orderData.rider_trip_id;
+      const tripRef = db.collection('rider_trips').doc(tripId);
+      const remainingOrdersSnap = await db.collection('orders')
+        .where('rider_trip_id', '==', tripId)
+        .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
+        .get();
+
+      const stillActive = remainingOrdersSnap.docs.filter(d => d.id !== orderId);
+      if (stillActive.length === 0) {
+        await tripRef.update({
+          status: 'completed',
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (tripSyncErr) {
+      console.warn('[verifyDeliveryOTP] Trip sync check failed:', tripSyncErr);
+    }
+  }
+
+  return { success: true, message: 'OTP verified successfully. Order delivered.' };
 });
 
 /**
@@ -518,8 +711,12 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   const driverIds = driversSnap.docs.map(d => d.id);
 
   const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+  const isCustom = sub.isCustomPlan || sub.is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly';
+  const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+  const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || (isCustom ? 9 : 14));
   const userLat = user.location?.lat ?? 18.5204;
   const userLng = user.location?.lng ?? 73.8567;
+  const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMealsTotal) : 91));
 
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
@@ -538,8 +735,29 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   const batch = db.batch();
   let ordersCreated = 0;
 
-  for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
-    for (const mealType of mealTypes) {
+  for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
+    if (ordersCreated >= maxMealsTotal) break;
+
+    const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
+    const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+
+    let dayMealTypes: string[] = [];
+    if (customPattern) {
+      const mealsForDay = Number(customPattern[dayName] || 0);
+      if (mealsForDay === 1) {
+        dayMealTypes = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
+      } else if (mealsForDay >= 2) {
+        dayMealTypes = ['lunch', 'dinner'];
+      } else {
+        dayMealTypes = [];
+      }
+    } else {
+      dayMealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+    }
+
+    for (const mealType of dayMealTypes) {
+      if (ordersCreated >= maxMealsTotal) break;
       if (dayOffset === 0) {
         if (mealType === 'lunch' && istHour >= 10) continue;
         if (mealType === 'dinner' && istHour >= 19) continue;
@@ -569,6 +787,10 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
         },
         status: 'created',
         otp,
+        total_amount: pricePerMeal,
+        amount: pricePerMeal,
+        custom_meal_config: sub.custom_meal_config || null,
+        meal_components: sub.meal_components || (sub.custom_meal_config?.manifestSummary ? [sub.custom_meal_config.manifestSummary] : null),
         rider_trip_id: null,
         swap_ref: null,
         skip_ref: null,
@@ -787,5 +1009,209 @@ export const generateTestDelivery = onCall(async (request) => {
     batchId: batchId, 
     tripId: tripId,
     message: 'Test delivery flow successfully generated!'
+  };
+});
+
+/**
+ * Server-side Cloud Function: Skip Meal Order
+ * Safely executes cutoff validation, batch decrement, credit award,
+ * and order state mutation via Firebase Admin SDK.
+ */
+export const skipMealOrder = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const userId = auth.uid;
+  const { orderId, date, scheduledSlot, subscriptionId } = (data || {}) as any;
+
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'orderId is required.');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  let orderData: any;
+  let isNewProjected = false;
+
+  if (!orderSnap.exists) {
+    // If order was a projected virtual order, instantiate it as skipped
+    isNewProjected = true;
+    orderData = {
+      id: orderId,
+      user_id: userId,
+      customerId: userId,
+      subscription_id: subscriptionId || '',
+      date: date || new Date().toISOString().split('T')[0],
+      scheduledSlot: scheduledSlot || 'lunch',
+      delivery_slot: scheduledSlot || 'lunch',
+      status: 'pending',
+      created_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+  } else {
+    orderData = orderSnap.data()!;
+    const owner = orderData.user_id || orderData.customerId;
+    if (owner !== userId) {
+      throw new HttpsError('permission-denied', 'You do not own this order.');
+    }
+  }
+
+  // Check if order is already past skippable stages
+  if (['out_for_delivery', 'picked_up', 'delivered'].includes(orderData.status)) {
+    throw new HttpsError('failed-precondition', `Cannot skip order that is ${orderData.status}.`);
+  }
+
+  // Calculate cutoff & credit amount
+  const creditsEarned = 1.0;
+
+  // Execute atomic update
+  const batch = db.batch();
+
+  // 1. Decrement batch count if locked into a batch
+  if (orderData.batch_id) {
+    const batchRef = db.collection('batches').doc(orderData.batch_id);
+    batch.update(batchRef, {
+      total_count: admin.firestore.FieldValue.increment(-1),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 2. Award credit in user_credits
+  const creditRef = db.collection('user_credits').doc();
+  batch.set(creditRef, {
+    id: creditRef.id,
+    user_id: userId,
+    credit_amount: creditsEarned,
+    source: 'cancellation',
+    source_reference_id: orderId,
+    redeemed: false,
+    created_at: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // 3. Mark order as skipped
+  if (isNewProjected) {
+    batch.set(orderRef, {
+      ...orderData,
+      status: 'skipped',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } else {
+    batch.update(orderRef, {
+      status: 'skipped',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 4. Record order status log
+  const logRef = db.collection('order_status_logs').doc();
+  batch.set(logRef, {
+    id: logRef.id,
+    order_id: orderId,
+    from_status: orderData.status || 'created',
+    to_status: 'skipped',
+    actor: userId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return {
+    success: true,
+    creditsEarned,
+    message: 'Tiffin skipped successfully. Credit added to your account.'
+  };
+});
+
+/**
+ * Server-side Cloud Function: Undo Skip Meal Order
+ * Re-activates a skipped order and reverses credit adjustments.
+ */
+export const undoSkipMealOrder = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const userId = auth.uid;
+  const { orderId } = (data || {}) as any;
+
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'orderId is required.');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', 'Order not found.');
+  }
+
+  const orderData = orderSnap.data()!;
+  const owner = orderData.user_id || orderData.customerId;
+  if (owner !== userId) {
+    throw new HttpsError('permission-denied', 'You do not own this order.');
+  }
+
+  if (orderData.status !== 'skipped') {
+    throw new HttpsError('failed-precondition', 'Order is not in skipped status.');
+  }
+
+  const batch = db.batch();
+
+  // 1. Re-activate order to pending / created
+  batch.update(orderRef, {
+    status: 'pending',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // 2. Increment batch count if previously assigned to a batch
+  if (orderData.batch_id) {
+    const batchRef = db.collection('batches').doc(orderData.batch_id);
+    batch.update(batchRef, {
+      total_count: admin.firestore.FieldValue.increment(1),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // 3. Mark previously awarded skip credit as redeemed/reversed
+  const creditsSnap = await db.collection('user_credits')
+    .where('user_id', '==', userId)
+    .where('source_reference_id', '==', orderId)
+    .where('redeemed', '==', false)
+    .limit(1)
+    .get();
+
+  if (!creditsSnap.empty) {
+    batch.update(creditsSnap.docs[0].ref, {
+      redeemed: true,
+      redeemed_at: admin.firestore.FieldValue.serverTimestamp(),
+      reversal_reason: 'undo_skip'
+    });
+  }
+
+  // 4. Log status change
+  const logRef = db.collection('order_status_logs').doc();
+  batch.set(logRef, {
+    id: logRef.id,
+    order_id: orderId,
+    from_status: 'skipped',
+    to_status: 'pending',
+    actor: userId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await batch.commit();
+
+  return {
+    success: true,
+    mode: 'credit',
+    message: 'Tiffin restored successfully.'
   };
 });

@@ -24,6 +24,15 @@ const root = path.resolve(__dirname, '..');
 const androidDir = path.join(root, 'android');
 const outputDir = path.join(root, 'build-apks');
 
+const androidStudioJava = '/Applications/Android Studio.app/Contents/jbr/Contents/Home';
+if (!process.env.JAVA_HOME && fs.existsSync(androidStudioJava)) {
+  process.env.JAVA_HOME = androidStudioJava;
+  process.env.PATH = `${androidStudioJava}/bin:${process.env.PATH}`;
+}
+if (!process.env.PATH.includes('/opt/homebrew/bin')) {
+  process.env.PATH = `/opt/homebrew/bin:${process.env.PATH}`;
+}
+
 const APPS = [
   {
     key: 'customer',
@@ -72,8 +81,13 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-console.log('🚀 Step 1: Ensuring all static web exports are fresh...');
-execSync('node scripts/build-web.mjs', { cwd: root, stdio: 'inherit' });
+const skipWeb = process.argv.includes('--skip-web');
+if (!skipWeb) {
+  console.log('🚀 Step 1: Ensuring all static web exports are fresh...');
+  execSync('node scripts/build-web.mjs', { cwd: root, stdio: 'inherit' });
+} else {
+  console.log('⚡ Skipping web build step (--skip-web provided)...');
+}
 
 for (const app of appsToBuild) {
   console.log(`\n==================================================`);
@@ -115,7 +129,9 @@ for (const app of appsToBuild) {
   }
 
   console.log(`🔨 Assembling Gradle APK for ${app.name}...`);
-  execSync('./gradlew assembleDebug', { cwd: androidDir, stdio: 'inherit' });
+  execSync('./gradlew assembleDebug --no-daemon', { cwd: androidDir, stdio: 'inherit' });
+  console.log(`🔨 Assembling Gradle APK for ${app.name} (${app.appId})...`);
+  execSync(`./gradlew assembleDebug -PcustomApplicationId=${app.appId} --no-daemon`, { cwd: androidDir, stdio: 'inherit' });
 
   const generatedApk = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   const destination = path.join(outputDir, app.outputApk);

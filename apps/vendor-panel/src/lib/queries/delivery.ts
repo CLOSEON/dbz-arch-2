@@ -782,20 +782,10 @@ export async function forceFormBatches(): Promise<{ success: boolean; batchesCre
 // USER: CANCEL SCHEDULED TIFFIN (SKIP DAY)
 // ==========================================
 export async function cancelScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; creditsEarned: number }> {
-  // Try canonical orders first
+  // Canonical orders ref
   let deliveryRef = doc(db, 'orders', delivery.id);
-  let snap = await getDoc(deliveryRef);
-  let isLegacy = false;
-
-  if (!snap.exists()) {
-    // Try legacy delivery_orders
-    const legacyRef = doc(db, 'delivery_orders', delivery.id);
-    snap = await getDoc(legacyRef);
-    if (snap.exists()) {
-      deliveryRef = legacyRef;
-      isLegacy = true;
-    }
-  }
+  const snap = await getDoc(deliveryRef);
+  const isLegacy = false;
 
   let data: any = {};
   let isNewProjected = false;
@@ -936,19 +926,12 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
 }
 
 export async function undoSkipScheduledTiffin(delivery: any, userId: string): Promise<{ success: boolean; mode: 'credit' | 'day' }> {
-  // Try canonical orders first
-  let deliveryRef = doc(db, 'orders', delivery.id);
-  let snap = await getDoc(deliveryRef);
+  // Canonical orders ref
+  const deliveryRef = doc(db, 'orders', delivery.id);
+  const snap = await getDoc(deliveryRef);
 
   if (!snap.exists()) {
-    // Try legacy delivery_orders
-    const legacyRef = doc(db, 'delivery_orders', delivery.id);
-    snap = await getDoc(legacyRef);
-    if (snap.exists()) {
-      deliveryRef = legacyRef;
-    } else {
-      throw new Error('Order not found.');
-    }
+    throw new Error('Order not found.');
   }
   
   const data = snap.data() as any;

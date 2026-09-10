@@ -9,17 +9,19 @@ import { getDailyMenu, saveDailyMenu, getTodayStr } from '@/lib/queries/menu';
 import { AppUser, Order, DietaryCategory, VendorAddon, Subscription, MenuItem } from '@/types';
 import { useUiStore } from '@/store/uiStore';
 import { 
-  ArrowLeft, Check, X, ShieldAlert, Award, DollarSign, Users, 
+  ArrowLeft, Check, X, ShieldAlert, Award, IndianRupee, Users, 
   ShoppingBag, ShieldCheck, Edit3, Loader2, UploadCloud, MapPin, 
   Settings, Tag, Trash2, Plus, Leaf, Drumstick, UtensilsCrossed,
   ExternalLink, Phone, Mail, CreditCard, Clock, BarChart3,
-  Package, Sliders, CheckCircle2, AlertCircle, Building2, Store,
-  ChevronRight, Sparkles, IndianRupee
+  Package, Sliders, CheckCircle, CheckCircle2, AlertOctagon, AlertCircle, Store, Building2,
+  ChevronRight, Sparkles, TrendingUp, Wallet
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getImageUrl, uploadImage } from '@/lib/storage';
 import { SkeletonDetail } from '@/components/shared/Skeleton';
+import { getMealComponentsCatalog } from '@/lib/queries/mealComponents';
+import { MealComponent, DEFAULT_MEAL_COMPONENTS } from '@/types';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 
@@ -68,6 +70,7 @@ export default function VendorDetailClient(props: PageProps) {
 
   // Editing state for Profile & Pricing
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [componentCatalog, setComponentCatalog] = useState<MealComponent[]>(DEFAULT_MEAL_COMPONENTS);
   const [editForm, setEditForm] = useState<{
     kitchen_name: string;
     name: string;
@@ -109,6 +112,8 @@ export default function VendorDetailClient(props: PageProps) {
     rate_nonveg_both_monthly: string;
     addons: VendorAddon[];
     image: string;
+    vendor_margin_percent: string;
+    custom_component_rates: Record<string, string>;
   }>({
     kitchen_name: '',
     name: '',
@@ -149,7 +154,9 @@ export default function VendorDetailClient(props: PageProps) {
     rate_nonveg_both_weekly: '',
     rate_nonveg_both_monthly: '',
     addons: [],
-    image: ''
+    image: '',
+    vendor_margin_percent: '',
+    custom_component_rates: {}
   });
 
   useEffect(() => {
@@ -227,14 +234,32 @@ export default function VendorDetailClient(props: PageProps) {
         rate_nonveg_both_weekly: vendorData.rate_nonveg_both_weekly ? String(vendorData.rate_nonveg_both_weekly) : '',
         rate_nonveg_both_monthly: vendorData.rate_nonveg_both_monthly ? String(vendorData.rate_nonveg_both_monthly) : '',
         addons: vendorData.addons || [],
-        image: vendorData.image || ''
+        image: vendorData.image || '',
+        vendor_margin_percent: typeof vendorData.vendor_margin_percent === 'number'
+          ? String(vendorData.vendor_margin_percent)
+          : (typeof (vendorData as any).vendor_margin_override === 'number' ? String((vendorData as any).vendor_margin_override) : ''),
+        custom_component_rates: (() => {
+          const initialCustomRates: Record<string, string> = {};
+          if (vendorData.custom_component_rates && typeof vendorData.custom_component_rates === 'object') {
+            Object.entries(vendorData.custom_component_rates).forEach(([compId, val]: [string, any]) => {
+              if (typeof val === 'number') {
+                initialCustomRates[compId] = String(val);
+              } else if (val && typeof val.vendorRate === 'number') {
+                initialCustomRates[compId] = String(val.vendorRate);
+              }
+            });
+          }
+          return initialCustomRates;
+        })()
       });
 
-      const [vendorStats, vendorHistory, vendorSubs] = await Promise.all([
+      const [catalogData, vendorStats, vendorHistory, vendorSubs] = await Promise.all([
+        getMealComponentsCatalog(),
         getVendorStats(vendorId),
         getVendorOrderHistory(vendorId),
         getVendorSubscriptions(vendorId)
       ]);
+      setComponentCatalog(catalogData);
       setStats(vendorStats);
       setHistory(vendorHistory);
       setSubscriptions(vendorSubs);
@@ -488,6 +513,66 @@ export default function VendorDetailClient(props: PageProps) {
         rate_nonveg_both_monthly: Number(editForm.rate_nonveg_both_monthly || 0),
 
         addons: editForm.addons,
+        vendor_margin_percent: (() => {
+          const m = Number(editForm.vendor_margin_percent);
+          return !isNaN(m) && m > 0 && m < 100 ? m : null;
+        })(),
+        vendor_margin_override: (() => {
+          const m = Number(editForm.vendor_margin_percent);
+          return !isNaN(m) && m > 0 && m < 100 ? m : null;
+        })(),
+        custom_component_rates: (() => {
+          const sanitizedRates: Record<string, { vendorRate: number }> = {};
+          Object.entries(editForm.custom_component_rates || {}).forEach(([compId, val]) => {
+            const num = Number(val);
+            if (!isNaN(num) && num > 0) {
+              sanitizedRates[compId] = { vendorRate: num };
+            }
+          });
+          return sanitizedRates;
+        })(),
+        vendor_base_payout: (() => {
+          const basePayout = componentCatalog.reduce((sum, comp) => {
+            if (!comp.isActive) return sum;
+            const overrideVal = editForm.custom_component_rates[comp.id];
+            const isOverridden =
+              overrideVal !== undefined &&
+              overrideVal !== '' &&
+              !isNaN(Number(overrideVal)) &&
+              Number(overrideVal) > 0;
+            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+            return sum + (comp.baseQuantity ?? 0) * rate;
+          }, 0);
+          return Math.round(basePayout * 100) / 100;
+        })(),
+        standard_meal_payout: (() => {
+          const basePayout = componentCatalog.reduce((sum, comp) => {
+            if (!comp.isActive) return sum;
+            const overrideVal = editForm.custom_component_rates[comp.id];
+            const isOverridden =
+              overrideVal !== undefined &&
+              overrideVal !== '' &&
+              !isNaN(Number(overrideVal)) &&
+              Number(overrideVal) > 0;
+            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+            return sum + (comp.baseQuantity ?? 0) * rate;
+          }, 0);
+          return Math.round(basePayout * 100) / 100;
+        })(),
+        vendor_cost_per_meal: (() => {
+          const basePayout = componentCatalog.reduce((sum, comp) => {
+            if (!comp.isActive) return sum;
+            const overrideVal = editForm.custom_component_rates[comp.id];
+            const isOverridden =
+              overrideVal !== undefined &&
+              overrideVal !== '' &&
+              !isNaN(Number(overrideVal)) &&
+              Number(overrideVal) > 0;
+            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+            return sum + (comp.baseQuantity ?? 0) * rate;
+          }, 0);
+          return Math.round(basePayout * 100) / 100;
+        })(),
         updated_at: Timestamp.now()
       };
 
@@ -531,7 +616,7 @@ export default function VendorDetailClient(props: PageProps) {
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Overview', icon: BarChart3 },
     { key: 'menu', label: 'Daily Menu', icon: UtensilsCrossed },
-    { key: 'pricing', label: 'Rates & Add-Ons', icon: DollarSign },
+    { key: 'pricing', label: 'Rates & Add-Ons', icon: IndianRupee },
     { key: 'subscribers', label: `Subscribers (${subscriptions.length})`, icon: Users },
     { key: 'orders', label: `Orders (${history.length})`, icon: Package },
     { key: 'settings', label: 'Kitchen Settings & Payouts', icon: Sliders },
@@ -625,6 +710,9 @@ export default function VendorDetailClient(props: PageProps) {
             <h1 className="text-lg sm:text-xl font-black text-slate-900 truncate">
               {vendor.kitchen_name || `${vendor.name}'s Kitchen`}
             </h1>
+            {vendor.kitchen_name && vendor.name && vendor.kitchen_name.toLowerCase() !== vendor.name.toLowerCase() && (
+              <span className="text-xs text-slate-500 font-semibold">(Owner: {vendor.name})</span>
+            )}
             
             {isSuspended ? (
               <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">Suspended</span>
@@ -672,7 +760,7 @@ export default function VendorDetailClient(props: PageProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-semibold mb-1.5">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Revenue
+                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Revenue
               </div>
               <div className="text-xl font-bold text-slate-900">₹{stats.totalRevenue.toLocaleString('en-IN')}</div>
               <div className="text-[10px] text-slate-400 mt-0.5">Processed total</div>
@@ -1275,6 +1363,279 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           </div>
 
+          {/* Kitchen Dynamic Margin Override (Fluctuating Vendor Margin %) */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-50/70 via-orange-50/40 to-slate-50 rounded-2xl border border-amber-200/80 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/50 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-brand" />
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                    Kitchen Dynamic Margin Override (%)
+                  </h4>
+                  {editForm.vendor_margin_percent ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                      Override: {editForm.vendor_margin_percent}%
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                      Inheriting Global Default (40%)
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Set a custom fluctuating kitchen margin for this specific vendor. Formula: <code>Payout = Cost / (100 - Margin %) × 100</code>. Leave blank to inherit the platform default.
+                </p>
+              </div>
+
+              {editForm.vendor_margin_percent && (
+                <button
+                  type="button"
+                  onClick={() => setEditForm((prev) => ({ ...prev, vendor_margin_percent: '' }))}
+                  className="text-xs font-bold text-slate-500 hover:text-rose-600 transition-colors self-start sm:self-auto"
+                >
+                  Reset to Global Default
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">Vendor Kitchen Margin %</span>
+                  <span className="text-xs font-black text-brand bg-white px-2 py-0.5 rounded-md border border-amber-200">
+                    {editForm.vendor_margin_percent ? `${editForm.vendor_margin_percent}%` : '40% (Global)'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="10"
+                    max="70"
+                    step="1"
+                    value={editForm.vendor_margin_percent || '40'}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, vendor_margin_percent: e.target.value }))}
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                  <div className="relative w-20 shrink-0">
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      placeholder="40"
+                      value={editForm.vendor_margin_percent}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, vendor_margin_percent: e.target.value }))}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 text-center focus:border-brand outline-none"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Simulation Pill */}
+              <div className="bg-white p-3.5 rounded-xl border border-amber-200/70 space-y-2 shadow-2xs">
+                {(() => {
+                  const activeMargin = Number(editForm.vendor_margin_percent) || 40;
+                  const safeMargin = Math.min(Math.max(activeMargin, 0), 99.99);
+
+                  // Calculate actual standard meal payout from this kitchen's active component rates
+                  const overriddenComps = componentCatalog.filter(
+                    (c) =>
+                      c.isActive &&
+                      editForm.custom_component_rates[c.id] !== undefined &&
+                      editForm.custom_component_rates[c.id] !== '' &&
+                      !isNaN(Number(editForm.custom_component_rates[c.id])) &&
+                      Number(editForm.custom_component_rates[c.id]) > 0
+                  );
+
+                  const standardMealPayout = componentCatalog.reduce((sum, comp) => {
+                    if (!comp.isActive) return sum;
+                    const overrideVal = editForm.custom_component_rates[comp.id];
+                    const isOverridden =
+                      overrideVal !== undefined &&
+                      overrideVal !== '' &&
+                      !isNaN(Number(overrideVal)) &&
+                      Number(overrideVal) > 0;
+                    const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+                    return sum + (comp.baseQuantity ?? 0) * rate;
+                  }, 0);
+
+                  const effectivePayout =
+                    standardMealPayout > 0
+                      ? standardMealPayout
+                      : (30 / (100 - safeMargin)) * 100;
+
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          {overriddenComps.length > 0
+                            ? `Live Vendor Payout (${overriddenComps.length} Component Overrides Active)`
+                            : 'Live Vendor Payout Simulation (Standard Thali)'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                            overriddenComps.length > 0
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          {overriddenComps.length > 0
+                            ? `${overriddenComps.length} Custom Component Rates`
+                            : `${activeMargin}% kitchen margin`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-slate-900">
+                          ₹{effectivePayout.toFixed(2)}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">payout / standard meal</span>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                        {overriddenComps.length > 0 ? (
+                          <>
+                            Base thali payout calculated dynamically from custom rates: 4× Roti, 1× Rice, 1× Sabzi, 1× Dal.
+                          </>
+                        ) : (
+                          <>
+                            Global standard thali is ₹50.00 (40% margin). Override component rates below to customize this kitchen's payout.
+                          </>
+                        )}
+                      </p>
+
+                      {/* Itemized breakdown chips */}
+                      <div className="pt-2 border-t border-amber-200/60 flex flex-wrap gap-1.5">
+                        {componentCatalog
+                          .filter((c) => c.isActive && c.baseQuantity > 0)
+                          .map((c) => {
+                            const overrideVal = editForm.custom_component_rates[c.id];
+                            const isOverridden =
+                              overrideVal !== undefined &&
+                              overrideVal !== '' &&
+                              !isNaN(Number(overrideVal)) &&
+                              Number(overrideVal) > 0;
+                            const rate = isOverridden ? Number(overrideVal) : (c.vendorRate ?? 0);
+                            const subtotal = (c.baseQuantity ?? 0) * rate;
+
+                            return (
+                              <span
+                                key={c.id}
+                                className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                                  isOverridden
+                                    ? 'bg-amber-50 text-amber-950 border-amber-300 font-bold'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200 font-medium'
+                                }`}
+                              >
+                                <span>{c.baseQuantity}× {c.name}:</span>
+                                <span>₹{rate.toFixed(1)}</span>
+                                <span className="text-slate-400 font-normal">(= ₹{subtotal.toFixed(1)})</span>
+                              </span>
+                            );
+                          })}
+                      </div>
+                    </>
+                  );
+                })()}
+                <p className="text-[10px] text-slate-400">
+                  Global standard is ₹50.00 (40% margin). Saved under <code>users/{'{'}vendorId{'}'}.vendor_margin_percent</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Component Payout Overrides for this Kitchen */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <UtensilsCrossed className="w-3.5 h-3.5 text-brand" />
+                  Kitchen Component Rate Overrides
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Override standard vendor payout rates for this specific kitchen (saved under <code>users/{'{'}vendorId{'}'}.custom_component_rates</code>). Leave blank to inherit global catalog rates.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                users/{vendor.id.slice(0, 8)}...
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {componentCatalog.map((comp) => {
+                const currentOverride = editForm.custom_component_rates[comp.id] || '';
+                const isOverridden = Boolean(currentOverride && Number(currentOverride) > 0);
+
+                return (
+                  <div
+                    key={comp.id}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      isOverridden
+                        ? 'bg-amber-50/60 border-amber-200/80 shadow-xs'
+                        : 'bg-slate-50/70 border-slate-200/70'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-black text-slate-900">{comp.name}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isOverridden
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-200/80 text-slate-600'
+                      }`}>
+                        {isOverridden ? `Override ₹${currentOverride}` : 'Global Default'}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-500 font-medium mb-2 flex items-center justify-between">
+                      <span>Global Rate: ₹{comp.vendorRate}/{comp.unit}</span>
+                      <span className="text-slate-400 capitalize">{comp.category}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder={String(comp.vendorRate)}
+                          value={currentOverride}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEditForm((prev) => ({
+                              ...prev,
+                              custom_component_rates: {
+                                ...prev.custom_component_rates,
+                                [comp.id]: val,
+                              },
+                            }));
+                          }}
+                          className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:outline-none focus:border-brand"
+                        />
+                      </div>
+                      {isOverridden && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditForm((prev) => {
+                              const updated = { ...prev.custom_component_rates };
+                              delete updated[comp.id];
+                              return { ...prev, custom_component_rates: updated };
+                            });
+                          }}
+                          title="Revert to global rate"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex justify-end pt-3 border-t border-slate-100">
             <button
               type="submit"
@@ -1410,43 +1771,74 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => (
-                <div key={order.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 font-mono">#{order.id.slice(0, 8)}</span>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
-                        order.status === 'delivered' || order.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : order.status === 'dispatched'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {order.delivery_address || 'Address on file'} • ₹{order.total_amount || order.amount || 0}
-                    </div>
-                  </div>
+              {history.map((order) => {
+                // Safely extract address — can be string or Firestore map object
+                const rawAddr = (order as any).delivery_address ?? (order as any).address ?? '';
+                const addrStr = typeof rawAddr === 'string'
+                  ? rawAddr
+                  : rawAddr?.full_address ?? rawAddr?.line1 ?? rawAddr?.street ?? 'Address on file';
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as any)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="cooking">Cooking</option>
-                      <option value="ready">Ready for Pickup</option>
-                      <option value="dispatched">Dispatched</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                // Safely get amount
+                const amount = (order as any).total_amount ?? (order as any).amount ?? (order as any).total ?? 0;
+
+                // Safely get date
+                const createdAt = (order as any).created_at;
+                const dateStr = createdAt?.toDate
+                  ? createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                  : createdAt
+                  ? new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                  : '—';
+
+                // Safely get order id
+                const orderId = order.id ?? '';
+
+                return (
+                  <div key={orderId || Math.random()} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900 font-mono">
+                          #{orderId.slice(0, 8) || '—'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">{dateStr}</span>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+                          order.status === 'delivered' || order.status === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : order.status === 'dispatched' || order.status === 'picked_up' || order.status === 'out_for_delivery'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : order.status === 'cancelled' || order.status === 'failed'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {order.status ?? 'unknown'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {addrStr} • ₹{Number(amount).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">STATUS:</span>
+                      <select
+                        value={order.status ?? 'pending'}
+                        onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value as any)}
+                        disabled={!orderId}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 disabled:opacity-40"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="preparing">Preparing</option>
+                        <option value="vendor_ready">Ready for Pickup</option>
+                        <option value="rider_assigned">Rider Assigned</option>
+                        <option value="picked_up">Picked Up</option>
+                        <option value="out_for_delivery">Out for Delivery</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="failed">Failed</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

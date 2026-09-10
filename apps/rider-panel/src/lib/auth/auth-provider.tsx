@@ -124,9 +124,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (userDoc && userDoc.exists() && mounted.current) {
             const data = userDoc.data();
             if (isSuper) {
-              data.role = 'admin';
+              data.role = 'delivery';
               data.is_superadmin = true;
               data.is_approved = true;
+              data.verification_status = 'verified';
+              data.name = data.name || activeUser.displayName || 'Delivery Partner';
+              data.phone = data.phone || activeUser.phoneNumber || '';
+              data.vehicle_type = data.vehicle_type || 'Motorcycle';
+              data.vehicle_number = data.vehicle_number || '';
             }
             setUser({ id: activeUser.uid, ...data } as AppUser);
             
@@ -138,13 +143,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const superProfile: AppUser = {
               id: activeUser.uid,
               email: activeUser.email || 'closeon.st@gmail.com',
-              name: activeUser.displayName || 'Superadmin',
+              name: activeUser.displayName || 'Delivery Partner',
               image: activeUser.photoURL || undefined,
               phone: activeUser.phoneNumber || '',
-              role: 'admin',
+              role: 'delivery',
               is_superadmin: true,
               is_approved: true,
               verification_status: 'verified',
+              vehicle_type: 'Motorcycle',
+              vehicle_number: '',
             };
             try {
               const { setDoc: setFirestoreDoc } = await import('firebase/firestore');
