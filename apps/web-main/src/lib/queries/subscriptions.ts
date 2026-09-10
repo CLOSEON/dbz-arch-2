@@ -29,6 +29,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Subscription, EnrichedSubscription, MealType, SubscriptionFrequency, DietaryCategory, SelectedAddon, CustomMealConfig } from '@/types';
+import { calculateStandardSubscriptionProduct } from '@/lib/pricingEngine';
 
 // ─── Deterministic document ID ────────────────────────────────────────────────
 // One document per (user × vendor × mealType). Always the same ID, always.
@@ -126,6 +127,9 @@ export async function createSubscription(data: {
   razorpay_order_id?: string;
   /** Amount actually charged (in ₹, not paise) */
   paid_amount?: number;
+  /** Authoritative pricing snapshot from backend engine */
+  pricingSnapshot?: any;
+  pricing_snapshot?: any;
 }): Promise<string> {
   const docId = subDocId(data.user_id, data.vendor_id, data.meal_type);
   const docRef = doc(db, 'subscriptions', docId);
@@ -169,6 +173,19 @@ export async function createSubscription(data: {
   if (data.paid_amount != null) {
     payload.paid_amount = data.paid_amount;
     payload.price = data.paid_amount; // Store as price so the proration logic works
+  }
+
+  // Attach authoritative price snapshot
+  const snapshot =
+    data.pricingSnapshot ||
+    data.pricing_snapshot ||
+    (data.frequency === 'monthly' || data.plan_id === 'monthly'
+      ? calculateStandardSubscriptionProduct(30).snapshot
+      : null);
+
+  if (snapshot) {
+    payload.pricingSnapshot = snapshot;
+    payload.pricing_snapshot = snapshot;
   }
 
   // setDoc is fully idempotent: creates if new, overwrites if already exists.

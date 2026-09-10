@@ -31,6 +31,12 @@ import {
   savePricingConfig,
   getPricingAlgorithmSettings,
   savePricingAlgorithmSettings,
+  getAuthoritativePricingRules,
+  saveAuthoritativePricingRules,
+  calculateMealPrice,
+  calculateSubscriptionPrice,
+  calculateStandardSubscriptionProduct,
+  DEFAULT_PRICING_RULES,
   DEFAULT_WEEKLY_PRICING,
   DEFAULT_MONTHLY_PRICING,
   DEFAULT_PRICING_ALGORITHM,
@@ -39,6 +45,7 @@ import {
   calculateCustomerMealPrice,
   computeAlgorithmicMealPricing,
   PricingAlgorithmSettings,
+  PricingRules,
 } from '@/lib/queries/pricing';
 import {
   getMealComponentsCatalog,
@@ -72,17 +79,28 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   const [monthlyConfig, setMonthlyConfig] = useState<MealPricingConfigData>(DEFAULT_MONTHLY_PRICING);
   const [loading, setLoading] = useState(true);
 
-  // ── Pricing Algorithm State (system_settings/pricing_algorithm) ──────────────
-  const [algoConfig, setAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
-  const [initialAlgoConfig, setInitialAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
-  const [deliveryCharge, setDeliveryCharge] = useState<string>('11');
-  const [vendorMarginPct, setVendorMarginPct] = useState<number>(46);
-  const [dailyPlatformMargin, setDailyPlatformMargin] = useState<string>('15');
-  const [weeklyPlatformMargin, setWeeklyPlatformMargin] = useState<string>('12');
-  const [monthlyPlatformMargin, setMonthlyPlatformMargin] = useState<string>('5');
+  // ── Authoritative Pricing Rules State (system_settings/pricing_rules) ─────────
+  const [authoritativeRules, setAuthoritativeRules] = useState<PricingRules>(DEFAULT_PRICING_RULES);
+  const [initialAuthoritativeRules, setInitialAuthoritativeRules] = useState<PricingRules>(DEFAULT_PRICING_RULES);
+  const [vendorDeductionPct, setVendorDeductionPct] = useState<number>(8); // default 8% (0.08)
+  const [marginPct, setMarginPct] = useState<number>(13); // default 13% (0.13)
+  const [deliveryCharge, setDeliveryCharge] = useState<string>('11'); // default ₹11
+  const [paymentFeePct, setPaymentFeePct] = useState<number>(2.5); // default 2.5% (0.025)
   const [roundingStrategy, setRoundingStrategy] = useState<'round' | 'ceil'>('round');
-  const [savingAlgo, setSavingAlgo] = useState(false);
-  const [sampleRawCost, setSampleRawCost] = useState<string>('30');
+  const [savingRules, setSavingRules] = useState(false);
+
+  // Single meal interactive simulator item quantities (Default formula example = ₹78 Item Total)
+  // Rice(15) + Dal(20) + Roti(8) + Sabji(25) + Salad(10) = 78
+  const [simMealQuantities, setSimMealQuantities] = useState<Record<string, number>>({
+    rice: 1,
+    dal: 1,
+    roti: 1,
+    sabji: 1,
+    salad: 1,
+  });
+
+  // Legacy algo fallback state
+  const [algoConfig, setAlgoConfig] = useState<PricingAlgorithmSettings>(DEFAULT_PRICING_ALGORITHM);
 
   // Editable Form Inputs (strings for smooth typing)
   const [weeklyPrice, setWeeklyPrice] = useState<string>('50');
@@ -98,30 +116,37 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [savingMonthly, setSavingMonthly] = useState(false);
 
-  // Check if Pricing Algorithm settings changed
-  const isAlgoChanged = useMemo(() => {
+  // Check if Authoritative Pricing Rules changed
+  const isRulesChanged = useMemo(() => {
+    const origDeduction = Math.round((initialAuthoritativeRules.vendorDeduction ?? 0.08) * 1000) / 10;
+    const origMargin = Math.round((initialAuthoritativeRules.margin ?? 0.13) * 1000) / 10;
+    const origDelivery = initialAuthoritativeRules.deliveryCharge ?? 11;
+    const origPayment = Math.round((initialAuthoritativeRules.paymentFee ?? 0.025) * 1000) / 10;
+    const origRounding = initialAuthoritativeRules.roundingStrategy ?? 'round';
+
     return (
-      Number(deliveryCharge) !== initialAlgoConfig.deliveryChargePerMeal ||
-      vendorMarginPct !== initialAlgoConfig.vendorMarginPercent ||
-      Number(dailyPlatformMargin) !== initialAlgoConfig.platformMargins.daily ||
-      Number(weeklyPlatformMargin) !== initialAlgoConfig.platformMargins.weekly ||
-      Number(monthlyPlatformMargin) !== initialAlgoConfig.platformMargins.monthly ||
-      roundingStrategy !== initialAlgoConfig.roundingStrategy
+      vendorDeductionPct !== origDeduction ||
+      marginPct !== origMargin ||
+      Number(deliveryCharge) !== origDelivery ||
+      paymentFeePct !== origPayment ||
+      roundingStrategy !== origRounding
     );
-  }, [deliveryCharge, vendorMarginPct, dailyPlatformMargin, weeklyPlatformMargin, monthlyPlatformMargin, roundingStrategy, initialAlgoConfig]);
+  }, [vendorDeductionPct, marginPct, deliveryCharge, paymentFeePct, roundingStrategy, initialAuthoritativeRules]);
 
   // Load live pricing configs from Firestore
   const loadPricing = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ weekly, monthly }, algo] = await Promise.all([
+      const [{ weekly, monthly }, algo, rules] = await Promise.all([
         getAllPricingConfigs(),
         getPricingAlgorithmSettings(),
+        getAuthoritativePricingRules(),
       ]);
       setWeeklyConfig(weekly);
       setMonthlyConfig(monthly);
       setAlgoConfig(algo);
-      setInitialAlgoConfig(algo);
+      setAuthoritativeRules(rules);
+      setInitialAuthoritativeRules(rules);
 
       setWeeklyPrice(String(weekly.pricePerMeal ?? 50));
       setWeeklyVendorCost(String(weekly.vendorCostPerMeal ?? 30));
@@ -129,12 +154,11 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       setMonthlyPrice(String(monthly.pricePerMeal ?? 1400));
       setMonthlyVendorCost(String(monthly.vendorCostPerMeal ?? 900));
 
-      setDeliveryCharge(String(algo.deliveryChargePerMeal ?? 11));
-      setVendorMarginPct(algo.vendorMarginPercent ?? 46);
-      setDailyPlatformMargin(String(algo.platformMargins?.daily ?? 15));
-      setWeeklyPlatformMargin(String(algo.platformMargins?.weekly ?? 12));
-      setMonthlyPlatformMargin(String(algo.platformMargins?.monthly ?? 5));
-      setRoundingStrategy(algo.roundingStrategy ?? 'round');
+      setVendorDeductionPct(Math.round((rules.vendorDeduction ?? 0.08) * 1000) / 10);
+      setMarginPct(Math.round((rules.margin ?? 0.13) * 1000) / 10);
+      setDeliveryCharge(String(rules.deliveryCharge ?? 11));
+      setPaymentFeePct(Math.round((rules.paymentFee ?? 0.025) * 1000) / 10);
+      setRoundingStrategy(rules.roundingStrategy === 'ceil' ? 'ceil' : 'round');
     } catch (err) {
       console.error('[MealPricingConfig] Error loading pricing config:', err);
       addToast('Failed to load meal pricing configuration', 'error');
@@ -147,33 +171,30 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
     void loadPricing();
   }, [loadPricing]);
 
-  // Save Pricing Algorithm handler
-  const handleSaveAlgo = async () => {
-    setSavingAlgo(true);
+  // Save Authoritative Pricing Rules handler
+  const handleSaveRules = async () => {
+    setSavingRules(true);
     triggerHapticImpact(ImpactStyle.Medium);
     try {
       const updatedBy = user?.id || user?.email || 'admin';
-      const updated = await savePricingAlgorithmSettings(
+      const updated = await saveAuthoritativePricingRules(
         {
-          deliveryChargePerMeal: Math.max(0, Number(deliveryCharge) || 0),
-          vendorMarginPercent: Math.min(Math.max(1, Number(vendorMarginPct) || 40), 99),
-          platformMargins: {
-            daily: Math.min(Math.max(0, Number(dailyPlatformMargin) || 0), 99),
-            weekly: Math.min(Math.max(0, Number(weeklyPlatformMargin) || 0), 99),
-            monthly: Math.min(Math.max(0, Number(monthlyPlatformMargin) || 0), 99),
-          },
+          vendorDeduction: Number(vendorDeductionPct) / 100,
+          margin: Number(marginPct) / 100,
+          deliveryCharge: Math.max(0, Number(deliveryCharge) || 0),
+          paymentFee: Number(paymentFeePct) / 100,
           roundingStrategy,
         },
         updatedBy
       );
-      setAlgoConfig(updated);
-      setInitialAlgoConfig(updated);
-      addToast('Pricing algorithm engine configuration saved! 🚀', 'success');
+      setAuthoritativeRules(updated);
+      setInitialAuthoritativeRules(updated);
+      addToast('Authoritative Central Pricing Rules saved successfully! 🚀', 'success');
     } catch (err: any) {
-      console.error('[MealPricingConfig] Error saving algorithm config:', err);
-      addToast(err?.message || 'Failed to save algorithm settings', 'error');
+      console.error('[MealPricingConfig] Error saving pricing rules:', err);
+      addToast(err?.message || 'Failed to save pricing rules', 'error');
     } finally {
-      setSavingAlgo(false);
+      setSavingRules(false);
     }
   };
 
@@ -297,6 +318,7 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
     const created: MealComponent = {
       id,
       name: newComp.name.trim(),
+      price: custRate,
       unit: (newComp.unit as ComponentUnit) || 'piece',
       category: (newComp.category as ComponentCategory) || 'staple',
       baseQuantity: baseQ,
@@ -442,6 +464,47 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
     }
   };
 
+  // Active authoritative pricing rules for live preview calculations
+  const activePricingRules: PricingRules = useMemo(() => ({
+    vendorDeduction: Number(vendorDeductionPct) / 100,
+    margin: Number(marginPct) / 100,
+    deliveryCharge: Math.max(0, Number(deliveryCharge) || 0),
+    paymentFee: Number(paymentFeePct) / 100,
+    roundingStrategy,
+    version: '2.0.0',
+  }), [vendorDeductionPct, marginPct, deliveryCharge, paymentFeePct, roundingStrategy]);
+
+  // Catalog normalized for calculation engine
+  const itemCatalogForEngine = useMemo(() => {
+    return components.map((c) => ({
+      id: c.id,
+      name: c.name,
+      price: typeof (c as any).price === 'number' ? (c as any).price : (c.customerRate ?? 10),
+      customerRate: typeof (c as any).price === 'number' ? (c as any).price : (c.customerRate ?? 10),
+      unit: c.unit,
+      category: c.category,
+      isActive: c.isActive,
+      minQuantity: c.minQuantity,
+      maxQuantity: c.maxQuantity,
+      baseQuantity: c.baseQuantity,
+      rawCost: c.rawCost,
+    }));
+  }, [components]);
+
+  // Live single meal breakdown computed authoritatively
+  const liveMealBreakdown = useMemo(() => {
+    try {
+      return calculateMealPrice(simMealQuantities, itemCatalogForEngine, activePricingRules);
+    } catch {
+      return null;
+    }
+  }, [simMealQuantities, itemCatalogForEngine, activePricingRules]);
+
+  // Standard ₹4,500 monthly product breakdown
+  const standardProductBreakdown = useMemo(() => {
+    return calculateStandardSubscriptionProduct(30, activePricingRules);
+  }, [activePricingRules]);
+
   // Helper to format timestamps gracefully
   const renderTimestamp = (ts?: any) => {
     if (!ts) return null;
@@ -488,7 +551,7 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          SECTION: DYNAMIC PRICING ALGORITHM ENGINE (system_settings/pricing_algorithm)
+          SECTION: AUTHORITATIVE CENTRAL PRICING ENGINE (system_settings/pricing_rules)
       ══════════════════════════════════════════════════════════════ */}
       <div className="bg-white rounded-3xl border border-slate-200/85 shadow-xs p-5 sm:p-7 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
@@ -499,51 +562,123 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-lg font-black text-slate-900 leading-tight">
-                  Dynamic Algorithmic Pricing Engine
+                  Authoritative Central Pricing Engine (v2.0)
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                  system_settings/pricing_algorithm
+                  system_settings/pricing_rules
                 </span>
-                {isAlgoChanged && (
+                {isRulesChanged && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                    Unsaved Algorithm Edits
+                    Unsaved Pricing Rule Edits
                   </span>
                 )}
               </div>
               <p className="text-xs font-medium text-slate-500 mt-1">
-                Controls the core algorithmic formulas: Kitchen Vendor Payouts with fluctuating margin % (default 40%), Delivery Fee (₹13), and Platform Margins across plan tiers.
-                Controls the core algorithmic formulas: Kitchen Vendor Payouts with ratio model (e.g. Priya&apos;s Kitchen ₹65 payout / 46.15% ratio), Delivery Fee (₹11), and Platform Margins (5% monthly veg).
+                Single source of truth for meal pricing formulas. Enforces deterministic math across all 4 panels:
+                <span className="font-mono text-slate-700 font-bold ml-1">
+                  ItemTotal ➔ VendorCost (-8%) ➔ FoodSellingPrice (+13%) ➔ Subtotal (+₹11) ➔ CustomerPrice (/ 0.975)
+                </span>
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={handleSaveAlgo}
-            disabled={savingAlgo || !isAlgoChanged}
+            onClick={handleSaveRules}
+            disabled={savingRules || !isRulesChanged}
             className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2 shadow-xs ${
-              isAlgoChanged
+              isRulesChanged
                 ? 'bg-brand hover:bg-amber-600 text-white shadow-brand/20'
                 : 'bg-slate-100 text-slate-400 cursor-not-allowed'
             }`}
           >
-            {savingAlgo ? (
+            {savingRules ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Saving Algorithm…</span>
+                <span>Saving Rules…</span>
               </>
             ) : (
               <>
                 <Save className="w-3.5 h-3.5" />
-                <span>Save Pricing Algorithm</span>
+                <span>Save Authoritative Rules</span>
               </>
             )}
           </button>
         </div>
 
         {/* Algorithm Controls Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. Delivery Charge */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* 1. Vendor Deduction % */}
+          <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-800">
+                Vendor Deduction
+              </label>
+              <span className="text-xs font-black text-brand bg-white px-2 py-0.5 rounded-md border border-amber-200">
+                {vendorDeductionPct}%
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="0.5"
+                value={vendorDeductionPct}
+                onChange={(e) => setVendorDeductionPct(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer"
+              />
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                value={vendorDeductionPct}
+                onChange={(e) => setVendorDeductionPct(Number(e.target.value))}
+                className="w-14 px-1.5 py-1 bg-white border border-amber-200 rounded-lg text-xs font-black text-slate-900 text-center"
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 font-mono">
+              VendorCost = ItemTotal × (1 − {vendorDeductionPct}%)
+            </p>
+          </div>
+
+          {/* 2. Platform Food Margin % */}
+          <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-200/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-800">
+                Platform Margin
+              </label>
+              <span className="text-xs font-black text-orange-700 bg-white px-2 py-0.5 rounded-md border border-orange-200">
+                {marginPct}%
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="0"
+                max="40"
+                step="0.5"
+                value={marginPct}
+                onChange={(e) => setMarginPct(Number(e.target.value))}
+                className="w-full accent-orange-500 cursor-pointer"
+              />
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                value={marginPct}
+                onChange={(e) => setMarginPct(Number(e.target.value))}
+                className="w-14 px-1.5 py-1 bg-white border border-orange-200 rounded-lg text-xs font-black text-slate-900 text-center"
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 font-mono">
+              FoodSelling = VendorCost × (1 + {marginPct}%)
+            </p>
+          </div>
+
+          {/* 3. Delivery Charge */}
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-800">
@@ -565,100 +700,39 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">/ meal</span>
             </div>
-            <p className="text-[10px] text-slate-500">
-              Default ₹13 per meal added directly to customer final price.
-              Default ₹11 per meal added directly to customer final price.
+            <p className="text-[10px] text-slate-500 font-mono">
+              Subtotal = FoodSelling + ₹{deliveryCharge}
             </p>
           </div>
 
-          {/* 2. Kitchen Vendor Margin % */}
-          <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/70 space-y-2">
+          {/* 4. Payment Fee Gross-up % */}
+          <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200/70 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-800">
-                Vendor Margin %
+                Payment Fee Rate
               </label>
-              <span className="text-xs font-black text-brand bg-white px-2 py-0.5 rounded-md border border-amber-200">
-                {vendorMarginPct}%
+              <span className="text-xs font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                {paymentFeePct}%
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min="10"
-                max="70"
-                step="1"
-                value={vendorMarginPct}
-                onChange={(e) => setVendorMarginPct(Number(e.target.value))}
-                className="w-full accent-amber-500 cursor-pointer"
-              />
+            <div className="relative">
               <input
                 type="number"
-                min="1"
-                max="90"
-                value={vendorMarginPct}
-                onChange={(e) => setVendorMarginPct(Number(e.target.value))}
-                className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-xs font-black text-slate-900 text-center"
+                min="0"
+                max="10"
+                step="0.1"
+                value={paymentFeePct}
+                onChange={(e) => setPaymentFeePct(Number(e.target.value))}
+                className="w-full pl-3 pr-10 py-2 bg-white border border-indigo-200 rounded-xl text-slate-900 font-extrabold text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-none"
               />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-indigo-400">%</span>
             </div>
-            <p className="text-[10px] text-slate-500">
-              Formula: <code>Payout = Cost / (100 - {vendorMarginPct}) × 100</code>
+            <p className="text-[10px] text-slate-500 font-mono">
+              Customer = Subtotal / (1 − {paymentFeePct / 100})
             </p>
           </div>
 
-          {/* 3. Platform Margins */}
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
-            <label className="text-xs font-extrabold text-slate-800 block">
-              Platform Margins by Plan
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 text-center">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block">Daily</span>
-                <div className="relative mt-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={dailyPlatformMargin}
-                    onChange={(e) => setDailyPlatformMargin(e.target.value)}
-                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
-                  />
-                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">15%</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block">Weekly</span>
-                <div className="relative mt-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={weeklyPlatformMargin}
-                    onChange={(e) => setWeeklyPlatformMargin(e.target.value)}
-                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
-                  />
-                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">12%</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block">Monthly</span>
-                <div className="relative mt-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={monthlyPlatformMargin}
-                    onChange={(e) => setMonthlyPlatformMargin(e.target.value)}
-                    className="w-full px-1.5 py-1 text-center bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900"
-                  />
-                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">4%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Rounding Strategy & Database Timestamp */}
+          {/* 5. Rounding Strategy & Version */}
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-800">
@@ -673,151 +747,214 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
                 <option value="ceil">Math.ceil (Ceiling)</option>
               </select>
             </div>
-
             <div className="pt-2 text-[10px] text-slate-400 flex items-center justify-between">
-              <span>Updated:</span>
-              <span className="font-mono text-slate-600">{renderTimestamp(algoConfig.updatedAt) || 'Default Config'}</span>
+              <span>Engine Version:</span>
+              <span className="font-mono font-bold text-emerald-700">v2.0.0 (Authoritative)</span>
             </div>
           </div>
         </div>
 
-        {/* Live Calculation Output Sandbox */}
-        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-indigo-500/10 rounded-2xl border border-amber-200/80 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        {/* ── Walkthrough / Prompt Example Sandbox ── */}
+        <div className="p-4 sm:p-5 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-emerald-500/10 rounded-2xl border border-amber-200/90 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200/60">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-brand" />
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                Live Algorithmic Engine Output Simulator
+                Live Single Meal Walkthrough & Prompt Formula Verification
               </h4>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-bold text-slate-600">Sample Kitchen Raw Cost:</span>
-              <div className="relative w-24">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={sampleRawCost}
-                  onChange={(e) => setSampleRawCost(e.target.value)}
-                  className="w-full pl-6 pr-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-black text-slate-900"
-                />
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSimMealQuantities({
+                    rice: 1,
+                    dal: 1,
+                    roti: 1,
+                    sabji: 1,
+                    salad: 1,
+                  });
+                  addToast('Loaded canonical formula example: 1 Rice, 1 Dal, 1 Roti, 1 Sabji, 1 Salad (ItemTotal = ₹78)', 'info');
+                }}
+                className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 active:scale-95 shadow-2xs"
+              >
+                Reset to Prompt Example (₹78 ItemTotal)
+              </button>
             </div>
           </div>
 
-          {/* Derived live results across Daily, Weekly, Monthly */}
-          {(() => {
-            const rawCostNum = Math.max(0, Number(sampleRawCost) || 30);
-            const deliveryNum = Math.max(0, Number(deliveryCharge) || 13);
-            const vendorPayout = calculateVendorPayout(rawCostNum, vendorMarginPct);
-
-            const dailyPricing = computeAlgorithmicMealPricing(rawCostNum, 'daily', {
-              deliveryChargePerMeal: deliveryNum,
-              vendorMarginPercent: vendorMarginPct,
-              platformMargins: {
-                daily: Number(dailyPlatformMargin) || 15,
-                weekly: Number(weeklyPlatformMargin) || 12,
-                monthly: Number(monthlyPlatformMargin) || 4,
-              },
-              roundingStrategy,
-            });
-
-            const weeklyPricing = computeAlgorithmicMealPricing(rawCostNum, 'weekly', {
-              deliveryChargePerMeal: deliveryNum,
-              vendorMarginPercent: vendorMarginPct,
-              platformMargins: {
-                daily: Number(dailyPlatformMargin) || 15,
-                weekly: Number(weeklyPlatformMargin) || 12,
-                monthly: Number(monthlyPlatformMargin) || 4,
-              },
-              roundingStrategy,
-            });
-
-            const monthlyPricing = computeAlgorithmicMealPricing(rawCostNum, 'monthly', {
-              deliveryChargePerMeal: deliveryNum,
-              vendorMarginPercent: vendorMarginPct,
-              platformMargins: {
-                daily: Number(dailyPlatformMargin) || 15,
-                weekly: Number(weeklyPlatformMargin) || 12,
-                monthly: Number(monthlyPlatformMargin) || 4,
-              },
-              roundingStrategy,
-            });
-
-            return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                {/* Vendor Payout Box */}
-                <div className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-2xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Derived Kitchen Payout
+          {/* Interactive Steppers for Items in Simulation */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {[
+              { id: 'rice', name: 'Rice', unitPrice: 15 },
+              { id: 'dal', name: 'Dal', unitPrice: 20 },
+              { id: 'roti', name: 'Roti', unitPrice: 8 },
+              { id: 'sabji', name: 'Sabji', unitPrice: 25 },
+              { id: 'salad', name: 'Salad', unitPrice: 10 },
+            ].map((item) => {
+              const qty = simMealQuantities[item.id] ?? 0;
+              return (
+                <div key={item.id} className="bg-white p-2 rounded-xl border border-amber-200/70 text-center space-y-1">
+                  <div className="text-xs font-black text-slate-800">{item.name}</div>
+                  <div className="text-[10px] text-slate-400 font-medium">₹{item.unitPrice} each</div>
+                  <div className="flex items-center justify-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setSimMealQuantities((prev) => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] ?? 0) - 1) }))}
+                      className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center"
+                    >
+                      –
+                    </button>
+                    <span className="font-mono font-black text-xs w-4">{qty}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSimMealQuantities((prev) => ({ ...prev, [item.id]: (prev[item.id] ?? 0) + 1 }))}
+                      className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center"
+                    >
+                      +
+                    </button>
                   </div>
-                  <div className="text-xl font-black text-slate-900 mt-0.5">
-                    ₹{vendorPayout.toFixed(2)}
-                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-1">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
-                      {vendorMarginPct}% kitchen margin
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      (Cost: ₹{rawCostNum})
-                    </span>
+                  <div className="text-[10px] font-bold text-amber-900">
+                    = ₹{qty * item.unitPrice}
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Daily Plan Box */}
+          {/* Step-by-Step Mathematical Flow */}
+          {liveMealBreakdown && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">
+                {/* 1. Item Total */}
                 <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Daily Plan</span>
-                    <span className="text-[10px] font-black text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded">
-                      {dailyPlatformMargin}% margin
-                    </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">1. Item Total</span>
+                  <div className="text-lg font-black text-slate-900 mt-0.5">
+                    ₹{liveMealBreakdown.itemTotal.toFixed(2)}
                   </div>
-                  <div className="text-xl font-black text-brand mt-0.5">
-                    ₹{dailyPricing.customerMealPrice}
-                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
-                    Food ₹{dailyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    SUM(item prices × quantities)
                   </div>
                 </div>
 
-                {/* Weekly Plan Box */}
+                {/* 2. Vendor Cost */}
+                <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                    2. Vendor Cost (-{vendorDeductionPct}%)
+                  </span>
+                  <div className="text-lg font-black text-amber-900 mt-0.5">
+                    ₹{liveMealBreakdown.vendorCost.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Vendor receives payout: ₹{liveMealBreakdown.vendorCost.toFixed(2)}
+                  </div>
+                </div>
+
+                {/* 3. Food Selling Price */}
                 <div className="bg-white p-3 rounded-xl border border-orange-200 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weekly Plan</span>
-                    <span className="text-[10px] font-black text-brand bg-orange-50 px-1.5 py-0.2 rounded">
-                      {weeklyPlatformMargin}% margin
-                    </span>
+                  <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider block">
+                    3. Food Selling (+{marginPct}%)
+                  </span>
+                  <div className="text-lg font-black text-orange-800 mt-0.5">
+                    ₹{liveMealBreakdown.foodSellingPrice.toFixed(2)}
                   </div>
-                  <div className="text-xl font-black text-slate-900 mt-0.5">
-                    ₹{weeklyPricing.customerMealPrice}
-                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
-                    Food ₹{weeklyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Dabzzo margin: ₹{liveMealBreakdown.margin.toFixed(2)}
                   </div>
                 </div>
 
-                {/* Monthly Plan Box */}
-                <div className="bg-white p-3 rounded-xl border border-indigo-200 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Plan</span>
-                    <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded">
-                      {monthlyPlatformMargin}% margin
-                    </span>
+                {/* 4. Subtotal */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    4. Subtotal (+₹{deliveryCharge})
+                  </span>
+                  <div className="text-lg font-black text-slate-900 mt-0.5">
+                    ₹{liveMealBreakdown.subtotal.toFixed(2)}
                   </div>
-                  <div className="text-xl font-black text-indigo-700 mt-0.5">
-                    ₹{monthlyPricing.customerMealPrice}
-                    <span className="text-[10px] font-semibold text-slate-400 ml-1">/ meal</span>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Food ₹{liveMealBreakdown.foodSellingPrice.toFixed(2)} + Del ₹{deliveryCharge}
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
-                    Food ₹{monthlyPricing.customerFoodRate.toFixed(2)} + Delivery ₹{deliveryNum}
+                </div>
+
+                {/* 5. Customer Final Price */}
+                <div className="bg-white p-3 rounded-xl border border-emerald-300 ring-2 ring-emerald-400/30 shadow-2xs">
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                    5. Customer Price (/ {1 - (paymentFeePct / 100)})
+                  </span>
+                  <div className="text-xl font-black text-emerald-700 mt-0.5">
+                    ₹{liveMealBreakdown.finalPrice.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Razorpay gross-up fee: ₹{liveMealBreakdown.paymentFee.toFixed(2)}
                   </div>
                 </div>
               </div>
-            );
-          })()}
+
+              {/* Exact Prompt Example Sequence Callout Banner */}
+              <div className="p-3 bg-white/95 rounded-xl border border-amber-300 flex flex-col md:flex-row md:items-center justify-between gap-2 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 uppercase tracking-wider">
+                    Authoritative Flow
+                  </span>
+                  <span className="text-xs font-black text-slate-800">
+                    Step-by-step calculation output for this meal:
+                  </span>
+                </div>
+                <div className="font-mono text-sm font-black text-slate-900 bg-amber-50/80 px-3 py-1 rounded-lg border border-amber-200">
+                  <span className="text-slate-700">₹{liveMealBreakdown.itemTotal.toFixed(2)}</span>
+                  <span className="text-amber-500 mx-1.5">➔</span>
+                  <span className="text-amber-900">₹{liveMealBreakdown.vendorCost.toFixed(2)}</span>
+                  <span className="text-amber-500 mx-1.5">➔</span>
+                  <span className="text-orange-800">₹{liveMealBreakdown.foodSellingPrice.toFixed(2)}</span>
+                  <span className="text-amber-500 mx-1.5">➔</span>
+                  <span className="text-slate-800">₹{liveMealBreakdown.subtotal.toFixed(2)}</span>
+                  <span className="text-amber-500 mx-1.5">➔</span>
+                  <span className="text-emerald-700 font-extrabold text-base">₹{liveMealBreakdown.finalPrice.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Standard ₹4,500 Subscription Product Preservation Card ── */}
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-brand" />
+              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                Standard ₹4,500 Monthly Subscription Product (Fixed Architecture Preservation)
+              </h4>
+            </div>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+              Preserved & Enforced
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs pt-1">
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Customer Pays</span>
+              <div className="text-base font-black text-slate-900 mt-0.5">₹4,500</div>
+              <div className="text-[10px] text-slate-500">30 Meals committed monthly</div>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Vendor Base & Deduction</span>
+              <div className="text-base font-black text-amber-900 mt-0.5">₹4,000 − 8%</div>
+              <div className="text-[10px] text-emerald-700 font-bold">Vendor gets ₹3,680</div>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Delivery Allocation</span>
+              <div className="text-base font-black text-slate-800 mt-0.5">₹330</div>
+              <div className="text-[10px] text-slate-500">30 deliveries × ₹11</div>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Dabzzo Gross Margin</span>
+              <div className="text-base font-black text-emerald-700 mt-0.5">₹490</div>
+              <div className="text-[10px] text-slate-500">Food margin + delivery recovery</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1459,21 +1596,16 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
                 <th className="pb-3">Unit</th>
                 <th className="pb-3">Base Qty</th>
                 <th className="pb-3">Min / Max</th>
-                <th className="pb-3">Raw Kitchen Cost</th>
-                <th className="pb-3">Derived Vendor Payout</th>
-                <th className="pb-3">Customer Rates (D / W / M)</th>
-                <th className="pb-3">Item Cust Rate</th>
+                <th className="pb-3">Admin Item Price (₹)</th>
+                <th className="pb-3">Derived Vendor Cost (-{vendorDeductionPct}%)</th>
                 <th className="pb-3 text-center">Active</th>
                 <th className="pb-3 pr-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {components.map((comp) => {
-                const raw = typeof comp.rawCost === 'number' ? comp.rawCost : 0;
-                const derivedPayout = raw > 0 ? calculateVendorPayout(raw, vendorMarginPct) : comp.vendorRate;
-                const dailyR = calculateCustomerFoodRate(derivedPayout, Number(dailyPlatformMargin) || 15);
-                const weeklyR = calculateCustomerFoodRate(derivedPayout, Number(weeklyPlatformMargin) || 12);
-                const monthlyR = calculateCustomerFoodRate(derivedPayout, Number(monthlyPlatformMargin) || 4);
+                const itemPrice = typeof (comp as any).price === 'number' ? (comp as any).price : (comp.customerRate ?? 10);
+                const derivedVendorCost = Math.round(itemPrice * (1 - (vendorDeductionPct / 100)) * 100) / 100;
 
                 const categoryColors: Record<ComponentCategory, { bg: string; text: string; border: string }> = {
                   staple: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
@@ -1539,67 +1671,39 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
                       </div>
                     </td>
 
-                    {/* Raw Kitchen Cost */}
+                    {/* Admin Item Price (Authoritative Single Source) */}
                     <td className="py-3">
-                      <div className="relative w-20">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-600">₹</span>
+                      <div className="relative w-24">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">₹</span>
                         <input
                           type="number"
                           min="0"
-                          step="0.5"
-                          value={comp.rawCost ?? ''}
-                          placeholder="0"
+                          step="1"
+                          value={itemPrice}
                           onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : Math.max(0, Number(e.target.value));
-                            handleUpdateComponent(comp.id, 'rawCost', val);
-                            if (typeof val === 'number' && val > 0) {
-                              const newPayout = calculateVendorPayout(val, vendorMarginPct);
-                              handleUpdateComponent(comp.id, 'vendorRate', newPayout);
-                            }
+                            const newPrice = Math.max(0, Number(e.target.value) || 0);
+                            handleUpdateComponent(comp.id, 'price' as any, newPrice);
+                            handleUpdateComponent(comp.id, 'customerRate', newPrice);
+                            handleUpdateComponent(
+                              comp.id,
+                              'vendorRate',
+                              Math.round(newPrice * (1 - (vendorDeductionPct / 100)) * 100) / 100
+                            );
                           }}
-                          className="w-full pl-5 pr-1.5 py-1 bg-amber-50/60 border border-amber-200 rounded-lg text-xs font-black text-amber-950 focus:bg-white focus:outline-none focus:border-brand"
+                          className="w-full pl-6 pr-2 py-1 bg-emerald-50/60 border border-emerald-300 rounded-lg text-xs font-black text-emerald-950 focus:bg-white focus:outline-none focus:border-emerald-600 shadow-2xs"
                         />
                       </div>
                     </td>
 
-                    {/* Derived Vendor Payout */}
+                    {/* Derived Vendor Cost */}
                     <td className="py-3">
                       <div>
                         <div className="text-xs font-black text-slate-900">
-                          ₹{derivedPayout.toFixed(2)}
+                          ₹{derivedVendorCost.toFixed(2)}
                         </div>
-                        <span className="inline-block mt-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800">
-                          {vendorMarginPct}% margin
+                        <span className="inline-block mt-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800">
+                          {100 - vendorDeductionPct}% payout
                         </span>
-                      </div>
-                    </td>
-
-                    {/* Customer Rates (Daily / Weekly / Monthly) */}
-                    <td className="py-3">
-                      <div className="flex items-center gap-1 text-[10px] font-black">
-                        <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded" title="Daily Plan Rate">
-                          D: ₹{dailyR.toFixed(1)}
-                        </span>
-                        <span className="bg-orange-50 text-brand px-1.5 py-0.5 rounded border border-orange-200/60" title="Weekly Plan Rate">
-                          W: ₹{weeklyR.toFixed(1)}
-                        </span>
-                        <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200/60" title="Monthly Plan Rate">
-                          M: ₹{monthlyR.toFixed(1)}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Customer Item Rate */}
-                    <td className="py-3">
-                      <div className="relative w-18">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={comp.customerRate}
-                          onChange={(e) => handleUpdateComponent(comp.id, 'customerRate', Math.max(0, Number(e.target.value)))}
-                          className="w-full pl-5 pr-1.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-emerald-800 focus:bg-white focus:outline-none focus:border-emerald-600"
-                        />
                       </div>
                     </td>
 

@@ -1,0 +1,863 @@
+/**
+ * DABZZO CENTRAL PRICING ENGINE (Authoritative Backend Single Source of Truth)
+ *
+ * Core Business Principle:
+ * A subscription is a collection of individual meals, and each meal is a collection of priced items.
+ *
+ * Flow:
+ *   ITEM
+ *    ↓
+ *   MEAL
+ *    ↓
+ *   SELECTED MEALS
+ *    ↓
+ *   SUBSCRIPTION / ORDER
+ *    ↓
+ *   CENTRAL PRICING ENGINE
+ *    ↓
+ *   FINAL CUSTOMER PRICE
+ *
+ * Formulas:
+ *   ItemTotal = SUM(selected item prices * quantities)
+ *   VendorCost = ItemTotal * (1 - VendorDeduction)
+ *   FoodSellingPrice = VendorCost * (1 + Margin)
+ *   Subtotal = FoodSellingPrice + DeliveryCharge
+ *   CustomerPrice = Subtotal / (1 - PaymentFee)
+ *
+ * Default Global Pricing Rules:
+ *   VendorDeduction = 0.08 (8%)
+ *   Margin = 0.13 (13%)
+ *   DeliveryCharge = ₹11
+ *   PaymentFee = 0.025 (2.5% Razorpay gross-up)
+ *   RoundingStrategy = 'round' (paise-accurate 2 decimals, or configurable)
+ */
+
+import * as admin from 'firebase-admin';
+
+// ─── 1. PRICING RULES CONFIGURATION ──────────────────────────────────────────
+
+export interface PricingRules {
+  /** Vendor deduction percentage (e.g. 0.08 for 8%) */
+  vendorDeduction: number;
+  /** Dabzzo platform food margin percentage (e.g. 0.13 for 13%) */
+  margin: number;
+  /** Fixed delivery fee added per meal/delivery in ₹ (e.g. 11) */
+  deliveryCharge: number;
+  /** Payment gateway processing fee (e.g. 0.025 for 2.5% Razorpay fee) */
+  paymentFee: number;
+  /** Rounding strategy for customer price: 'round' (2 decimals / paise) | 'round_integer' | 'ceil' */
+  roundingStrategy: 'round' | 'round_integer' | 'ceil';
+  /** Optional metadata on when rules were updated */
+  updatedAt?: any;
+  updatedBy?: string;
+  version?: string;
+}
+
+export const DEFAULT_PRICING_RULES: PricingRules = {
+  vendorDeduction: 0.08,  // 8%
+  margin: 0.13,           // 13%
+  deliveryCharge: 11,     // ₹11
+  paymentFee: 0.025,      // 2.5%
+  roundingStrategy: 'round',
+  version: '2.0.0',
+};
+
+// ─── 2. ITEM DEFINITION & CATALOG ───────────────────────────────────────────
+
+export type ItemUnit = 'piece' | 'bowl' | 'portion' | 'plate' | 'cup';
+export type ItemCategory = 'staple' | 'curry' | 'side' | 'dessert' | 'beverage' | 'other';
+
+export interface ItemDefinition {
+  id: string;
+  name: string;
+  price: number; // Centrally controlled Admin price in ₹
+  unit: ItemUnit;
+  category: ItemCategory;
+  isActive: boolean;
+  minQuantity?: number;
+  maxQuantity?: number;
+  baseQuantity?: number; // Pre-configured quantity in standard meal
+  rawCost?: number;
+  description?: string;
+}
+
+/**
+ * Authoritative default items with Admin-controlled pricing as specified in task:
+ * Rice ₹15, Dal ₹20, Roti ₹8, Sabji ₹25, Salad ₹10, Paneer ₹30, Curd ₹15
+ */
+export const DEFAULT_ITEM_CATALOG: ItemDefinition[] = [
+  {
+    id: 'roti',
+    name: 'Roti',
+    price: 8,
+    unit: 'piece',
+    category: 'staple',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 10,
+    baseQuantity: 2,
+    rawCost: 3.5,
+  },
+  {
+    id: 'rice',
+    name: 'Rice',
+    price: 15,
+    unit: 'bowl',
+    category: 'staple',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 4,
+    baseQuantity: 1,
+    rawCost: 6.0,
+  },
+  {
+    id: 'dal',
+    name: 'Dal',
+    price: 20,
+    unit: 'bowl',
+    category: 'curry',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 4,
+    baseQuantity: 1,
+    rawCost: 8.0,
+  },
+  {
+    id: 'sabji',
+    name: 'Sabji',
+    price: 25,
+    unit: 'bowl',
+    category: 'curry',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 4,
+    baseQuantity: 1,
+    rawCost: 10.0,
+  },
+  {
+    id: 'salad',
+    name: 'Salad',
+    price: 10,
+    unit: 'portion',
+    category: 'side',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 3,
+    baseQuantity: 1,
+    rawCost: 4.0,
+  },
+  {
+    id: 'paneer',
+    name: 'Paneer Sabji',
+    price: 30,
+    unit: 'bowl',
+    category: 'curry',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 3,
+    baseQuantity: 0,
+    rawCost: 14.0,
+  },
+  {
+    id: 'curd',
+    name: 'Curd / Raita',
+    price: 15,
+    unit: 'portion',
+    category: 'side',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 3,
+    baseQuantity: 0,
+    rawCost: 6.0,
+  },
+  {
+    id: 'sweet',
+    name: 'Chef Sweet / Dessert',
+    price: 15,
+    unit: 'piece',
+    category: 'dessert',
+    isActive: true,
+    minQuantity: 0,
+    maxQuantity: 5,
+    baseQuantity: 0,
+    rawCost: 6.0,
+  },
+];
+
+// Standard Veg Meal Composition
+export interface StandardMealDefinition {
+  id: string;
+  name: string;
+  isActive: boolean;
+  itemQuantities: Record<string, number>; // itemId -> quantity
+  description?: string;
+}
+
+export const DEFAULT_STANDARD_MEAL: StandardMealDefinition = {
+  id: 'standard_veg_thali',
+  name: 'Standard Veg Thali',
+  isActive: true,
+  itemQuantities: {
+    rice: 1,
+    dal: 1,
+    roti: 2,
+    sabji: 1,
+    salad: 1,
+  },
+  description: '1× Rice, 1× Dal, 2× Roti, 1× Sabji, 1× Salad',
+};
+
+// ─── 3. SELECTED ITEM & MEAL COMPOSITION INPUTS ──────────────────────────────
+
+export interface SelectedItemInput {
+  id: string;
+  quantity: number;
+}
+
+export interface MealPricingBreakdown {
+  /** Sum of selected item prices */
+  itemTotal: number;
+  /** Vendor deduction fraction applied (e.g. 0.08) */
+  vendorDeductionRate: number;
+  /** Vendor deduction amount in ₹ */
+  vendorDeduction: number;
+  /** Net payable cost to vendor: itemTotal * (1 - vendorDeduction) */
+  vendorCost: number;
+  /** Food margin fraction applied (e.g. 0.13) */
+  marginRate: number;
+  /** Food margin amount in ₹ */
+  margin: number;
+  /** Food selling price: vendorCost * (1 + margin) */
+  foodSellingPrice: number;
+  /** Delivery charge in ₹ (e.g. 11) */
+  deliveryCharge: number;
+  /** Subtotal before payment gateway gross-up: foodSellingPrice + deliveryCharge */
+  subtotal: number;
+  /** Payment processing fee rate (e.g. 0.025) */
+  paymentFeeRate: number;
+  /** Payment fee amount in ₹ */
+  paymentFee: number;
+  /** Final customer price: subtotal / (1 - paymentFee) with consistent rounding */
+  finalPrice: number;
+  /** Detailed list of priced items for this meal */
+  items: Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    total: number;
+    unit: string;
+  }>;
+  /** Human-readable manifest summary (e.g. "2× Roti, 1× Rice, 1× Dal, 1× Sabji, 1× Salad") */
+  manifestSummary: string;
+}
+
+// ─── 4. ROUNDING HELPER ──────────────────────────────────────────────────────
+
+/**
+ * Consistent rounding function.
+ * Rounds to 2 decimal places by default, or nearest integer if configured.
+ */
+export function applyRounding(value: number, strategy: PricingRules['roundingStrategy'] = 'round'): number {
+  if (strategy === 'ceil') {
+    return Math.ceil(value);
+  }
+  if (strategy === 'round_integer') {
+    return Math.round(value);
+  }
+  // Standard financial rounding to 2 decimal places
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+// ─── 5. MEAL PRICING ENGINE ──────────────────────────────────────────────────
+
+/**
+ * Calculates the authoritative price and breakdown for a single meal composition.
+ *
+ * @param selectedItems - Array of { id, quantity } or Record<itemId, quantity>
+ * @param catalog - Catalog of available items with Admin prices
+ * @param rules - Global pricing rules (vendor deduction, margin, delivery, payment fee)
+ */
+export function calculateMealPrice(
+  selectedItems: SelectedItemInput[] | Record<string, number>,
+  catalog: ItemDefinition[] = DEFAULT_ITEM_CATALOG,
+  rules: PricingRules = DEFAULT_PRICING_RULES
+): MealPricingBreakdown {
+  // Normalize catalog into quick-lookup map
+  const catalogMap = new Map<string, ItemDefinition>();
+  catalog.forEach((item) => {
+    catalogMap.set(item.id.toLowerCase().trim(), item);
+  });
+
+  // Normalize selected items into array
+  const rawItemsArray: SelectedItemInput[] = Array.isArray(selectedItems)
+    ? selectedItems
+    : Object.entries(selectedItems || {}).map(([id, quantity]) => ({ id, quantity: Number(quantity) }));
+
+  // Consolidate duplicate item IDs and validate numeric quantities
+  const consolidatedMap = new Map<string, number>();
+  for (const sel of rawItemsArray) {
+    if (!sel || !sel.id) continue;
+    const cleanId = String(sel.id).toLowerCase().trim();
+    if (!cleanId) continue;
+    const qty = Number(sel.quantity);
+    if (isNaN(qty) || !Number.isFinite(qty) || qty <= 0) {
+      continue; // Skip zero, negative, or non-finite quantities
+    }
+    consolidatedMap.set(cleanId, (consolidatedMap.get(cleanId) || 0) + qty);
+  }
+
+  let itemTotal = 0;
+  const pricedItems: MealPricingBreakdown['items'] = [];
+  const manifestParts: string[] = [];
+
+  for (const [cleanId, qty] of consolidatedMap.entries()) {
+    const itemDef = catalogMap.get(cleanId);
+    if (!itemDef) {
+      throw new Error(`PricingEngine Error: Item ID "${cleanId}" does not exist in the active catalog.`);
+    }
+
+    if (!itemDef.isActive) {
+      throw new Error(`PricingEngine Error: Item "${itemDef.name}" (${itemDef.id}) is currently inactive.`);
+    }
+
+    // Validate quantity boundaries if specified
+    if (itemDef.maxQuantity !== undefined && qty > itemDef.maxQuantity) {
+      throw new Error(
+        `PricingEngine Error: Quantity ${qty} for item "${itemDef.name}" exceeds maximum allowed (${itemDef.maxQuantity}).`
+      );
+    }
+    if (itemDef.minQuantity !== undefined && qty < itemDef.minQuantity) {
+      throw new Error(
+        `PricingEngine Error: Quantity ${qty} for item "${itemDef.name}" is below minimum required (${itemDef.minQuantity}).`
+      );
+    }
+
+    const lineTotal = applyRounding(itemDef.price * qty);
+    itemTotal += lineTotal;
+
+    pricedItems.push({
+      id: itemDef.id,
+      name: itemDef.name,
+      price: itemDef.price,
+      quantity: qty,
+      total: lineTotal,
+      unit: itemDef.unit || 'portion',
+    });
+
+    manifestParts.push(`${qty}× ${itemDef.name}`);
+  }
+
+  // Handle empty meal selection
+  if (pricedItems.length === 0) {
+    throw new Error('PricingEngine Error: Meal contains zero active items.');
+  }
+
+  itemTotal = applyRounding(itemTotal);
+
+  // Step 2: Apply vendor deduction
+  const vendorDeductionRate = rules.vendorDeduction;
+  const rawVendorCost = itemTotal * (1 - vendorDeductionRate);
+  const vendorCost = applyRounding(rawVendorCost);
+  const vendorDeduction = applyRounding(itemTotal - vendorCost);
+
+  // Step 3: Apply business margin
+  const marginRate = rules.margin;
+  const rawFoodSellingPrice = vendorCost * (1 + marginRate);
+  const foodSellingPrice = applyRounding(rawFoodSellingPrice);
+  const margin = applyRounding(foodSellingPrice - vendorCost);
+
+  // Step 4: Add delivery charge
+  const deliveryCharge = applyRounding(rules.deliveryCharge);
+  const subtotal = applyRounding(foodSellingPrice + deliveryCharge);
+
+  // Step 5: Account for Razorpay payment processing fee gross-up
+  const paymentFeeRate = rules.paymentFee;
+  const divisor = 1 - paymentFeeRate;
+  if (divisor <= 0) {
+    throw new Error('PricingEngine Error: Invalid payment fee rate. Divisor cannot be <= 0.');
+  }
+
+  const rawFinalPrice = subtotal / divisor;
+  const finalPrice = applyRounding(rawFinalPrice, rules.roundingStrategy);
+  const paymentFee = applyRounding(finalPrice - subtotal);
+
+  const manifestSummary = manifestParts.length > 0 ? manifestParts.join(', ') : 'Empty Meal';
+
+  return {
+    itemTotal,
+    vendorDeductionRate,
+    vendorDeduction,
+    vendorCost,
+    marginRate,
+    margin,
+    foodSellingPrice,
+    deliveryCharge,
+    subtotal,
+    paymentFeeRate,
+    paymentFee,
+    finalPrice,
+    items: pricedItems,
+    manifestSummary,
+  };
+}
+
+// ─── 6. SUBSCRIPTION PRICING ENGINE ─────────────────────────────────────────
+
+export interface SubscriptionMealSlotInput {
+  dayKey: string; // e.g. 'mon', 'tue', '2026-09-15'
+  slot: 'lunch' | 'dinner' | 'both';
+  items?: SelectedItemInput[] | Record<string, number>;
+  lunchItems?: SelectedItemInput[] | Record<string, number>;
+  dinnerItems?: SelectedItemInput[] | Record<string, number>;
+}
+
+export interface SubscriptionPricingBreakdown {
+  totalMeals: number;
+  mealDetails: Array<{
+    dayKey: string;
+    slot: 'lunch' | 'dinner';
+    breakdown: MealPricingBreakdown;
+  }>;
+  itemTotal: number;
+  vendorDeduction: number;
+  vendorCost: number;
+  margin: number;
+  foodSellingPrice: number;
+  deliveryCharge: number;
+  subtotal: number;
+  paymentFee: number;
+  finalPrice: number;
+  pricingRules: PricingRules;
+  snapshot: PricingSnapshot;
+}
+
+export interface PricingSnapshot {
+  snapshotVersion: string;
+  calculatedAt: string;
+  pricingRules: PricingRules;
+  totalMeals: number;
+  itemTotal: number;
+  vendorDeductionRate: number;
+  vendorDeduction: number;
+  vendorCost: number;
+  marginRate: number;
+  margin: number;
+  foodSellingPrice: number;
+  deliveryCharge: number;
+  subtotal: number;
+  paymentFeeRate: number;
+  paymentFee: number;
+  finalPrice: number;
+  standardMealUnitSnapshot?: MealPricingBreakdown;
+  meals: Array<{
+    dayKey: string;
+    slot: 'lunch' | 'dinner';
+    itemTotal: number;
+    vendorCost: number;
+    finalPrice: number;
+    manifest: string;
+    items: MealPricingBreakdown['items'];
+  }>;
+}
+
+/**
+ * Calculates subscription pricing by summing its individual meals.
+ * Each meal node is independently priced by calculateMealPrice.
+ *
+ * @param schedule - Array of meals scheduled across days and slots
+ * @param defaultItems - Default item composition to use if a slot does not override items
+ * @param catalog - Catalog of items with Admin prices
+ * @param rules - Global pricing rules
+ */
+export function calculateSubscriptionPrice(
+  schedule: SubscriptionMealSlotInput[],
+  defaultItems: SelectedItemInput[] | Record<string, number> = DEFAULT_STANDARD_MEAL.itemQuantities,
+  catalog: ItemDefinition[] = DEFAULT_ITEM_CATALOG,
+  rules: PricingRules = DEFAULT_PRICING_RULES
+): SubscriptionPricingBreakdown {
+  if (!schedule || schedule.length === 0) {
+    throw new Error('PricingEngine Error: Subscription schedule must have at least 1 meal selection.');
+  }
+
+  const mealDetails: SubscriptionPricingBreakdown['mealDetails'] = [];
+
+  let aggregateItemTotal = 0;
+  let aggregateVendorDeduction = 0;
+  let aggregateVendorCost = 0;
+  let aggregateMargin = 0;
+  let aggregateFoodSellingPrice = 0;
+  let aggregateDeliveryCharge = 0;
+  let aggregateSubtotal = 0;
+  let aggregatePaymentFee = 0;
+  let aggregateFinalPrice = 0;
+
+  for (const entry of schedule) {
+    const dayKey = (entry.dayKey || '').trim();
+    if (!dayKey) {
+      throw new Error('PricingEngine Error: Every schedule entry must specify a valid dayKey.');
+    }
+
+    const slot = entry.slot;
+    if (slot === 'lunch' || slot === 'dinner') {
+      const itemsToPrice = entry.items || (slot === 'lunch' ? entry.lunchItems : entry.dinnerItems) || defaultItems;
+      const breakdown = calculateMealPrice(itemsToPrice, catalog, rules);
+
+      mealDetails.push({
+        dayKey,
+        slot,
+        breakdown,
+      });
+
+      aggregateItemTotal += breakdown.itemTotal;
+      aggregateVendorDeduction += breakdown.vendorDeduction;
+      aggregateVendorCost += breakdown.vendorCost;
+      aggregateMargin += breakdown.margin;
+      aggregateFoodSellingPrice += breakdown.foodSellingPrice;
+      aggregateDeliveryCharge += breakdown.deliveryCharge;
+      aggregateSubtotal += breakdown.subtotal;
+      aggregatePaymentFee += breakdown.paymentFee;
+      aggregateFinalPrice += breakdown.finalPrice;
+    } else if (slot === 'both') {
+      // Slot 'both' represents two independent deliveries: lunch and dinner
+      const lunchItems = entry.lunchItems || entry.items || defaultItems;
+      const dinnerItems = entry.dinnerItems || entry.items || defaultItems;
+
+      const lunchBreakdown = calculateMealPrice(lunchItems, catalog, rules);
+      const dinnerBreakdown = calculateMealPrice(dinnerItems, catalog, rules);
+
+      mealDetails.push(
+        { dayKey, slot: 'lunch', breakdown: lunchBreakdown },
+        { dayKey, slot: 'dinner', breakdown: dinnerBreakdown }
+      );
+
+      aggregateItemTotal += lunchBreakdown.itemTotal + dinnerBreakdown.itemTotal;
+      aggregateVendorDeduction += lunchBreakdown.vendorDeduction + dinnerBreakdown.vendorDeduction;
+      aggregateVendorCost += lunchBreakdown.vendorCost + dinnerBreakdown.vendorCost;
+      aggregateMargin += lunchBreakdown.margin + dinnerBreakdown.margin;
+      aggregateFoodSellingPrice += lunchBreakdown.foodSellingPrice + dinnerBreakdown.foodSellingPrice;
+      aggregateDeliveryCharge += lunchBreakdown.deliveryCharge + dinnerBreakdown.deliveryCharge;
+      aggregateSubtotal += lunchBreakdown.subtotal + dinnerBreakdown.subtotal;
+      aggregatePaymentFee += lunchBreakdown.paymentFee + dinnerBreakdown.paymentFee;
+      aggregateFinalPrice += lunchBreakdown.finalPrice + dinnerBreakdown.finalPrice;
+    } else if ((slot as string) === 'skip') {
+      continue;
+    } else {
+      throw new Error(
+        `PricingEngine Error: Invalid meal slot "${slot}". Allowed slots are "lunch", "dinner", "both", or "skip".`
+      );
+    }
+  }
+
+  if (mealDetails.length === 0) {
+    throw new Error('PricingEngine Error: No active meals selected in schedule.');
+  }
+
+  // Consistent roundings on aggregated totals
+  const totalMeals = mealDetails.length;
+  const itemTotal = applyRounding(aggregateItemTotal);
+  const vendorDeduction = applyRounding(aggregateVendorDeduction);
+  const vendorCost = applyRounding(aggregateVendorCost);
+  const margin = applyRounding(aggregateMargin);
+  const foodSellingPrice = applyRounding(aggregateFoodSellingPrice);
+  const deliveryCharge = applyRounding(aggregateDeliveryCharge);
+  const subtotal = applyRounding(aggregateSubtotal);
+  const finalPrice = applyRounding(aggregateFinalPrice, rules.roundingStrategy);
+  const paymentFee = applyRounding(finalPrice - subtotal);
+
+  // Compute a snapshot of the base standard meal for reference
+  let standardMealUnitSnapshot: MealPricingBreakdown | undefined;
+  try {
+    standardMealUnitSnapshot = calculateMealPrice(DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
+  } catch {
+    // Non-fatal
+  }
+
+  const snapshot: PricingSnapshot = {
+    snapshotVersion: rules.version || '2.0.0',
+    calculatedAt: new Date().toISOString(),
+    pricingRules: { ...rules },
+    totalMeals,
+    itemTotal,
+    vendorDeductionRate: rules.vendorDeduction,
+    vendorDeduction,
+    vendorCost,
+    marginRate: rules.margin,
+    margin,
+    foodSellingPrice,
+    deliveryCharge,
+    subtotal,
+    paymentFeeRate: rules.paymentFee,
+    paymentFee,
+    finalPrice,
+    standardMealUnitSnapshot,
+    meals: mealDetails.map((m) => ({
+      dayKey: m.dayKey,
+      slot: m.slot,
+      itemTotal: m.breakdown.itemTotal,
+      vendorCost: m.breakdown.vendorCost,
+      finalPrice: m.breakdown.finalPrice,
+      manifest: m.breakdown.manifestSummary,
+      items: m.breakdown.items,
+    })),
+  };
+
+  return {
+    totalMeals,
+    mealDetails,
+    itemTotal,
+    vendorDeduction,
+    vendorCost,
+    margin,
+    foodSellingPrice,
+    deliveryCharge,
+    subtotal,
+    paymentFee,
+    finalPrice,
+    pricingRules: rules,
+    snapshot,
+  };
+}
+
+// ─── 7. STANDARD ₹4,500 PRODUCT INFRASTRUCTURE ───────────────────────────────
+
+/**
+ * Calculates standard pre-packaged subscription (e.g. ₹4,500 monthly subscription, ₹4,000 base vendor)
+ * Preserves existing product while structuring under the central pricing snapshot architecture.
+ */
+export function calculateStandardSubscriptionProduct(
+  totalMeals: number = 30,
+  rules: PricingRules = DEFAULT_PRICING_RULES
+): SubscriptionPricingBreakdown {
+  const baseVendorTotal = 4000;
+  const vendorDeduction = applyRounding(baseVendorTotal * rules.vendorDeduction);
+  const vendorCost = applyRounding(baseVendorTotal - vendorDeduction); // ₹3,680
+  const finalCustomerPrice = 4500;
+  const deliveryCharge = applyRounding(rules.deliveryCharge * totalMeals);
+  const foodSellingPrice = applyRounding(finalCustomerPrice - deliveryCharge);
+  const margin = applyRounding(foodSellingPrice - vendorCost);
+  const subtotal = applyRounding(foodSellingPrice + deliveryCharge);
+  const paymentFee = applyRounding(finalCustomerPrice - subtotal);
+
+  const dummySchedule: SubscriptionMealSlotInput[] = Array.from({ length: totalMeals }, (_, i) => ({
+    dayKey: `day_${i + 1}`,
+    slot: 'lunch',
+  }));
+
+  const standardMeal = calculateMealPrice(DEFAULT_STANDARD_MEAL.itemQuantities, DEFAULT_ITEM_CATALOG, rules);
+
+  const snapshot: PricingSnapshot = {
+    snapshotVersion: rules.version || '2.0.0',
+    calculatedAt: new Date().toISOString(),
+    pricingRules: { ...rules },
+    totalMeals,
+    itemTotal: baseVendorTotal,
+    vendorDeductionRate: rules.vendorDeduction,
+    vendorDeduction,
+    vendorCost,
+    marginRate: rules.margin,
+    margin,
+    foodSellingPrice,
+    deliveryCharge,
+    subtotal,
+    paymentFeeRate: rules.paymentFee,
+    paymentFee,
+    finalPrice: finalCustomerPrice,
+    standardMealUnitSnapshot: standardMeal,
+    meals: dummySchedule.map((d) => ({
+      dayKey: d.dayKey,
+      slot: 'lunch' as const,
+      itemTotal: applyRounding(baseVendorTotal / totalMeals),
+      vendorCost: applyRounding(vendorCost / totalMeals),
+      finalPrice: applyRounding(finalCustomerPrice / totalMeals),
+      manifest: standardMeal.manifestSummary,
+      items: standardMeal.items,
+    })),
+  };
+
+  return {
+    totalMeals,
+    mealDetails: dummySchedule.map((d) => ({
+      dayKey: d.dayKey,
+      slot: 'lunch' as const,
+      breakdown: standardMeal,
+    })),
+    itemTotal: baseVendorTotal,
+    vendorDeduction,
+    vendorCost,
+    margin,
+    foodSellingPrice,
+    deliveryCharge,
+    subtotal,
+    paymentFee,
+    finalPrice: finalCustomerPrice,
+    pricingRules: rules,
+    snapshot,
+  };
+}
+
+// ─── 8. FIRESTORE HELPERS (FETCH FROM CENTRAL ADMIN CONFIG) ───────────────────
+
+/**
+ * Fetches the active pricing rules from Firestore `system_settings/pricing_rules`.
+ * Falls back to `system_settings/pricing_algorithm` or DEFAULT_PRICING_RULES.
+ */
+export async function fetchAuthoritativePricingRules(db: admin.firestore.Firestore): Promise<PricingRules> {
+  try {
+    // 1. Try canonical pricing_rules document
+    const snap = await db.collection('system_settings').doc('pricing_rules').get();
+    if (snap.exists) {
+      const data = snap.data();
+      if (data) {
+        return {
+          vendorDeduction:
+            typeof data.vendorDeduction === 'number'
+              ? data.vendorDeduction
+              : (typeof data.vendorMarginPercent === 'number' ? data.vendorMarginPercent / 100 : DEFAULT_PRICING_RULES.vendorDeduction),
+          margin:
+            typeof data.margin === 'number'
+              ? data.margin
+              : (typeof data.platformMargin === 'number' ? data.platformMargin / 100 : DEFAULT_PRICING_RULES.margin),
+          deliveryCharge:
+            typeof data.deliveryCharge === 'number'
+              ? data.deliveryCharge
+              : (typeof data.deliveryChargePerMeal === 'number' ? data.deliveryChargePerMeal : DEFAULT_PRICING_RULES.deliveryCharge),
+          paymentFee:
+            typeof data.paymentFee === 'number'
+              ? data.paymentFee
+              : DEFAULT_PRICING_RULES.paymentFee,
+          roundingStrategy: data.roundingStrategy === 'ceil' ? 'ceil' : data.roundingStrategy === 'round_integer' ? 'round_integer' : 'round',
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy,
+          version: data.version || '2.0.0',
+        };
+      }
+    }
+
+    // 2. Fallback to system_settings/pricing_algorithm if exists
+    const algoSnap = await db.collection('system_settings').doc('pricing_algorithm').get();
+    if (algoSnap.exists) {
+      const d = algoSnap.data();
+      if (d) {
+        return {
+          vendorDeduction:
+            typeof d.vendorDeduction === 'number'
+              ? d.vendorDeduction
+              : DEFAULT_PRICING_RULES.vendorDeduction,
+          margin:
+            typeof d.margin === 'number'
+              ? d.margin
+              : DEFAULT_PRICING_RULES.margin,
+          deliveryCharge:
+            typeof d.deliveryChargePerMeal === 'number'
+              ? d.deliveryChargePerMeal
+              : (typeof d.deliveryCharge === 'number' ? d.deliveryCharge : DEFAULT_PRICING_RULES.deliveryCharge),
+          paymentFee:
+            typeof d.paymentFee === 'number'
+              ? d.paymentFee
+              : DEFAULT_PRICING_RULES.paymentFee,
+          roundingStrategy: d.roundingStrategy === 'ceil' ? 'ceil' : 'round',
+          updatedAt: d.updatedAt,
+          updatedBy: d.updatedBy,
+          version: '2.0.0',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchAuthoritativePricingRules] Error fetching pricing rules, using defaults:', err);
+  }
+
+  return { ...DEFAULT_PRICING_RULES };
+}
+
+/**
+ * Fetches the active meal items catalog from Firestore `system_settings/meal_components`.
+ * Every item in this catalog has an Admin-controlled customer-facing price.
+ */
+export async function fetchAuthoritativeItemsCatalog(db: admin.firestore.Firestore): Promise<ItemDefinition[]> {
+  try {
+    const snap = await db.collection('system_settings').doc('meal_components').get();
+    if (snap.exists) {
+      const data = snap.data();
+      const rawComponents = data?.components;
+      if (Array.isArray(rawComponents) && rawComponents.length > 0) {
+        return rawComponents.map((c: any) => {
+          // Normalize price field: prefer price, fallback to customerRate
+          const adminPrice =
+            typeof c.price === 'number'
+              ? c.price
+              : (typeof c.customerRate === 'number' ? c.customerRate : 10);
+
+          return {
+            id: String(c.id).toLowerCase().trim(),
+            name: c.name || c.id,
+            price: adminPrice,
+            unit: c.unit || 'portion',
+            category: c.category || 'staple',
+            isActive: c.isActive !== false,
+            minQuantity: typeof c.minQuantity === 'number' ? c.minQuantity : 0,
+            maxQuantity: typeof c.maxQuantity === 'number' ? c.maxQuantity : 10,
+            baseQuantity: typeof c.baseQuantity === 'number' ? c.baseQuantity : 0,
+            rawCost: typeof c.rawCost === 'number' ? c.rawCost : 0,
+            description: c.description || '',
+          };
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchAuthoritativeItemsCatalog] Error fetching items catalog, using defaults:', err);
+  }
+
+  return [...DEFAULT_ITEM_CATALOG];
+}
+
+// ─── 9. AUDITABLE HISTORICAL ORDER / SUBSCRIPTION PRICE RETRIEVAL ───────────
+
+export interface AuditablePriceResult {
+  finalPrice: number;
+  itemTotal: number;
+  vendorCost: number;
+  margin: number;
+  deliveryCharge: number;
+  paymentFee: number;
+  isSnapshot: boolean;
+  calculatedAt?: string;
+  snapshotVersion?: string;
+}
+
+/**
+ * Retrieves the authoritative auditable price from an order or subscription's immutable snapshot.
+ * This guarantees that historical orders are never recalculated using today's Admin prices.
+ */
+export function getAuditableOrderPrice(orderOrSub: any): AuditablePriceResult {
+  const snap: PricingSnapshot | undefined =
+    orderOrSub?.pricingSnapshot || orderOrSub?.pricing_snapshot;
+
+  if (snap && typeof snap.finalPrice === 'number') {
+    return {
+      finalPrice: snap.finalPrice,
+      itemTotal: snap.itemTotal,
+      vendorCost: snap.vendorCost,
+      margin: snap.margin,
+      deliveryCharge: snap.deliveryCharge,
+      paymentFee: snap.paymentFee,
+      isSnapshot: true,
+      calculatedAt: snap.calculatedAt,
+      snapshotVersion: snap.snapshotVersion,
+    };
+  }
+
+  // Fallback to top-level fields for legacy records
+  const finalPrice = Number(orderOrSub?.total_price ?? orderOrSub?.price ?? orderOrSub?.total_amount ?? 0);
+  const vendorCost = Number(orderOrSub?.vendor_total_payable ?? orderOrSub?.vendor_cost ?? 0);
+
+  return {
+    finalPrice,
+    itemTotal: finalPrice,
+    vendorCost,
+    margin: 0,
+    deliveryCharge: 0,
+    paymentFee: 0,
+    isSnapshot: false,
+  };
+}

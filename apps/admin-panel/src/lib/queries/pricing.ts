@@ -231,3 +231,161 @@ export async function savePricingAlgorithmSettings(
   return payload;
 }
 
+// ─── CANONICAL AUTHORITATIVE PRICING RULES (v2.0) ───────────────────────────
+import {
+  PricingRules,
+  DEFAULT_PRICING_RULES,
+  calculateMealPrice,
+  calculateSubscriptionPrice,
+  calculateStandardSubscriptionProduct,
+  DEFAULT_ITEM_CATALOG,
+  DEFAULT_STANDARD_MEAL,
+  ItemDefinition,
+} from '@/lib/pricingEngine';
+
+export {
+  type PricingRules,
+  DEFAULT_PRICING_RULES,
+  calculateMealPrice,
+  calculateSubscriptionPrice,
+  calculateStandardSubscriptionProduct,
+  DEFAULT_ITEM_CATALOG,
+  DEFAULT_STANDARD_MEAL,
+  type ItemDefinition,
+};
+
+export const PRICING_RULES_DOC = {
+  collection: 'system_settings',
+  docId: 'pricing_rules',
+};
+
+/**
+ * Fetch authoritative central pricing rules from system_settings/pricing_rules.
+ * Falls back to system_settings/pricing_algorithm or DEFAULT_PRICING_RULES.
+ */
+export async function getAuthoritativePricingRules(): Promise<PricingRules> {
+  try {
+    // 1. Try canonical pricing_rules doc
+    const rulesSnap = await getDoc(doc(db, PRICING_RULES_DOC.collection, PRICING_RULES_DOC.docId));
+    if (rulesSnap.exists()) {
+      const d = rulesSnap.data();
+      return {
+        vendorDeduction:
+          typeof d.vendorDeduction === 'number'
+            ? d.vendorDeduction
+            : (typeof d.vendorMarginPercent === 'number' ? d.vendorMarginPercent / 100 : DEFAULT_PRICING_RULES.vendorDeduction),
+        margin:
+          typeof d.margin === 'number'
+            ? d.margin
+            : (typeof d.platformMargin === 'number' ? d.platformMargin / 100 : DEFAULT_PRICING_RULES.margin),
+        deliveryCharge:
+          typeof d.deliveryCharge === 'number'
+            ? d.deliveryCharge
+            : (typeof d.deliveryChargePerMeal === 'number' ? d.deliveryChargePerMeal : DEFAULT_PRICING_RULES.deliveryCharge),
+        paymentFee:
+          typeof d.paymentFee === 'number'
+            ? d.paymentFee
+            : DEFAULT_PRICING_RULES.paymentFee,
+        roundingStrategy: d.roundingStrategy === 'ceil' ? 'ceil' : d.roundingStrategy === 'round_integer' ? 'round_integer' : 'round',
+        updatedAt: d.updatedAt,
+        updatedBy: d.updatedBy,
+        version: d.version || '2.0.0',
+      };
+    }
+
+    // 2. Fallback to pricing_algorithm
+    const algoSnap = await getDoc(doc(db, PRICING_ALGORITHM_DOC.collection, PRICING_ALGORITHM_DOC.docId));
+    if (algoSnap.exists()) {
+      const d = algoSnap.data();
+      return {
+        vendorDeduction:
+          typeof d.vendorDeduction === 'number'
+            ? d.vendorDeduction
+            : DEFAULT_PRICING_RULES.vendorDeduction,
+        margin:
+          typeof d.margin === 'number'
+            ? d.margin
+            : DEFAULT_PRICING_RULES.margin,
+        deliveryCharge:
+          typeof d.deliveryChargePerMeal === 'number'
+            ? d.deliveryChargePerMeal
+            : (typeof d.deliveryCharge === 'number' ? d.deliveryCharge : DEFAULT_PRICING_RULES.deliveryCharge),
+        paymentFee:
+          typeof d.paymentFee === 'number'
+            ? d.paymentFee
+            : DEFAULT_PRICING_RULES.paymentFee,
+        roundingStrategy: d.roundingStrategy === 'ceil' ? 'ceil' : 'round',
+        updatedAt: d.updatedAt,
+        updatedBy: d.updatedBy,
+        version: '2.0.0',
+      };
+    }
+  } catch (err) {
+    console.warn('[getAuthoritativePricingRules] Failed to load rules, using defaults:', err);
+  }
+
+  return { ...DEFAULT_PRICING_RULES };
+}
+
+/**
+ * Save authoritative central pricing rules to system_settings/pricing_rules
+ * and mirror to system_settings/pricing_algorithm for seamless backwards compatibility.
+ */
+export async function saveAuthoritativePricingRules(
+  rules: Partial<PricingRules>,
+  updatedBy: string = 'admin'
+): Promise<PricingRules> {
+  const canonicalPayload: PricingRules = {
+    vendorDeduction:
+      typeof rules.vendorDeduction === 'number'
+        ? rules.vendorDeduction
+        : DEFAULT_PRICING_RULES.vendorDeduction,
+    margin:
+      typeof rules.margin === 'number'
+        ? rules.margin
+        : DEFAULT_PRICING_RULES.margin,
+    deliveryCharge:
+      typeof rules.deliveryCharge === 'number'
+        ? rules.deliveryCharge
+        : DEFAULT_PRICING_RULES.deliveryCharge,
+    paymentFee:
+      typeof rules.paymentFee === 'number'
+        ? rules.paymentFee
+        : DEFAULT_PRICING_RULES.paymentFee,
+    roundingStrategy:
+      rules.roundingStrategy === 'ceil'
+        ? 'ceil'
+        : rules.roundingStrategy === 'round_integer'
+        ? 'round_integer'
+        : 'round',
+    updatedAt: Timestamp.now(),
+    updatedBy: updatedBy || 'admin',
+    version: '2.0.0',
+  };
+
+  const rulesRef = doc(db, PRICING_RULES_DOC.collection, PRICING_RULES_DOC.docId);
+  const algoRef = doc(db, PRICING_ALGORITHM_DOC.collection, PRICING_ALGORITHM_DOC.docId);
+
+  await Promise.all([
+    setDoc(rulesRef, canonicalPayload, { merge: true }),
+    setDoc(
+      algoRef,
+      {
+        deliveryChargePerMeal: canonicalPayload.deliveryCharge,
+        vendorMarginPercent: Math.round(canonicalPayload.vendorDeduction * 100),
+        vendorDeduction: canonicalPayload.vendorDeduction,
+        margin: canonicalPayload.margin,
+        paymentFee: canonicalPayload.paymentFee,
+        roundingStrategy: canonicalPayload.roundingStrategy,
+        updatedAt: canonicalPayload.updatedAt,
+        updatedBy: canonicalPayload.updatedBy,
+        version: '2.0.0',
+      },
+      { merge: true }
+    ),
+  ]);
+
+  return canonicalPayload;
+}
+
+

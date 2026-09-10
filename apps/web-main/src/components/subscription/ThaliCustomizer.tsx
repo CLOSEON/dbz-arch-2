@@ -12,6 +12,7 @@ import {
   AlgorithmicMealPricingResult,
 } from '@/lib/queries/pricing';
 import { MealComponent, DEFAULT_MEAL_COMPONENTS, CustomMealConfig, ComponentCategory } from '@/types';
+import { calculateMealPrice, DEFAULT_PRICING_RULES } from '@/lib/pricingEngine';
 
 export interface ThaliCustomizerConfig extends CustomMealConfig {
   customerDeltaPerMeal: number;
@@ -169,43 +170,63 @@ export function ThaliCustomizer({
     return calculateComponentDeltas(quantities, catalog, vendorOverrides);
   }, [quantities, catalog, vendorOverrides]);
 
-  const effectiveCustomerPricePerMeal = Math.max(
+  // Central Authoritative Meal Pricing Calculation
+  const centralMealPricing = useMemo(() => {
+    try {
+      return calculateMealPrice(quantities, catalog as any, DEFAULT_PRICING_RULES);
+    } catch {
+      return null;
+    }
+  }, [quantities, catalog]);
+
+  const effectiveCustomerPricePerMeal = centralMealPricing?.finalPrice ?? Math.max(
     10,
     baseMealPrice + deltaResult.customerDeltaPerMeal
   );
-  const effectiveVendorCostPerMeal = Math.max(
+
+  const effectiveVendorCostPerMeal = centralMealPricing?.vendorCost ?? Math.max(
     10,
     resolvedBaseVendorCost + deltaResult.vendorDeltaPerMeal
   );
 
+  const customerDeltaPerMeal = centralMealPricing
+    ? Math.round((centralMealPricing.finalPrice - baseMealPrice) * 100) / 100
+    : deltaResult.customerDeltaPerMeal;
+
+  const vendorDeltaPerMeal = centralMealPricing
+    ? Math.round((centralMealPricing.vendorCost - resolvedBaseVendorCost) * 100) / 100
+    : deltaResult.vendorDeltaPerMeal;
+
   const manifestSummary = useMemo(() => {
-    return buildBoxManifest(quantities, catalog);
-  }, [quantities, catalog]);
+    return centralMealPricing?.manifestSummary || buildBoxManifest(quantities, catalog);
+  }, [centralMealPricing, quantities, catalog]);
 
   // Notify parent component on changes
   useEffect(() => {
     if (onChange) {
       onChange({
         components: quantities,
-        deltaPricePerMeal: deltaResult.customerDeltaPerMeal,
-        deltaVendorCostPerMeal: deltaResult.vendorDeltaPerMeal,
-        customerDeltaPerMeal: deltaResult.customerDeltaPerMeal,
-        vendorDeltaPerMeal: deltaResult.vendorDeltaPerMeal,
+        deltaPricePerMeal: customerDeltaPerMeal,
+        deltaVendorCostPerMeal: vendorDeltaPerMeal,
+        customerDeltaPerMeal,
+        vendorDeltaPerMeal,
         effectiveCustomerPricePerMeal,
         effectiveVendorCostPerMeal,
         baseCustomerPricePerMeal: baseMealPrice,
         baseVendorCostPerMeal: resolvedBaseVendorCost,
         manifestSummary,
         breakdown: deltaResult.breakdown,
-        rawKitchenCost,
+        rawKitchenCost: centralMealPricing?.itemTotal ?? rawKitchenCost,
         vendorMarginPercent: effectiveVendorMargin,
-        vendorPayout: algorithmicPricing.vendorPayout,
+        vendorPayout: centralMealPricing?.vendorCost ?? algorithmicPricing.vendorPayout,
         algorithmicPricing,
       });
     }
   }, [
     quantities,
     deltaResult,
+    customerDeltaPerMeal,
+    vendorDeltaPerMeal,
     effectiveCustomerPricePerMeal,
     effectiveVendorCostPerMeal,
     baseMealPrice,
@@ -215,6 +236,7 @@ export function ThaliCustomizer({
     rawKitchenCost,
     effectiveVendorMargin,
     algorithmicPricing,
+    centralMealPricing,
     onChange,
   ]);
 

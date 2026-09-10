@@ -88,7 +88,6 @@ export function CustomPlanCheckoutModal({
   // ── Weekly pattern items breakdown ──────────────────────────────────────────
   const weeklyBreakdown = WEEKDAY_ORDER.map(({ key, short, name }) => {
     const count = Number(pattern[key] ?? pattern[short.toLowerCase()] ?? pattern[short] ?? 0);
-    return { key, short, name, count };
     const slot = slots[short.toLowerCase()] ?? slots[key] ?? (count === 2 ? 'both' : count === 1 ? 'lunch' : 'skip');
     return { key, short, name, count, slot };
   });
@@ -132,7 +131,12 @@ export function CustomPlanCheckoutModal({
             total_meals: totalMeals,
             total_price: totalPrice,
           },
-          vendorId
+          vendorId,
+          {
+            pattern,
+            slots,
+            customMealConfig: customPlanData.customMealConfig,
+          }
         );
         razorpayOrderId = order.order_id;
       } catch (orderErr) {

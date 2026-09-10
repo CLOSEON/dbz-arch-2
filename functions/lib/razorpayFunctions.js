@@ -37,6 +37,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.razorpayApi = exports.verifyRazorpayPayment = exports.createRazorpayOrder = void 0;
+exports.getRazorpayInstance = getRazorpayInstance;
+exports.resolveAuthoritativeOrderAmount = resolveAuthoritativeOrderAmount;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
@@ -55,13 +57,96 @@ function getRazorpayInstance() {
 function getKeySecret() {
     return process.env.RAZORPAY_KEY_SECRET || 'NMgeawXrZfgjKJfwu06iGl1X';
 }
+const pricingEngine_1 = require("./pricingEngine");
+async function resolveAuthoritativeOrderAmount(data, db) {
+    const [rules, catalog] = await Promise.all([
+        (0, pricingEngine_1.fetchAuthoritativePricingRules)(db),
+        (0, pricingEngine_1.fetchAuthoritativeItemsCatalog)(db),
+    ]);
+    const pattern = data?.pattern || data?.customPlanConfig?.pattern || data?.deliveryPattern;
+    const rawSchedule = data?.schedule;
+    if (Array.isArray(rawSchedule) && rawSchedule.length > 0) {
+        const subPricing = (0, pricingEngine_1.calculateSubscriptionPrice)(rawSchedule, pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
+        return {
+            amountPaise: Math.round(subPricing.finalPrice * 100),
+            authoritativePrice: subPricing.finalPrice,
+            rulesVersion: rules.version || '2.0.0',
+        };
+    }
+    if (pattern && typeof pattern === 'object' && !Array.isArray(pattern) && Object.keys(pattern).length > 0) {
+        const slots = data.slots || data.custom_slots || data.customPlanConfig?.slots || {};
+        const customConfig = data.customMealConfig || data.custom_meal_config || data.customPlanConfig?.customMealConfig;
+        const selectedItems = customConfig?.components || customConfig?.quantities || pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities;
+        const schedule = [];
+        Object.entries(pattern).forEach(([dayKey, countVal]) => {
+            const count = Number(countVal);
+            if (!isNaN(count) && count > 0) {
+                const slotChoice = slots[dayKey] || (count === 2 ? 'both' : 'lunch');
+                schedule.push({
+                    dayKey,
+                    slot: slotChoice === 'both' ? 'both' : (slotChoice === 'dinner' ? 'dinner' : 'lunch'),
+                    items: selectedItems,
+                });
+            }
+        });
+        if (schedule.length > 0) {
+            const subPricing = (0, pricingEngine_1.calculateSubscriptionPrice)(schedule, pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
+            return {
+                amountPaise: Math.round(subPricing.finalPrice * 100),
+                authoritativePrice: subPricing.finalPrice,
+                rulesVersion: rules.version || '2.0.0',
+            };
+        }
+    }
+    const mealItems = data?.mealItems || data?.items || data?.components;
+    if (mealItems && (Array.isArray(mealItems) || typeof mealItems === 'object')) {
+        const mealPricing = (0, pricingEngine_1.calculateMealPrice)(mealItems, catalog, rules);
+        return {
+            amountPaise: Math.round(mealPricing.finalPrice * 100),
+            authoritativePrice: mealPricing.finalPrice,
+            rulesVersion: rules.version || '2.0.0',
+        };
+    }
+    const planId = data?.plan_id || data?.notes?.plan_id || data?.planType || data?.frequency;
+    if (planId === 'monthly' || planId === 'standard_monthly' || planId === 'custom_monthly') {
+        const stdSub = (0, pricingEngine_1.calculateStandardSubscriptionProduct)(30, rules);
+        return {
+            amountPaise: Math.round(stdSub.finalPrice * 100),
+            authoritativePrice: stdSub.finalPrice,
+            rulesVersion: rules.version || '2.0.0',
+        };
+    }
+    if (planId === 'weekly' || planId === 'standard_weekly') {
+        const stdMeal = (0, pricingEngine_1.calculateMealPrice)(pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
+        const weeklyPrice = stdMeal.finalPrice * 7;
+        return {
+            amountPaise: Math.round(weeklyPrice * 100),
+            authoritativePrice: weeklyPrice,
+            rulesVersion: rules.version || '2.0.0',
+        };
+    }
+    return null;
+}
 exports.createRazorpayOrder = (0, https_1.onCall)({ region: 'us-central1', cors: true }, async (request) => {
     const data = request.data || {};
-    const amount = Number(data.amount);
+    let amount = Number(data.amount);
     const currency = typeof data.currency === 'string' ? data.currency : 'INR';
     const receipt = typeof data.receipt === 'string' ? data.receipt : `rcpt_${Date.now()}`;
-    const notes = data.notes && typeof data.notes === 'object' ? data.notes : {};
+    const notes = data.notes && typeof data.notes === 'object' ? { ...data.notes } : {};
     const vendorId = data.vendor_id || notes.vendor_id;
+    const db = admin.firestore();
+    try {
+        const authPricing = await resolveAuthoritativeOrderAmount(data, db);
+        if (authPricing) {
+            amount = authPricing.amountPaise;
+            notes.authoritative_price = authPricing.authoritativePrice;
+            notes.pricing_rules_version = authPricing.rulesVersion;
+        }
+    }
+    catch (pricingErr) {
+        console.error('[createRazorpayOrder] Pricing calculation failed:', pricingErr);
+        throw new https_1.HttpsError('invalid-argument', pricingErr?.message || 'Invalid meal or schedule configuration for pricing.');
+    }
     if (!amount || amount < 100 || amount > 50000000) {
         throw new https_1.HttpsError('invalid-argument', 'Invalid amount. Must be between ₹1 and ₹500,000.');
     }
@@ -204,11 +289,25 @@ exports.razorpayApi = (0, https_1.onRequest)({ region: 'us-central1', cors: true
     try {
         if (path === 'create-order' || path === 'create-order/') {
             const data = req.body || {};
-            const amount = Number(data.amount);
+            let amount = Number(data.amount);
             const currency = typeof data.currency === 'string' ? data.currency : 'INR';
             const receipt = typeof data.receipt === 'string' ? data.receipt : `rcpt_${Date.now()}`;
-            const notes = data.notes && typeof data.notes === 'object' ? data.notes : {};
-            if (!amount || amount < 100) {
+            const notes = data.notes && typeof data.notes === 'object' ? { ...data.notes } : {};
+            const db = admin.firestore();
+            try {
+                const authPricing = await resolveAuthoritativeOrderAmount(data, db);
+                if (authPricing) {
+                    amount = authPricing.amountPaise;
+                    notes.authoritative_price = authPricing.authoritativePrice;
+                    notes.pricing_rules_version = authPricing.rulesVersion;
+                }
+            }
+            catch (pricingErr) {
+                console.error('[razorpayApi create-order] Authoritative pricing calculation failed:', pricingErr);
+                res.status(400).json({ error: pricingErr?.message || 'Invalid meal or schedule configuration for pricing.' });
+                return;
+            }
+            if (!amount || amount < 100 || amount > 50000000) {
                 res.status(400).json({ error: 'Invalid amount. Minimum is ₹1 (100 paise).' });
                 return;
             }
