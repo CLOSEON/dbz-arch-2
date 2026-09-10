@@ -39,7 +39,6 @@ const deliveryTriggers_1 = require("../deliveryTriggers");
 const payoutTriggers_1 = require("../payoutTriggers");
 const events = __importStar(require("../utils/events"));
 let testEnv;
-// 1. Setup Mocks
 jest.mock('firebase-admin', () => {
     const mockTransaction = {
         get: jest.fn(),
@@ -97,7 +96,6 @@ describe('Delivery Status Updates and Payouts', () => {
     let wrappedPayoutTrigger;
     beforeAll(() => {
         testEnv = functionsTest();
-        // Wrap the functions
         wrappedUpdateDeliveryStatus = testEnv.wrap(deliveryTriggers_1.updateDeliveryStatus);
         wrappedPayoutTrigger = payoutTriggers_1.onDeliveryCompletedPayout.run;
     });
@@ -121,7 +119,6 @@ describe('Delivery Status Updates and Payouts', () => {
     };
     it('1. Valid transition pending → picked_up succeeds', async () => {
         const getTx = getMockTransaction();
-        // Mock the document snapshot returned by transaction.get()
         const db = admin.firestore();
         db.runTransaction.mockImplementationOnce(async (cb) => {
             const tx = {
@@ -164,7 +161,7 @@ describe('Delivery Status Updates and Payouts', () => {
             const tx = {
                 get: jest.fn().mockResolvedValue({
                     exists: true,
-                    data: () => ({ status: 'pending', agentId: 'agent_123' }), // assigned to agent_123
+                    data: () => ({ status: 'pending', agentId: 'agent_123' }),
                 }),
                 update: jest.fn(),
             };
@@ -172,7 +169,7 @@ describe('Delivery Status Updates and Payouts', () => {
         });
         await expect(wrappedUpdateDeliveryStatus({
             data: { orderId: 'order_1', status: 'picked_up' },
-            auth: { uid: 'wrong_agent', token: { role: 'delivery_agent' } }, // called by wrong_agent
+            auth: { uid: 'wrong_agent', token: { role: 'delivery_agent' } },
         })).rejects.toThrow('You are not assigned to this delivery');
     });
     it('4. failed_attempt without a reason string throws INVALID_ARGUMENT', async () => {
@@ -188,13 +185,11 @@ describe('Delivery Status Updates and Payouts', () => {
             return cb(tx);
         });
         await expect(wrappedUpdateDeliveryStatus({
-            data: { orderId: 'order_1', status: 'failed_attempt', reason: '   ' }, // empty reason
+            data: { orderId: 'order_1', status: 'failed_attempt', reason: '   ' },
             auth: { uid: 'agent_123', token: { role: 'delivery_agent' } },
         })).rejects.toThrow('Must provide a non-empty reason');
     });
     it('5. Successful delivered transition creates an agent_payout document', async () => {
-        // This tests the payoutTrigger (onDeliveryCompletedPayout) which runs after the delivery status is updated to delivered.
-        // Simulate the Firestore change event
         const beforeSnap = {
             data: () => ({ status: 'picked_up', agentId: 'agent_123' }),
         };
@@ -210,7 +205,6 @@ describe('Delivery Status Updates and Payouts', () => {
                 orderId: 'order_1',
             },
         };
-        // Get the batch mock to assert it was used correctly
         const db = admin.firestore();
         const batchMock = {
             set: jest.fn(),
@@ -218,19 +212,16 @@ describe('Delivery Status Updates and Payouts', () => {
             commit: jest.fn().mockResolvedValue(undefined),
         };
         db.batch.mockReturnValueOnce(batchMock);
-        // Call the wrapped payout trigger
         await wrappedPayoutTrigger(event);
-        // Verify batch was created and committed
         expect(db.batch).toHaveBeenCalled();
-        expect(batchMock.set).toHaveBeenCalled(); // Payout doc creation
-        expect(batchMock.update).toHaveBeenCalled(); // User earnings increment
+        expect(batchMock.set).toHaveBeenCalled();
+        expect(batchMock.update).toHaveBeenCalled();
         expect(batchMock.commit).toHaveBeenCalled();
-        // Verify the payout arguments
         const payoutRecord = batchMock.set.mock.calls[0][1];
         expect(payoutRecord).toMatchObject({
             agentId: 'agent_123',
             deliveryId: 'order_1',
-            amount: 40, // ₹40 fixed payout
+            amount: 40,
             status: 'pending',
         });
     });
@@ -253,7 +244,7 @@ describe('Delivery Status Updates and Payouts', () => {
             return cb(tx);
         });
         const result = await deliveryTriggers_1.verifyDeliveryOTP.run({
-            data: { orderId: 'order_test_otp', otp: '9999' }, // Wrong OTP
+            data: { orderId: 'order_test_otp', otp: '9999' },
             auth: { uid: 'rider_99', token: { role: 'delivery_agent' } },
         });
         expect(result.success).toBe(false);
@@ -281,7 +272,7 @@ describe('Delivery Status Updates and Payouts', () => {
             return cb(tx);
         });
         const result = await deliveryTriggers_1.verifyDeliveryOTP.run({
-            data: { orderId: 'order_test_otp', otp: '5678' }, // Correct OTP
+            data: { orderId: 'order_test_otp', otp: '5678' },
             auth: { uid: 'rider_99', token: { role: 'delivery_agent' } },
         });
         expect(result.success).toBe(true);
@@ -328,3 +319,4 @@ describe('Delivery Status Updates and Payouts', () => {
         });
     });
 });
+//# sourceMappingURL=deliveryTriggers.test.js.map

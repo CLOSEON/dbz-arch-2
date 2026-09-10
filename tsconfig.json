@@ -19,8 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
-      "@/*": ["./apps/web-main/src/*"]
+      "@/*": ["./src/*", "./apps/web-main/src/*"]
     }
   },
   "include": [
@@ -33,8 +32,6 @@
     "*.mts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
-    "*.mts"
   ],
-  "exclude": ["node_modules", "functions", "android"]
   "exclude": ["node_modules", "functions", "android", "apps/**/.next", "apps/**/out"]
 }

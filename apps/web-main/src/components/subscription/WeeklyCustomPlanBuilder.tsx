@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { getPricingConfig, DEFAULT_WEEKLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
+import { calculateSubscriptionPrice, DEFAULT_STANDARD_MEAL } from '@/lib/pricingEngine';
 import { CustomPlanCheckoutModal } from './CustomPlanCheckoutModal';
 import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 import { cn } from '@/lib/utils';
@@ -245,15 +246,38 @@ export function WeeklyCustomPlanBuilder({
     return { lunch, dinner, both, skip };
   }, [weekDays, slots]);
 
-  // Compute effective price per meal with component customization delta
-  const effectivePricePerMeal = useMemo(() => {
-    return Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
-  }, [pricePerMeal, customMealConfig?.customerDeltaPerMeal]);
+  // Build subscription schedule for Central Pricing Engine
+  const centralSchedule = useMemo(() => {
+    const list: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [];
+    const selectedItems = customMealConfig?.components || DEFAULT_STANDARD_MEAL.itemQuantities;
+    weekDays.forEach((d) => {
+      const s = slots[d.id] || 'skip';
+      if (s === 'lunch' || s === 'dinner' || s === 'both') {
+        list.push({
+          dayKey: d.id,
+          slot: s,
+          items: selectedItems,
+        });
+      }
+    });
+    return list;
+  }, [weekDays, slots, customMealConfig?.components]);
 
-  // Real-time calculation: Total meals count and Weekly total price using calculateCustomPlanPrice
-  const { totalMeals, totalPrice: weeklyTotal } = useMemo(() => {
-    return calculateCustomPlanPrice('weekly', selections, effectivePricePerMeal);
-  }, [selections, effectivePricePerMeal]);
+  const centralSubscriptionPricing = useMemo(() => {
+    if (centralSchedule.length === 0) return null;
+    try {
+      return calculateSubscriptionPrice(centralSchedule, DEFAULT_STANDARD_MEAL.itemQuantities);
+    } catch {
+      return null;
+    }
+  }, [centralSchedule]);
+
+  // Real-time calculation: Total meals count and Weekly total price using Central Pricing Engine
+  const totalMeals = centralSubscriptionPricing?.totalMeals ?? Object.values(selections).reduce((a: number, b: number) => a + b, 0);
+  const weeklyTotal = centralSubscriptionPricing?.finalPrice ?? (totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)));
+  const effectivePricePerMeal = totalMeals > 0
+    ? Math.round((weeklyTotal / totalMeals) * 100) / 100
+    : Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
 
   // Notify parent component whenever selections or pricing change
   useEffect(() => {

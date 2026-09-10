@@ -190,22 +190,24 @@ export async function createRazorpayOrder(
   amountPaiseOrRupees: number, // can be in rupees or paise
   receipt: string = `rcpt_${Date.now()}`,
   notes?: Record<string, any>,
-  vendor_id?: string
+  vendor_id?: string,
+  extraPayload?: Record<string, any>
 ): Promise<{ order_id: string; amount: number; currency: string }> {
   // If amount < 100, assume it's in ₹ and convert to paise
   const amountInPaise = amountPaiseOrRupees < 100 ? Math.round(amountPaiseOrRupees * 100) : Math.round(amountPaiseOrRupees);
 
-  const payload = {
+  const payload: any = {
     amount: amountInPaise,
     currency: 'INR',
     receipt: receipt.slice(0, 40),
     notes: notes || {},
     vendor_id,
+    ...(extraPayload || {}),
   };
 
   // 1. Try Firebase Callable Cloud Function (works reliably on dabzzo.in and native APKs)
   try {
-    const callable = httpsCallable<typeof payload, { order_id: string; amount: number; currency: string }>(
+    const callable = httpsCallable<any, { order_id: string; amount: number; currency: string }>(
       functions,
       'createRazorpayOrder'
     );

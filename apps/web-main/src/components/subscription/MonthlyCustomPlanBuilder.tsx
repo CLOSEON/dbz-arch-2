@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { getPricingConfig, DEFAULT_MONTHLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
+import { calculateSubscriptionPrice, DEFAULT_STANDARD_MEAL } from '@/lib/pricingEngine';
 import { getUserSubscriptions } from '@/lib/queries/subscriptions';
 import { CustomPlanCheckoutModal } from './CustomPlanCheckoutModal';
 import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
@@ -338,14 +339,38 @@ export function MonthlyCustomPlanBuilder({
     return { lunch, dinner, both, skip };
   }, [calendarData.days, slots]);
 
-  // 5. Real-time Calculation using calculateCustomPlanPrice
-  const effectivePricePerMeal = useMemo(() => {
-    return Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
-  }, [pricePerMeal, customMealConfig?.customerDeltaPerMeal]);
+  // Build monthly schedule for Central Pricing Engine
+  const centralSchedule = useMemo(() => {
+    const list: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [];
+    const selectedItems = customMealConfig?.components || DEFAULT_STANDARD_MEAL.itemQuantities;
+    calendarData.days.forEach((day) => {
+      const s = slots[day.dateKey] || 'skip';
+      if (s === 'lunch' || s === 'dinner' || s === 'both') {
+        list.push({
+          dayKey: day.dateKey,
+          slot: s,
+          items: selectedItems,
+        });
+      }
+    });
+    return list;
+  }, [calendarData.days, slots, customMealConfig?.components]);
 
-  const { totalMeals, totalPrice: monthlyTotal } = useMemo(() => {
-    return calculateCustomPlanPrice('monthly', selections, effectivePricePerMeal);
-  }, [selections, effectivePricePerMeal]);
+  const centralSubscriptionPricing = useMemo(() => {
+    if (centralSchedule.length === 0) return null;
+    try {
+      return calculateSubscriptionPrice(centralSchedule, DEFAULT_STANDARD_MEAL.itemQuantities);
+    } catch {
+      return null;
+    }
+  }, [centralSchedule]);
+
+  // 5. Real-time Calculation using Central Pricing Engine
+  const totalMeals = centralSubscriptionPricing?.totalMeals ?? Object.values(selections).reduce((a: number, b: number) => a + b, 0);
+  const monthlyTotal = centralSubscriptionPricing?.finalPrice ?? (totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)));
+  const effectivePricePerMeal = totalMeals > 0
+    ? Math.round((monthlyTotal / totalMeals) * 100) / 100
+    : Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
 
   // Notify parent on changes
   useEffect(() => {
