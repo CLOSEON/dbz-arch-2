@@ -5,8 +5,8 @@ import Razorpay from 'razorpay';
 
 // Helper to get configured Razorpay client
 export function getRazorpayInstance(): Razorpay {
-  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'NMgeawXrZfgjKJfwu06iGl1X';
+  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ';
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
 
   if (!key_id || !key_secret) {
     throw new HttpsError('failed-precondition', 'Razorpay credentials not configured.');
@@ -19,7 +19,7 @@ export function getRazorpayInstance(): Razorpay {
 }
 
 function getKeySecret(): string {
-  return process.env.RAZORPAY_KEY_SECRET || 'NMgeawXrZfgjKJfwu06iGl1X';
+  return process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
 }
 
 import {

@@ -71,7 +71,7 @@ export async function openRazorpayCheckout(options: {
     throw new Error('Razorpay SDK could not be initialized.');
   }
 
-  const key = options.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E';
+  const key = options.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ';
 
   return new Promise((resolve, reject) => {
     const rzp = new Razorpay({

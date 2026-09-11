@@ -195,7 +195,7 @@ export default function ProfilePage() {
         }
 
         const rzp = new RazorpayConstructor({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E',
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ',
           amount: amount * 100,
           currency: 'INR',
           name: 'Dabzzo',
