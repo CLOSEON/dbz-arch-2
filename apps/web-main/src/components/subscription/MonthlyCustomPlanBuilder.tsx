@@ -425,7 +425,7 @@ export function MonthlyCustomPlanBuilder({
   // 4. Real-time Calculation using Central Pricing Engine & Custom Meal Deltas
   const totalMeals = Object.values(selections).reduce((a: number, b: number) => a + b, 0);
   const deltaPerMeal = customMealConfig?.customerDeltaPerMeal || 0;
-  const effectivePricePerMeal = Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100);
+  const effectivePricePerMeal = Math.max(0, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100);
   const monthlyTotal = Math.round(totalMeals * effectivePricePerMeal * 100) / 100;
 
   // Notify parent on changes

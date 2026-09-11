@@ -109,9 +109,10 @@ export async function resolveAuthoritativeOrderAmount(
     };
   }
 
-  // 4. Standard monthly subscription product (Section 12)
-  const planId = data?.plan_id || data?.notes?.plan_id || data?.planType || data?.frequency;
-  if (planId === 'monthly' || planId === 'standard_monthly' || planId === 'custom_monthly') {
+  // 4. Standard monthly subscription product (Section 12: Dabzzo ₹4,500 standard subscription)
+  const planId = data?.plan_id || data?.notes?.plan_id || data?.planType;
+  const isExplicitStandardProduct = data?.is_standard_product === true || planId === 'standard_monthly';
+  if (isExplicitStandardProduct) {
     const stdSub = calculateStandardSubscriptionProduct(30, rules);
     return {
       amountPaise: Math.round(stdSub.finalPrice * 100),
@@ -121,7 +122,7 @@ export async function resolveAuthoritativeOrderAmount(
   }
 
   // 5. Standard weekly subscription product
-  if (planId === 'weekly' || planId === 'standard_weekly') {
+  if (planId === 'standard_weekly') {
     const stdMeal = calculateMealPrice(DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
     const weeklyPrice = stdMeal.finalPrice * 7;
     return {

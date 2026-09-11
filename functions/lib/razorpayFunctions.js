@@ -116,8 +116,9 @@ async function resolveAuthoritativeOrderAmount(data, db) {
             rulesVersion: rules.version || '2.0.0',
         };
     }
-    const planId = data?.plan_id || data?.notes?.plan_id || data?.planType || data?.frequency;
-    if (planId === 'monthly' || planId === 'standard_monthly' || planId === 'custom_monthly') {
+    const planId = data?.plan_id || data?.notes?.plan_id || data?.planType;
+    const isExplicitStandardProduct = data?.is_standard_product === true || planId === 'standard_monthly';
+    if (isExplicitStandardProduct) {
         const stdSub = (0, pricingEngine_1.calculateStandardSubscriptionProduct)(30, rules);
         return {
             amountPaise: Math.round(stdSub.finalPrice * 100),
@@ -125,7 +126,7 @@ async function resolveAuthoritativeOrderAmount(data, db) {
             rulesVersion: rules.version || '2.0.0',
         };
     }
-    if (planId === 'weekly' || planId === 'standard_weekly') {
+    if (planId === 'standard_weekly') {
         const stdMeal = (0, pricingEngine_1.calculateMealPrice)(pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
         const weeklyPrice = stdMeal.finalPrice * 7;
         return {

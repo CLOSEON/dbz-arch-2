@@ -86,8 +86,9 @@ export function calculateComponentDeltas(
     const customerRate = resolved.customerRate;
     const vendorRate = resolved.vendorRate;
 
-    const customerAdjustment = delta * customerRate;
-    const vendorAdjustment = delta * vendorRate;
+    // Rule: Add-ons are allowed (delta > 0), but deductions (delta < 0) are NOT allowed at least for now.
+    const customerAdjustment = delta > 0 ? delta * customerRate : 0;
+    const vendorAdjustment = delta > 0 ? delta * vendorRate : 0;
 
     customerDeltaPerMeal += customerAdjustment;
     vendorDeltaPerMeal += vendorAdjustment;
@@ -109,8 +110,8 @@ export function calculateComponentDeltas(
   });
 
   return {
-    customerDeltaPerMeal,
-    vendorDeltaPerMeal,
+    customerDeltaPerMeal: Math.max(0, Math.round(customerDeltaPerMeal * 100) / 100),
+    vendorDeltaPerMeal: Math.max(0, Math.round(vendorDeltaPerMeal * 100) / 100),
     breakdown,
   };
 }

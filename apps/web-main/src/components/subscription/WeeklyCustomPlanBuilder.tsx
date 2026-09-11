@@ -308,11 +308,11 @@ export function WeeklyCustomPlanBuilder({
 
   const weeklyTotal = weeklyPricingResult
     ? Math.round(weeklyPricingResult.finalPrice * 100) / 100
-    : Math.round(totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100;
+    : Math.round(totalMeals * Math.max(0, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100;
 
   const effectivePricePerMeal = weeklyPricingResult
     ? weeklyPricingResult.ratePerMealWithMargin
-    : Math.max(10, Math.round((pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100);
+    : Math.max(0, Math.round((pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100);
 
   // Notify parent component whenever selections or pricing change
   useEffect(() => {

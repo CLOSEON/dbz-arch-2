@@ -200,7 +200,7 @@ export function ThaliCustomizer({
     return DEFAULT_PRICING_RULES;
   }, [planType]);
 
-  // Central Authoritative Meal Pricing Calculation
+  // Central Authoritative Meal Pricing Calculation (for catalog manifest & audit)
   const centralMealPricing = useMemo(() => {
     try {
       return calculateMealPrice(quantities, effectiveCatalog as any, effectivePricingRules);
@@ -209,23 +209,17 @@ export function ThaliCustomizer({
     }
   }, [quantities, effectiveCatalog, effectivePricingRules]);
 
-  const effectiveCustomerPricePerMeal = centralMealPricing?.finalPrice ?? Math.max(
-    10,
-    baseMealPrice + deltaResult.customerDeltaPerMeal
-  );
+  // Pricing calculation for portions:
+  // Base meal price comes authoritatively from the selected plan (baseMealPrice).
+  // Deltas represent extra portions / add-ons on top of the base plan meal.
+  // When no portions are added, delta is 0 and customer pays exact base plan price.
+  const effectiveCustomerPricePerMeal = Math.round((baseMealPrice + deltaResult.customerDeltaPerMeal) * 100) / 100;
 
-  const effectiveVendorCostPerMeal = centralMealPricing?.vendorCost ?? Math.max(
-    10,
-    resolvedBaseVendorCost + deltaResult.vendorDeltaPerMeal
-  );
+  const effectiveVendorCostPerMeal = Math.round((resolvedBaseVendorCost + deltaResult.vendorDeltaPerMeal) * 100) / 100;
 
-  const customerDeltaPerMeal = centralMealPricing
-    ? Math.round((centralMealPricing.finalPrice - baseMealPrice) * 100) / 100
-    : deltaResult.customerDeltaPerMeal;
+  const customerDeltaPerMeal = deltaResult.customerDeltaPerMeal;
 
-  const vendorDeltaPerMeal = centralMealPricing
-    ? Math.round((centralMealPricing.vendorCost - resolvedBaseVendorCost) * 100) / 100
-    : deltaResult.vendorDeltaPerMeal;
+  const vendorDeltaPerMeal = deltaResult.vendorDeltaPerMeal;
 
   const manifestSummary = useMemo(() => {
     return centralMealPricing?.manifestSummary || buildBoxManifest(quantities, effectiveCatalog);
@@ -279,7 +273,10 @@ export function ThaliCustomizer({
 
   const handleDecrement = (comp: MealComponent) => {
     const current = quantities[comp.id] ?? comp.baseQuantity;
-    if (current > comp.minQuantity) {
+    // Rule: Add-ons are allowed but deductions are not at least for now.
+    // Base included quantity cannot be decreased. Only add-on quantities can be stepped down.
+    const minAllowed = comp.baseQuantity ?? 0;
+    if (current > minAllowed) {
       setQuantities((prev) => ({ ...prev, [comp.id]: current - 1 }));
     }
   };
@@ -368,17 +365,11 @@ export function ThaliCustomizer({
 
                 {/* Delta Status Badge */}
                 <div className="mt-1 flex items-center">
-                  {isIncreased && (
+                  {isIncreased ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded border border-emerald-200">
                       +{delta} (+₹{delta * comp.customerRate})
                     </span>
-                  )}
-                  {isDecreased && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-800 bg-rose-100/80 px-1.5 py-0.5 rounded border border-rose-200">
-                      {delta} (-₹{Math.abs(delta) * comp.customerRate})
-                    </span>
-                  )}
-                  {delta === 0 && (
+                  ) : (
                     <span className="text-[10px] font-semibold text-slate-400 bg-slate-100/80 px-1.5 py-0.5 rounded">
                       Standard included
                     </span>
@@ -391,7 +382,7 @@ export function ThaliCustomizer({
                 <button
                   type="button"
                   onClick={() => handleDecrement(comp)}
-                  disabled={qty <= comp.minQuantity}
+                  disabled={qty <= (comp.baseQuantity ?? 0)}
                   className={`${compact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl'} bg-white hover:bg-amber-100 text-amber-900 disabled:opacity-30 disabled:pointer-events-none font-black text-xs flex items-center justify-center transition-all active:scale-90 border border-amber-200/60 shadow-2xs`}
                   aria-label={`Decrease ${comp.name}`}
                 >
@@ -441,15 +432,11 @@ export function ThaliCustomizer({
               className={`font-black text-sm mt-0.5 block ${
                 deltaResult.customerDeltaPerMeal > 0
                   ? 'text-emerald-700'
-                  : deltaResult.customerDeltaPerMeal < 0
-                  ? 'text-rose-600'
                   : 'text-slate-600'
               }`}
             >
               {deltaResult.customerDeltaPerMeal > 0
                 ? `+₹${deltaResult.customerDeltaPerMeal}`
-                : deltaResult.customerDeltaPerMeal < 0
-                ? `−₹${Math.abs(deltaResult.customerDeltaPerMeal)}`
                 : '₹0'}
             </span>
           </div>
