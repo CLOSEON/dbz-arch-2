@@ -186,14 +186,28 @@ export function ThaliCustomizer({
     return calculateComponentDeltas(quantities, effectiveCatalog, vendorOverrides, planType === 'monthly' ? 4 : 13);
   }, [quantities, effectiveCatalog, vendorOverrides, planType]);
 
+  // Plan-specific authoritative pricing rules (e.g. 12% margin & 2% Razorpay for weekly)
+  const effectivePricingRules = useMemo(() => {
+    if (planType === 'weekly') {
+      return {
+        ...DEFAULT_PRICING_RULES,
+        margin: 0.12,
+        paymentFee: 0.02,
+        deliveryCharge: 11,
+        planType: 'weekly' as const,
+      };
+    }
+    return DEFAULT_PRICING_RULES;
+  }, [planType]);
+
   // Central Authoritative Meal Pricing Calculation
   const centralMealPricing = useMemo(() => {
     try {
-      return calculateMealPrice(quantities, effectiveCatalog as any, DEFAULT_PRICING_RULES);
+      return calculateMealPrice(quantities, effectiveCatalog as any, effectivePricingRules);
     } catch {
       return null;
     }
-  }, [quantities, effectiveCatalog]);
+  }, [quantities, effectiveCatalog, effectivePricingRules]);
 
   const effectiveCustomerPricePerMeal = centralMealPricing?.finalPrice ?? Math.max(
     10,

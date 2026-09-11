@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { getPricingConfig, DEFAULT_WEEKLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
-import { calculateSubscriptionPrice, DEFAULT_STANDARD_MEAL } from '@/lib/pricingEngine';
+import { calculateSubscriptionPrice, calculateWeeklyPlanPrice, DEFAULT_STANDARD_MEAL } from '@/lib/pricingEngine';
 import { CustomPlanCheckoutModal } from './CustomPlanCheckoutModal';
 import { ThaliCustomizer, ThaliCustomizerConfig } from './ThaliCustomizer';
 import { cn } from '@/lib/utils';
@@ -272,12 +272,47 @@ export function WeeklyCustomPlanBuilder({
     }
   }, [centralSchedule]);
 
-  // Real-time calculation: Total meals count and Weekly total price using Central Pricing Engine
-  const totalMeals = centralSubscriptionPricing?.totalMeals ?? Object.values(selections).reduce((a: number, b: number) => a + b, 0);
-  const weeklyTotal = centralSubscriptionPricing?.finalPrice ?? (totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)));
-  const effectivePricePerMeal = totalMeals > 0
-    ? Math.round((weeklyTotal / totalMeals) * 100) / 100
-    : Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
+  // Real-time calculation: Total meals count and Weekly total price using Canonical Weekly Formula & Central Engine
+  const totalMeals = Object.values(selections).reduce((a: number, b: number) => a + b, 0);
+
+  // Authoritative Weekly Plan Pricing Calculation:
+  // (Vendor Cost + ₹11 Delivery Fee) * 1.12 Weekly Margin * 1.02 Razorpay
+  const weeklyPricingResult = useMemo(() => {
+    if (totalMeals === 0) return null;
+
+    // 1. If customMealConfig provides vendorPayout or effectiveVendorCostPerMeal:
+    const vendorPayout = customMealConfig?.vendorPayout ?? customMealConfig?.effectiveVendorCostPerMeal;
+    if (typeof vendorPayout === 'number' && vendorPayout > 0) {
+      return calculateWeeklyPlanPrice(totalMeals, vendorPayout, 11, 0.12, 0.02);
+    }
+
+    // 2. Base rate + customer delta fallback
+    const delta = customMealConfig?.customerDeltaPerMeal || 0;
+    const effRate = Math.max(10, Math.round((pricePerMeal + delta) * 100) / 100);
+    const subtotal = Math.round(totalMeals * effRate * 100) / 100;
+    const finalPrice = Math.round(subtotal * 1.02 * 1000) / 1000;
+    return {
+      totalMeals,
+      vendorCostPerMeal: 65,
+      deliveryFeePerMeal: 11,
+      subtotalPerMeal: 76,
+      weeklyMarginRate: 0.12,
+      ratePerMealWithMargin: effRate,
+      mealsSubtotal: subtotal,
+      razorpayRate: 0.02,
+      razorpayFee: Math.round((finalPrice - subtotal) * 1000) / 1000,
+      finalPrice,
+      effectivePricePerMeal: effRate,
+    };
+  }, [totalMeals, customMealConfig?.vendorPayout, customMealConfig?.effectiveVendorCostPerMeal, customMealConfig?.customerDeltaPerMeal, pricePerMeal]);
+
+  const weeklyTotal = weeklyPricingResult
+    ? Math.round(weeklyPricingResult.finalPrice * 100) / 100
+    : Math.round(totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100;
+
+  const effectivePricePerMeal = weeklyPricingResult
+    ? weeklyPricingResult.ratePerMealWithMargin
+    : Math.max(10, Math.round((pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)) * 100) / 100);
 
   // Notify parent component whenever selections or pricing change
   useEffect(() => {
@@ -659,6 +694,23 @@ export function WeeklyCustomPlanBuilder({
               Kitchen Food Rate + ₹11 Delivery Fee + 12% Weekly Platform Margin
             </span>
           </div>
+
+          {/* Meals Subtotal & Razorpay Breakdown */}
+          {totalMeals > 0 && weeklyPricingResult && (
+            <div className="space-y-1.5 pt-2 border-t border-amber-100 text-xs sm:text-sm text-slate-600">
+              <div className="flex items-center justify-between">
+                <span>Scheduled Meals Subtotal ({totalMeals} meals):</span>
+                <span className="font-bold text-slate-800">₹{weeklyPricingResult.mealsSubtotal}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="flex items-center gap-1">
+                  <CreditCard className="w-3.5 h-3.5 text-amber-600" />
+                  Payment Gateway (2% Razorpay):
+                </span>
+                <span className="font-semibold text-slate-700">+₹{weeklyPricingResult.razorpayFee}</span>
+              </div>
+            </div>
+          )}
 
           {/* Weekly Total */}
           <div className="pt-3 border-t border-amber-200/80 flex items-center justify-between">

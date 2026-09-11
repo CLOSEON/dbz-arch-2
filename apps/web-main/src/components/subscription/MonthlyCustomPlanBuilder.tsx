@@ -365,12 +365,13 @@ export function MonthlyCustomPlanBuilder({
     }
   }, [centralSchedule]);
 
-  // 5. Real-time Calculation using Central Pricing Engine
-  const totalMeals = centralSubscriptionPricing?.totalMeals ?? Object.values(selections).reduce((a: number, b: number) => a + b, 0);
-  const monthlyTotal = centralSubscriptionPricing?.finalPrice ?? (totalMeals * Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0)));
+  // 5. Real-time Calculation using Central Pricing Engine & Custom Meal Deltas
+  const totalMeals = Object.values(selections).reduce((a: number, b: number) => a + b, 0);
+  const deltaPerMeal = customMealConfig?.customerDeltaPerMeal || 0;
   const effectivePricePerMeal = totalMeals > 0
-    ? Math.round((monthlyTotal / totalMeals) * 100) / 100
-    : Math.max(10, pricePerMeal + (customMealConfig?.customerDeltaPerMeal || 0));
+    ? Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100)
+    : Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100);
+  const monthlyTotal = Math.round(totalMeals * effectivePricePerMeal * 100) / 100;
 
   // Notify parent on changes
   useEffect(() => {

@@ -245,19 +245,32 @@ export function computeAlgorithmicMealPricing(
     settings?.platformMargins?.[planType] ??
     (planType === 'monthly' ? 5 : planType === 'weekly' ? 12 : 15);
 
-  const customerFoodRate = calculateCustomerFoodRate(vendorPayout, platformMarginPercent);
-
   const deliveryChargePerMeal =
     typeof settings?.deliveryChargePerMeal === 'number'
       ? settings.deliveryChargePerMeal
       : DEFAULT_PRICING_ALGORITHM.deliveryChargePerMeal;
 
   const roundingStrategy = settings?.roundingStrategy || 'round';
-  const customerMealPrice = calculateCustomerMealPrice(
-    customerFoodRate,
-    deliveryChargePerMeal,
-    roundingStrategy
-  );
+
+  let customerFoodRate: number;
+  let customerMealPrice: number;
+
+  if (planType === 'weekly') {
+    // Canonical Weekly Plan Formula:
+    // Subtotal = (Vendor Payout + Delivery Charge)
+    // Rate with 12% Weekly Margin = Subtotal * 1.12 (e.g. (71.50 + 11) * 1.12 = 92.40)
+    const subtotal = vendorPayout + deliveryChargePerMeal;
+    const marginRate = platformMarginPercent / 100;
+    customerMealPrice = Math.round(subtotal * (1 + marginRate) * 100) / 100;
+    customerFoodRate = Math.round((customerMealPrice - deliveryChargePerMeal) * 100) / 100;
+  } else {
+    customerFoodRate = calculateCustomerFoodRate(vendorPayout, platformMarginPercent);
+    customerMealPrice = calculateCustomerMealPrice(
+      customerFoodRate,
+      deliveryChargePerMeal,
+      roundingStrategy
+    );
+  }
 
   const platformGrossMarginRupees =
     Math.round((customerMealPrice - vendorPayout - deliveryChargePerMeal) * 100) / 100;

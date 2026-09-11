@@ -90,7 +90,16 @@ async function resolveAuthoritativeOrderAmount(data, db) {
             }
         });
         if (schedule.length > 0) {
-            const subPricing = (0, pricingEngine_1.calculateSubscriptionPrice)(schedule, pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, rules);
+            const planType = (data?.planType || data?.customPlanConfig?.planType || 'weekly').toLowerCase().trim();
+            const effectiveRules = planType === 'weekly'
+                ? {
+                    ...rules,
+                    margin: 0.12,
+                    paymentFee: 0.02,
+                    planType: 'weekly',
+                }
+                : rules;
+            const subPricing = (0, pricingEngine_1.calculateSubscriptionPrice)(schedule, pricingEngine_1.DEFAULT_STANDARD_MEAL.itemQuantities, catalog, effectiveRules);
             return {
                 amountPaise: Math.round(subPricing.finalPrice * 100),
                 authoritativePrice: subPricing.finalPrice,
