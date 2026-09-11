@@ -330,8 +330,8 @@ export function ThaliCustomizer({
         </button>
       </div>
 
-      {/* Component Cards Grid - 2 columns for spacious, unclipped layout */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Component Cards Grid */}
+      <div className={`grid ${compact ? 'grid-cols-1 sm:grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 gap-3'}`}>
         {activeComponents.map((comp) => {
           const qty = quantities[comp.id] ?? comp.baseQuantity;
           const delta = qty - comp.baseQuantity;
@@ -341,7 +341,7 @@ export function ThaliCustomizer({
           return (
             <div
               key={comp.id}
-              className={`p-3.5 rounded-2xl border transition-all duration-150 flex items-center justify-between gap-3 ${
+              className={`${compact ? 'p-2.5 rounded-xl' : 'p-3.5 rounded-2xl'} border transition-all duration-150 flex items-center justify-between gap-2.5 ${
                 isIncreased
                   ? 'bg-gradient-to-br from-emerald-50/50 via-white to-amber-50/20 border-emerald-300 ring-1 ring-emerald-300/40 shadow-xs'
                   : isDecreased
@@ -352,34 +352,34 @@ export function ThaliCustomizer({
               {/* Item Info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-extrabold text-sm text-slate-900 tracking-tight">
+                  <span className={`font-extrabold ${compact ? 'text-xs' : 'text-sm'} text-slate-900 tracking-tight`}>
                     {comp.name}
                   </span>
-                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-200/60 lowercase">
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded border border-amber-200/60 lowercase">
                     {comp.unit}
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <span className="font-medium">Base: {comp.baseQuantity}</span>
                   <span className="text-slate-300">•</span>
                   <span className="font-semibold text-slate-700">₹{comp.customerRate}/{comp.unit}</span>
                 </div>
 
                 {/* Delta Status Badge */}
-                <div className="mt-1.5 flex items-center">
+                <div className="mt-1 flex items-center">
                   {isIncreased && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-200">
-                      +{delta} (Adds ₹{delta * comp.customerRate})
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded border border-emerald-200">
+                      +{delta} (+₹{delta * comp.customerRate})
                     </span>
                   )}
                   {isDecreased && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-800 bg-rose-100/80 px-2 py-0.5 rounded-md border border-rose-200">
-                      {delta} (Saves ₹{Math.abs(delta) * comp.customerRate})
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-800 bg-rose-100/80 px-1.5 py-0.5 rounded border border-rose-200">
+                      {delta} (-₹{Math.abs(delta) * comp.customerRate})
                     </span>
                   )}
                   {delta === 0 && (
-                    <span className="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md">
+                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-100/80 px-1.5 py-0.5 rounded">
                       Standard included
                     </span>
                   )}
@@ -387,18 +387,18 @@ export function ThaliCustomizer({
               </div>
 
               {/* Stepper Buttons (Warm Dabzzo Food Branding) */}
-              <div className="flex items-center gap-1.5 shrink-0 bg-amber-50/50 border border-amber-200/80 rounded-2xl p-1 shadow-2xs">
+              <div className="flex items-center gap-1 shrink-0 bg-amber-50/50 border border-amber-200/80 rounded-xl p-1 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => handleDecrement(comp)}
                   disabled={qty <= comp.minQuantity}
-                  className="w-8 h-8 rounded-xl bg-white hover:bg-amber-100 text-amber-900 disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-all active:scale-90 border border-amber-200/60 shadow-2xs"
+                  className={`${compact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl'} bg-white hover:bg-amber-100 text-amber-900 disabled:opacity-30 disabled:pointer-events-none font-black text-xs flex items-center justify-center transition-all active:scale-90 border border-amber-200/60 shadow-2xs`}
                   aria-label={`Decrease ${comp.name}`}
                 >
-                  <Minus className="w-3.5 h-3.5" />
+                  <Minus className="w-3 h-3" />
                 </button>
 
-                <span className="w-7 text-center font-black font-mono text-sm text-slate-900 select-none">
+                <span className={`${compact ? 'w-6 text-xs' : 'w-7 text-sm'} text-center font-black font-mono text-slate-900 select-none`}>
                   {qty}
                 </span>
 
@@ -406,10 +406,10 @@ export function ThaliCustomizer({
                   type="button"
                   onClick={() => handleIncrement(comp)}
                   disabled={qty >= comp.maxQuantity}
-                  className="w-8 h-8 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white disabled:opacity-30 disabled:pointer-events-none font-black text-sm flex items-center justify-center transition-all active:scale-90 shadow-sm shadow-amber-500/25"
+                  className={`${compact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl'} bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white disabled:opacity-30 disabled:pointer-events-none font-black text-xs flex items-center justify-center transition-all active:scale-90 shadow-sm shadow-amber-500/25`}
                   aria-label={`Increase ${comp.name}`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -470,22 +470,19 @@ export function ThaliCustomizer({
 
         {/* Dynamic Margin & Kitchen Cost Badge - Strictly for Superadmin / Admin diagnostics only */}
         {isSuperAdmin && (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/70 text-xs text-slate-600 bg-amber-100/40 p-2.5 rounded-xl">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-amber-800 text-white tracking-wider">
-                <ShieldCheck className="w-3 h-3" />
+          <div className={`flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-amber-200/70 text-xs text-slate-600 ${compact ? 'bg-amber-100/30 p-2 rounded-xl text-[11px]' : 'bg-amber-100/40 p-2.5 rounded-xl'}`}>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-800 text-white tracking-wider">
+                <ShieldCheck className="w-2.5 h-2.5" />
                 Superadmin
               </span>
-              <span className="font-bold text-slate-700">Raw Kitchen Cost:</span>
-              <span className="font-black text-slate-900">₹{rawKitchenCost}</span>
+              <span className="font-bold text-slate-700">Cost: ₹{rawKitchenCost}</span>
               <span className="text-slate-300">•</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
-                {effectiveVendorMargin}% kitchen ratio
-              </span>
+              <span className="text-slate-500 font-medium">{effectiveVendorMargin}% ratio</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-slate-500 font-medium">Vendor Payout:</span>
-              <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              <span className="text-slate-500 font-medium">Payout:</span>
+              <span className="font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[11px] border border-emerald-200">
                 ₹{algorithmicPricing.vendorPayout.toFixed(2)}
               </span>
             </div>

@@ -452,19 +452,17 @@ export function SubscriptionOnboardingModal({
             className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-sm"
           />
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 240 }}
-            className="fixed bottom-0 sm:top-1/2 sm:-translate-y-1/2 left-0 right-0 sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[460px] z-[101] p-0 sm:p-4"
-          >
-            <div
-              className="w-full bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden"
+          <div className="fixed inset-0 z-[101] flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 240 }}
+              className="pointer-events-auto w-full sm:w-[480px] max-h-[92dvh] sm:max-h-[86vh] bg-white rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-100"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-white">
+              <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-white shrink-0">
                 <div className="flex items-center gap-3">
                   {step > 1 && !isSubmitting && (
                     <button onClick={() => setStep(step - 1)} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
@@ -486,7 +484,7 @@ export function SubscriptionOnboardingModal({
               </div>
 
               {/* Content */}
-              <div className="p-6 overflow-y-auto flex-1 bg-white">
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 bg-white">
 
                 {/* ── Step 1: Location ─────────────────────────────────────── */}
                 {step === 1 && (
@@ -577,13 +575,6 @@ export function SubscriptionOnboardingModal({
                         </div>
                       </div>
                     </div>
-
-                    <button 
-                      onClick={handleConfirmStep1} 
-                      className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-[0.98] shadow-md mt-2"
-                    >
-                      Confirm Delivery Address
-                    </button>
                   </div>
                 )}
 
@@ -652,10 +643,6 @@ export function SubscriptionOnboardingModal({
                         );
                       })}
                     </div>
-
-                    <button onClick={handleConfirmStep2} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
-                      Confirm Plan
-                    </button>
                   </div>
                 )}
 
@@ -732,17 +719,6 @@ export function SubscriptionOnboardingModal({
                         })}
                       </div>
                     )}
-
-                    <div className="pt-2">
-                      <button onClick={handleConfirmStep3} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
-                        {selectedAddonIds.length > 0 ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` : 'Skip Add-Ons'}
-                        {customMealConfig && customMealConfig.customerDeltaPerMeal !== 0
-                          ? `Continue with Custom Portions (${customMealConfig.customerDeltaPerMeal > 0 ? '+' : ''}₹${customMealConfig.customerDeltaPerMeal}/meal)`
-                          : selectedAddonIds.length > 0 
-                            ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` 
-                            : 'Continue to Delivery Slot'}
-                      </button>
-                    </div>
                   </div>
                 )}
 
@@ -767,10 +743,6 @@ export function SubscriptionOnboardingModal({
                         </button>
                       ))}
                     </div>
-
-                    <button onClick={handleConfirmStep4} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95">
-                      Confirm Slot
-                    </button>
                   </div>
                 )}
 
@@ -865,12 +837,64 @@ export function SubscriptionOnboardingModal({
                       <p className="text-xs text-slate-500 font-medium">Secured by Razorpay — 100% safe & encrypted</p>
                     </div>
 
-                    {/* Pay button */}
+                  </div>
+                )}
+              </div>
+
+              {/* Sticky Footer Action Bar */}
+              <div className="p-4 sm:px-6 sm:py-4 border-t border-slate-100 bg-white/95 backdrop-blur-xs shrink-0">
+                {step === 1 && (
+                  <button 
+                    type="button"
+                    onClick={handleConfirmStep1} 
+                    className="w-full py-3.5 sm:py-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-[0.98] shadow-md shadow-slate-950/10 cursor-pointer"
+                  >
+                    Confirm Delivery Address
+                  </button>
+                )}
+
+                {step === 2 && (
+                  <button 
+                    type="button"
+                    onClick={handleConfirmStep2} 
+                    className="w-full py-3.5 sm:py-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95 shadow-md shadow-slate-950/10 cursor-pointer"
+                  >
+                    Confirm Plan
+                  </button>
+                )}
+
+                {step === 3 && (
+                  <button 
+                    type="button"
+                    onClick={handleConfirmStep3} 
+                    className="w-full py-3.5 sm:py-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95 shadow-md shadow-slate-950/10 cursor-pointer"
+                  >
+                    {customMealConfig && customMealConfig.customerDeltaPerMeal !== 0
+                      ? `Continue with Portions (${customMealConfig.customerDeltaPerMeal > 0 ? '+' : ''}₹${customMealConfig.customerDeltaPerMeal}/meal)`
+                      : selectedAddonIds.length > 0 
+                        ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` 
+                        : 'Continue to Delivery Slot'}
+                  </button>
+                )}
+
+                {step === 4 && (
+                  <button 
+                    type="button"
+                    onClick={handleConfirmStep4} 
+                    className="w-full py-3.5 sm:py-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95 shadow-md shadow-slate-950/10 cursor-pointer"
+                  >
+                    Confirm Slot
+                  </button>
+                )}
+
+                {step === 5 && (
+                  <div className="space-y-2">
                     <button
+                      type="button"
                       id="razorpay-subscription-pay-btn"
                       onClick={handleConfirmPay}
                       disabled={isSubmitting}
-                      className="w-full py-4 flex items-center justify-center gap-2.5 bg-brand text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-xl shadow-brand/25 disabled:opacity-60 disabled:cursor-not-allowed hover:bg-brand/90"
+                      className="w-full py-4 flex items-center justify-center gap-2.5 bg-brand text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-xl shadow-brand/25 disabled:opacity-60 disabled:cursor-not-allowed hover:bg-brand/90 cursor-pointer"
                     >
                       {isSubmitting ? (
                         <>
@@ -891,8 +915,8 @@ export function SubscriptionOnboardingModal({
                   </div>
                 )}
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>,
