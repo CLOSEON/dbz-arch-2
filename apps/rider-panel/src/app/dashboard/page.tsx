@@ -194,7 +194,10 @@ export default function RiderDashboard() {
           setDoc(doc(db, 'driver_profiles', user.id), {
             id: user.id,
             isActive: true,
-            currentLocation: loc,
+            currentLocation: {
+              ...loc,
+              updatedAt: new Date()
+            },
             lastActive: new Date()
           }, { merge: true }).catch((err) => console.warn('Location push failed:', err.message));
         },
@@ -383,43 +386,24 @@ export default function RiderDashboard() {
     }
     setVerifyingVendorOTP(true);
     try {
-      const tripRef = doc(db, 'rider_trips', activeTrip.id);
-      const tripSnap = await getDoc(tripRef);
-      if (!tripSnap.exists()) throw new Error('Trip not found');
-      const tripData = tripSnap.data();
-
-      const batch = writeBatch(db);
-      const currentVendorId = nextPickup.vendorId;
-      const pickupStops = tripData.pickupStops || [];
-      let allDone = true;
-
-      const updatedStops = pickupStops.map((stop: any) => {
-        if (stop.vendorId === currentVendorId && stop.status !== 'completed') {
-          return { ...stop, status: 'completed', confirmedCount: countInt, verifiedAt: new Date() };
-        }
-        if (stop.status !== 'completed') allDone = false;
-        return stop;
+      const verifyPickupFn = httpsCallable(functions, 'verifyPickupOTP');
+      const res = await verifyPickupFn({
+        tripId: activeTrip.id,
+        vendorId: nextPickup.vendorId,
+        otp: vendorOTP,
+        confirmedCount: countInt,
       });
-
-      batch.update(tripRef, {
-        pickupStops: updatedStops,
-        status: allDone ? 'pickup_complete' : 'picking_up',
-        updatedAt: new Date()
-      });
-
-      const assignedOrderIds: string[] = tripData.assignedOrderIds || agentOrders.map(o => o.id);
-      for (const oId of assignedOrderIds) {
-        const ord = agentOrders.find(o => o.id === oId) as any;
-        if (ord && (ord.vendor_id === currentVendorId || ord.vendorId === currentVendorId || allDone)) {
-          batch.update(doc(db, 'orders', oId), {
-            status: allDone ? 'out_for_delivery' : 'picked_up',
-            updated_at: new Date()
-          });
-        }
+      const data = res.data as { success: boolean; message?: string; allDone?: boolean; discrepancy?: number };
+      if (!data.success) {
+        toast.error(data.message || 'Verification failed');
+        return;
       }
 
-      await batch.commit();
-      toast.success(allDone ? 'All Kitchen Meals Collected! Proceeding to Customer Deliveries 🛵' : 'Kitchen Pickup Completed! Proceeding to next stop.');
+      if (data.discrepancy && data.discrepancy !== 0) {
+        toast('Tiffin count discrepancy logged for admin review.', { icon: '⚠️' });
+      }
+
+      toast.success(data.allDone ? 'All Kitchen Meals Collected! Proceeding to Customer Deliveries 🛵' : 'Kitchen Pickup Completed! Proceeding to next stop.');
       setVendorOTP('');
       setPickupStep('otp');
     } catch (err: any) {
@@ -460,39 +444,36 @@ export default function RiderDashboard() {
     }
   };
 
-  const handleCustomerUnavailable = useCallback(async (orderId: string) => {
+  const handleStartUnavailability = async (orderId: string) => {
+    try {
+      const startFn = httpsCallable(functions, 'startCustomerUnavailability');
+      const res = await startFn({ orderId });
+      const data = res.data as { success: boolean; message?: string; unavailability_started_at?: number };
+      if (!data.success) {
+        toast.error(data.message || 'Failed to start timer');
+        return;
+      }
+      setUnavailabilityStartTimes(prev => ({ ...prev, [orderId]: data.unavailability_started_at || Date.now() }));
+      toast.success('10-minute customer waiting timer started. Alert sent to customer.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to start timer');
+    }
+  };
+
+  const handleConfirmCustomerUnavailable = useCallback(async (orderId: string) => {
     if (!activeTrip) return;
     if (failedOrdersRef.current.has(orderId)) return;
     failedOrdersRef.current.add(orderId);
     try {
-      const orderSnap = await getDoc(doc(db, 'orders', orderId));
-      if (!orderSnap.exists()) throw new Error('Order not found');
-      
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'orders', orderId), {
-        status: 'failed',
-        failure_reason: 'customer_unavailable',
-        updated_at: new Date()
-      });
-
-      const reviewRef = doc(collection(db, 'failed_delivery_reviews'));
-      batch.set(reviewRef, {
-        order_id: orderId,
-        batch_id: orderSnap.data().batch_id || null,
-        rider_id: activeTrip.riderId,
-        failed_at: new Date(),
-        reviewed: false
-      });
-
-      const remaining = agentOrders.filter(o => o.id !== orderId && o.status !== 'delivered' && o.status !== 'failed');
-      if (remaining.length === 0) {
-        batch.update(doc(db, 'rider_trips', activeTrip.id), {
-          status: 'completed',
-          updatedAt: new Date()
-        });
+      const confirmFn = httpsCallable(functions, 'confirmCustomerUnavailable');
+      const res = await confirmFn({ orderId, tripId: activeTrip.id });
+      const data = res.data as { success: boolean; message?: string };
+      if (!data.success) {
+        failedOrdersRef.current.delete(orderId);
+        toast.error(data.message || 'Failed to confirm customer unavailable');
+        return;
       }
 
-      await batch.commit();
       toast.error('Delivery marked as failed (Customer Unavailable)');
       setUnavailabilityStartTimes(prev => {
         const next = { ...prev };
@@ -503,7 +484,7 @@ export default function RiderDashboard() {
       failedOrdersRef.current.delete(orderId);
       toast.error(err.message || 'Failed to mark customer unavailable');
     }
-  }, [activeTrip, agentOrders]);
+  }, [activeTrip]);
 
   // ── 8. Map Markers ────────────────────────────────────────────────────────
   const mapMarkers = useMemo(() => {
@@ -1123,25 +1104,51 @@ export default function RiderDashboard() {
                   </button>
                 )}
 
-                {lat && lng ? (
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
-                  >
-                    <Navigation size={16} /> Navigate
-                  </a>
-                ) : (addressData?.line1 || cust?.address) ? (
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressData?.line1 || cust?.address || '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
-                  >
-                    <Navigation size={16} /> Navigate
-                  </a>
-                ) : null}
+                {(() => {
+                  const isFallbackCoord = (!lat && !lng) || (lat === 0 && lng === 0) || (lat === 18.5204 && lng === 73.8567) || (lat === 21.1458 && lng === 79.0882);
+                  const textAddr = addressData?.line1 || cust?.address;
+
+                  if (textAddr && isFallbackCoord) {
+                    return (
+                      <a 
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(textAddr)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
+                      >
+                        <Navigation size={16} /> Navigate
+                      </a>
+                    );
+                  }
+
+                  if (lat && lng && !isFallbackCoord) {
+                    return (
+                      <a 
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
+                      >
+                        <Navigation size={16} /> Navigate
+                      </a>
+                    );
+                  }
+
+                  if (textAddr) {
+                    return (
+                      <a 
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(textAddr)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
+                      >
+                        <Navigation size={16} /> Navigate
+                      </a>
+                    );
+                  }
+
+                  return null;
+                })()}
               </div>
 
               {/* Direct In-Card Customer OTP Verification */}
@@ -1176,30 +1183,50 @@ export default function RiderDashboard() {
 
               {/* Customer Not Answering Timer */}
               <div>
-                <button
-                  onClick={() => {
-                    if (unavailabilityStartTimes[currentDropOrder.id]) {
-                      handleCustomerUnavailable(currentDropOrder.id);
-                    } else {
-                      setUnavailabilityStartTimes(prev => ({ ...prev, [currentDropOrder.id]: Date.now() }));
-                    }
-                  }}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                    unavailabilityStartTimes[currentDropOrder.id] 
-                      ? 'bg-rose-50 text-rose-600 border border-rose-200 animate-pulse' 
-                      : 'bg-slate-50 text-slate-400 hover:text-slate-600 border border-slate-200/60'
-                  }`}
-                >
-                  {(() => {
-                    const start = unavailabilityStartTimes[currentDropOrder.id];
-                    if (!start) return <>Customer Not Answering (10m Timer)</>;
-                    const remaining = Math.max(0, 600 - Math.floor((nowTick - start) / 1000));
-                    const m = Math.floor(remaining / 60);
-                    const s = remaining % 60;
-                    if (remaining === 0) return <>Mark as Customer Unavailable</>;
-                    return <>Confirm Customer Unavailable ({m}:{s.toString().padStart(2, '0')})</>;
-                  })()}
-                </button>
+                {(() => {
+                  const serverUnavail = (currentDropOrder as any)?.unavailability_started_at;
+                  const start = unavailabilityStartTimes[currentDropOrder.id] || (
+                    serverUnavail?.toMillis ? serverUnavail.toMillis() :
+                    serverUnavail?.seconds ? serverUnavail.seconds * 1000 :
+                    serverUnavail ? new Date(serverUnavail).getTime() : null
+                  );
+
+                  if (!start) {
+                    return (
+                      <button
+                        onClick={() => handleStartUnavailability(currentDropOrder.id)}
+                        className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all bg-slate-50 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-slate-200/60"
+                      >
+                        Customer Not Answering (Start 10m Countdown)
+                      </button>
+                    );
+                  }
+
+                  const remaining = Math.max(0, 600 - Math.floor((nowTick - start) / 1000));
+                  const m = Math.floor(remaining / 60);
+                  const s = remaining % 60;
+
+                  if (remaining > 0) {
+                    return (
+                      <button
+                        disabled
+                        className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed opacity-90"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+                        Waiting for Customer ({m}:{s.toString().padStart(2, '0')} remaining)
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <button
+                      onClick={() => handleConfirmCustomerUnavailable(currentDropOrder.id)}
+                      className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all bg-rose-600 hover:bg-rose-700 text-white shadow-sm shadow-rose-600/20 active:scale-95"
+                    >
+                      Confirm Customer Unavailable (Timer Expired)
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           );

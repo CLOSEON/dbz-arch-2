@@ -310,18 +310,18 @@ service cloud.firestore {
             resource.data.get('riderId', '') == request.auth.uid ||
             resource.data.get('assigned_to', '') == request.auth.uid
           ) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'vendorId', 'vendor_id'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'vendorId', 'vendor_id', 'otp', 'delivery_otp', 'amount', 'status'])
         ) ||
         (
           isVerifiedVendor() && (resource.data.get('vendor_id', '') == request.auth.uid || resource.data.get('vendorId', '') == request.auth.uid) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'driverId', 'agentId', 'rider_id', 'riderId'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_amount', 'payment_status', 'items', 'customerId', 'user_id', 'driverId', 'agentId', 'rider_id', 'riderId', 'otp', 'delivery_otp', 'amount'])
         ) ||
         (
           (resource.data.get('user_id', '') == request.auth.uid || resource.data.get('customerId', '') == request.auth.uid) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryPreference', 'deliveryAddress', 'delivery_address', 'instructions', 'status', 'updatedAt', 'updated_at']) &&
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
-            request.resource.data.status in ['skipped', 'cancelled', 'pending', 'vendor_ready']
+            (request.resource.data.status in ['skipped', 'cancelled'] && resource.data.status in ['created', 'pending'])
           )
         )
       );

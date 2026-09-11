@@ -48,13 +48,7 @@ export const calculateRiderPayment = functions.firestore
       return null;
     }
 
-    // ── Step 1: Get GPS-tracked distance ─────────────────────────────────────
-    // GPS-tracked distance (real device path, accumulated by locationTracker)
-    // As per RIDER_LOGIC.md, this is the authoritative source for payment.
-    const gpsDistanceKm: number = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
-    const totalDistanceKm = gpsDistanceKm; // Used for payment
-
-    // We can also calculate route distance for analytics/fraud checks, but it's not used for payment.
+    // ── Step 1: Compute authoritative server route distance ─────────────────
     const pickupStops: any[] = after.pickupStops ?? [];
     const dropStops: any[] = after.dropStops ?? [];
     const pickupDistanceKm: number = pickupStops.reduce(
@@ -67,17 +61,57 @@ export const calculateRiderPayment = functions.firestore
     );
     const routeDistanceKm = pickupDistanceKm + dropDistanceKm;
 
-    // ── Step 2: Count actually-delivered tiffins (using confirmed pickups) ──
+    // ── Step 2: Cross-verify with GPS breadcrumb distance ───────────────────
+    const gpsDistanceKm: number = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    
+    let billableDistanceKm = routeDistanceKm;
+    if (gpsDistanceKm > 0) {
+      if (routeDistanceKm > 0 && gpsDistanceKm > 2.5 * routeDistanceKm) {
+        // Fraud / unrealistic detour protection: cap at authoritative route distance
+        billableDistanceKm = routeDistanceKm;
+        functions.logger.warn(
+          `[calculateRiderPayment] GPS distance (${gpsDistanceKm}km) > 2.5x route distance (${routeDistanceKm}km) for trip ${tripId}. Fraud protection capped at route distance.`
+        );
+      } else if (routeDistanceKm > 0 && gpsDistanceKm >= 0.7 * routeDistanceKm) {
+        // Valid device GPS tracking within reasonable bounds
+        billableDistanceKm = gpsDistanceKm;
+      } else {
+        // Throttled or incomplete device GPS; fallback safely to server route distance
+        billableDistanceKm = routeDistanceKm;
+      }
+    } else {
+      // Device GPS throttled or failed; guaranteed server route distance protects against ₹0 payout
+      billableDistanceKm = routeDistanceKm;
+    }
+
+    // Minimum billable distance guarantee (floor at route distance or 1.0 km)
+    const totalDistanceKm = Math.max(billableDistanceKm, routeDistanceKm > 0 ? routeDistanceKm : 1.0);
+
+    // ── Step 3: Count actually-delivered tiffins (using confirmed pickups) ──
     let riderConfirmedCount = 0;
     
-    // 1. Sum up all tiffins the rider physically verified at pickup
     pickupStops.forEach(stop => {
-      riderConfirmedCount += (typeof stop.confirmedCount === 'number' ? stop.confirmedCount : 0);
+      const cnt = (typeof stop.confirmedCount === 'number' && stop.confirmedCount > 0)
+        ? stop.confirmedCount 
+        : (typeof stop.expectedTiffinCount === 'number' && stop.expectedTiffinCount > 0)
+        ? stop.expectedTiffinCount
+        : 1;
+      riderConfirmedCount += cnt;
     });
 
-    // 2. Count any drops that failed due to customer unavailability
+    if (riderConfirmedCount === 0 && after.assignedOrderIds?.length > 0) {
+      riderConfirmedCount = after.assignedOrderIds.length;
+    }
+
+    // Count drops that failed or were cancelled (not delivered)
     const orderIds: string[] = after.assignedOrderIds ?? [];
-    let unavailableDropsCount = 0;
+    let undeliveredDropsCount = 0;
+
+    dropStops.forEach((stop: any) => {
+      if (stop.status === 'failed' || stop.status === 'cancelled') {
+        undeliveredDropsCount++;
+      }
+    });
 
     if (orderIds.length > 0) {
       // Batch into chunks of 30 (Firestore in() limit)
@@ -85,21 +119,21 @@ export const calculateRiderPayment = functions.firestore
       for (let i = 0; i < orderIds.length; i += 30) {
         chunks.push(orderIds.slice(i, i + 30));
       }
+      let dbFailedCount = 0;
       for (const chunk of chunks) {
-        // Query the 'orders' collection (which is canonical in DBZ ARCH 2)
         const snap = await db.collection('orders')
           .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-          .where('status', '==', 'failed')
-          .where('failure_reason', '==', 'customer_unavailable')
+          .where('status', 'in', ['failed', 'cancelled'])
           .get();
-        unavailableDropsCount += snap.size;
+        dbFailedCount += snap.size;
       }
+      undeliveredDropsCount = Math.max(undeliveredDropsCount, dbFailedCount);
     }
 
-    // 3. Final paid tiffins = Confirmed Pickups minus Unavailable Drops
-    const paidTiffinCount = Math.max(0, riderConfirmedCount - unavailableDropsCount);
+    // Final paid tiffins = Confirmed Pickups minus Undelivered Drops
+    const paidTiffinCount = Math.max(0, riderConfirmedCount - undeliveredDropsCount);
 
-    // ── Step 3: Compute payment ──────────────────────────────────────────────
+    // ── Step 4: Compute payment ──────────────────────────────────────────────
     const basePayment = parseFloat((totalDistanceKm * BASE_RATE_PER_KM).toFixed(2));
     const extraTiffins = Math.max(0, paidTiffinCount - TIFFIN_BONUS_THRESHOLD);
     const tiffinBonus = extraTiffins * TIFFIN_BONUS_PER_EXTRA;

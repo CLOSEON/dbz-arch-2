@@ -55,10 +55,29 @@ export type TrackingStatus =
 interface Step { key: TrackingStatus; label: string; emoji: string; desc: string; color: string }
 const STEPS: Step[] = [
   { key: 'preparing',        label: 'Preparing',  emoji: '👨‍🍳', desc: 'Kitchen is lovingly packing your tiffin',   color: 'from-orange-400 to-amber-500' },
+  { key: 'rider_assigned',   label: 'Assigned',   emoji: '🏃', desc: 'Rider assigned and heading to kitchen',       color: 'from-amber-500 to-yellow-500' },
   { key: 'picked_up',        label: 'Picked Up',  emoji: '📦', desc: 'Rider has collected your order — on the way!', color: 'from-blue-400 to-indigo-500'   },
   { key: 'out_for_delivery', label: 'En Route',   emoji: '🛵', desc: 'Rider is heading straight to your door',       color: 'from-violet-400 to-purple-500'  },
   { key: 'delivered',        label: 'Delivered',  emoji: '✅', desc: 'Your tiffin has arrived. Enjoy!',              color: 'from-emerald-400 to-teal-500'   },
 ];
+
+function getStepIndex(status: TrackingStatus): number {
+  switch (status) {
+    case 'preparing':
+      return 0;
+    case 'vendor_ready':
+    case 'rider_assigned':
+      return 1;
+    case 'picked_up':
+      return 2;
+    case 'out_for_delivery':
+      return 3;
+    case 'delivered':
+      return 4;
+    default:
+      return 0;
+  }
+}
 
 const STATUS_MESSAGES: Partial<Record<TrackingStatus, string[]>> = {
   preparing:        ['Your tiffin is being packed fresh 🍱', 'Almost ready for pickup!'],
@@ -125,6 +144,7 @@ export function RiderTrackingCard({
   className = '',
 }: RiderTrackingCardProps) {
   const [revealOtp, setRevealOtp] = useState(false);
+  const [copiedPin, setCopiedPin] = useState(false);
   const [msgIdx, setMsgIdx] = useState(0);
   const etaTarget = mealType === 'lunch' ? '13:00' : '20:00';
   const countdown = useLiveCountdown(etaTarget);
@@ -137,12 +157,14 @@ export function RiderTrackingCard({
     return () => clearInterval(id);
   }, [status, msgs.length]);
 
-  const stepIndex = STEPS.findIndex((s) => s.key === status);
-  const activeStep = STEPS[Math.max(0, stepIndex)] ?? STEPS[0];
+  const stepIndex = getStepIndex(status);
+  const activeStep = status === 'vendor_ready'
+    ? { key: 'vendor_ready' as TrackingStatus, label: 'Ready', emoji: '🍱', desc: 'Tiffin packed! Waiting for rider to pick up', color: 'from-amber-400 to-orange-500' }
+    : (STEPS[stepIndex] ?? STEPS[0]);
   const isDelivered = status === 'delivered';
   const isCancelled = status === 'cancelled';
   const showMap = (status === 'out_for_delivery' || status === 'delivered') && !!driverLocation && typeof driverLocation.lat === 'number' && typeof driverLocation.lng === 'number';
-  const showRider = stepIndex >= 1;
+  const showRider = ['rider_assigned', 'vendor_ready', 'picked_up', 'out_for_delivery', 'delivered'].includes(status) || !!riderPhone;
 
   return (
     <div className={`space-y-3 ${className}`}>
@@ -283,7 +305,7 @@ export function RiderTrackingCard({
 
       {/* ── Box Tag & OTP Card (visible when out for delivery or rider assigned) ── */}
       <AnimatePresence>
-        {otp && ['rider_assigned', 'picked_up', 'out_for_delivery'].includes(status) && (
+        {otp && ['rider_assigned', 'vendor_ready', 'picked_up', 'out_for_delivery'].includes(status) && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -310,21 +332,29 @@ export function RiderTrackingCard({
               </div>
             )}
 
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl p-4">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
-                  {status === 'out_for_delivery' ? '⚡ Delivery PIN' : 'Handover PIN'}
-                </span>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    {status === 'out_for_delivery' ? '🔔 Rider is nearby! Share this PIN at your door' : 'Share with rider when they arrive'}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                    {status === 'out_for_delivery' ? '⚡ Delivery PIN' : 'Handover PIN'}
+                  </span>
+                  {copiedPin && (
+                    <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
+                      Copied! ✓
+                    </span>
+                  )}
                 </div>
+                <p className="text-xs text-slate-600 font-medium mt-1">
+                  Share this 4-digit PIN with your delivery partner only when receiving the box.
+                </p>
+              </div>
 
+              <div className="flex items-center gap-2">
                 {revealOtp ? (
                   <motion.div
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
-                    className="flex gap-1.5"
+                    className="flex gap-1 font-mono"
                   >
                     {otp.split('').map((digit, i) => (
                       <motion.span
@@ -332,7 +362,7 @@ export function RiderTrackingCard({
                         initial={{ opacity: 0, y: -8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.06 }}
-                        className="w-9 h-10 flex items-center justify-center text-xl font-black text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-xl shadow-sm"
+                        className="w-8 h-10 flex items-center justify-center text-xl font-black text-emerald-800 bg-white border-2 border-emerald-300 rounded-xl shadow-xs"
                       >
                         {digit}
                       </motion.span>
@@ -341,24 +371,38 @@ export function RiderTrackingCard({
                 ) : (
                   <button
                     onClick={() => setRevealOtp(true)}
-                    className="px-4 py-2 bg-brand text-white text-xs font-black rounded-xl shadow-lg shadow-brand/25 active:scale-95 transition-all"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
                   >
                     Reveal PIN
                   </button>
                 )}
-              </div>
 
-              {/* Blinking alert when rider is nearby */}
-              {status === 'out_for_delivery' && (
-                <motion.div
-                  animate={{ opacity: [0.7, 1, 0.7] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="mt-3 flex items-center gap-2 bg-emerald-100 rounded-xl px-3 py-2"
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(otp);
+                    setCopiedPin(true);
+                    setRevealOtp(true);
+                    setTimeout(() => setCopiedPin(false), 2000);
+                  }}
+                  className="p-2.5 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-700 rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center"
+                  title="Copy Delivery PIN"
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                  <p className="text-[10px] font-bold text-emerald-700">Your rider is on the way to your door right now</p>
-                </motion.div>
-              )}
+                  <span className="text-xs font-bold">📋</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Blinking alert when rider is nearby */}
+            {status === 'out_for_delivery' && (
+              <motion.div
+                animate={{ opacity: [0.7, 1, 0.7] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="mt-3 flex items-center gap-2 bg-emerald-100 rounded-xl px-3 py-2"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                <p className="text-[10px] font-bold text-emerald-700">Your rider is on the way to your door right now</p>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
