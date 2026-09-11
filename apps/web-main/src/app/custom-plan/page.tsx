@@ -88,7 +88,7 @@ function CustomPlanContent() {
       slots: result.slots,
       totalMeals: result.totalMeals,
       pricePerMeal: result.pricePerMeal,
-      planStartDate: new Date(result.year, result.month, 1),
+      planStartDate: result.startDate || (result.year && result.month !== undefined ? new Date(result.year, result.month, 1) : new Date()),
       customMealConfig: result.customMealConfig || undefined,
       vendorId: result.vendorId || vendorIdFromQuery || undefined,
     });

@@ -18,7 +18,8 @@ import {
   CalendarDays,
   Sun,
   Moon,
-  Check
+  Check,
+  Clock
 } from 'lucide-react';
 import { getPricingConfig, DEFAULT_MONTHLY_PRICING } from '@/lib/queries/pricing';
 import { calculateCustomPlanPrice } from '@/lib/pricing';
@@ -34,9 +35,14 @@ export type MealCount = 0 | 1 | 2; // 0 = Skip, 1 = 1 Meal, 2 = 2 Meals
 export type MealSlotChoice = 'skip' | 'lunch' | 'dinner' | 'both';
 
 export interface MonthlyPlanDateSelection {
+  dayIndex: number; // 1..28
   dateKey: string; // 'YYYY-MM-DD'
   dayNumber: number; // 1..31
+  monthName: string; // 'Sep', 'Oct', ...
+  fullMonthName: string; // 'September', ...
+  year: number;
   dayOfWeek: string; // 'Monday', 'Tuesday', ...
+  shortDay: string; // 'Mon', 'Tue', ...
   date: Date;
   slot: MealSlotChoice;
   meals: MealCount;
@@ -44,6 +50,9 @@ export interface MonthlyPlanDateSelection {
 }
 
 export interface MonthlyPlanBuilderResult {
+  startDate: Date;
+  endDate: Date;
+  dateRangeStr: string;
   year: number;
   month: number; // 0-indexed (0=Jan, 8=Sept)
   monthName: string; // e.g. 'September'
@@ -70,11 +79,15 @@ export interface MonthlyCustomPlanBuilderProps {
    */
   initialPricePerMeal?: number;
   /**
-   * Initial Year (defaults to current year).
+   * Optional reference start date for the 28-day window (defaults to Tomorrow).
+   */
+  startDate?: Date;
+  /**
+   * Initial Year (kept for backward compatibility).
    */
   initialYear?: number;
   /**
-   * Initial Month (0-indexed, defaults to current month).
+   * Initial Month (0-indexed, kept for backward compatibility).
    */
   initialMonth?: number;
   /**
@@ -124,14 +137,71 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+const MONTH_NAMES_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+
 const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function formatDateKey(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/**
+ * Calculates 28 consecutive days starting from the given startDate.
+ */
+export function getNext28Days(startDate: Date): Array<{
+  dayIndex: number;
+  dateKey: string;
+  dayNumber: number;
+  monthName: string;
+  fullMonthName: string;
+  year: number;
+  dayOfWeek: string;
+  shortDay: string;
+  date: Date;
+  isToday: boolean;
+}> {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const shortDayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const days = [];
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const dayNumber = d.getDate();
+    const dateKey = formatDateKey(year, month, dayNumber);
+    const isToday = d.getTime() === today.getTime();
+
+    days.push({
+      dayIndex: i + 1,
+      dateKey,
+      dayNumber,
+      monthName: MONTH_NAMES_SHORT[month],
+      fullMonthName: MONTH_NAMES[month],
+      year,
+      dayOfWeek: dayNames[d.getDay()],
+      shortDay: shortDayNames[d.getDay()],
+      date: d,
+      isToday,
+    });
+  }
+  return days;
+}
+
 export function MonthlyCustomPlanBuilder({
   initialPricePerMeal,
+  startDate,
   initialYear,
   initialMonth,
   initialSelections,
@@ -147,9 +217,43 @@ export function MonthlyCustomPlanBuilder({
 }: MonthlyCustomPlanBuilderProps) {
   const user = useAuthStore((s) => s.user);
 
-  const today = useMemo(() => new Date(), []);
-  const [currentYear, setCurrentYear] = useState<number>(() => initialYear ?? today.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState<number>(() => initialMonth ?? today.getMonth());
+  // Default start date: tomorrow (can be switched to today or custom date)
+  const defaultStartDate = useMemo(() => {
+    if (startDate) return new Date(startDate);
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [startDate]);
+
+  const [planStartDate, setPlanStartDate] = useState<Date>(defaultStartDate);
+
+  // 28 days calculated from planStartDate
+  const days28 = useMemo(() => getNext28Days(planStartDate), [planStartDate]);
+
+  // Calendar grid alignment for MON-SUN header (Monday=0 ... Sunday=6)
+  const startOffset = useMemo(() => (days28[0].date.getDay() + 6) % 7, [days28]);
+  const endOffset = useMemo(() => (7 - ((startOffset + 28) % 7)) % 7, [startOffset]);
+
+  // Date range formatted label
+  const dateRangeFormatted = useMemo(() => {
+    if (days28.length === 0) return '';
+    const first = days28[0];
+    const last = days28[27];
+    return `${first.shortDay}, ${first.dayNumber} ${first.monthName} – ${last.shortDay}, ${last.dayNumber} ${last.monthName} ${last.year}`;
+  }, [days28]);
+
+  // Check if current start date is tomorrow or today
+  const isStartTomorrow = useMemo(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return planStartDate.toDateString() === tomorrow.toDateString();
+  }, [planStartDate]);
+
+  const isStartToday = useMemo(() => {
+    const today = new Date();
+    return planStartDate.toDateString() === today.toDateString();
+  }, [planStartDate]);
 
   // Slot selections keyed by 'YYYY-MM-DD' ('skip' | 'lunch' | 'dinner' | 'both')
   const [slots, setSlots] = useState<Record<string, MealSlotChoice>>(() => {
@@ -181,8 +285,6 @@ export function MonthlyCustomPlanBuilder({
         setIsLoadingPricing(true);
         const config = await getPricingConfig('monthly');
         if (isMounted && config && typeof config.pricePerMeal === 'number') {
-          // If pricePerMeal is configured as a package price (e.g. 1400 for 28 meals ~ 50/meal)
-          // or direct per-meal price, normalize appropriately
           const resolvedPrice = config.pricePerMeal > 300 
             ? Math.round(config.pricePerMeal / 28) 
             : config.pricePerMeal;
@@ -229,8 +331,6 @@ export function MonthlyCustomPlanBuilder({
         const customSchedule = (activeMonthly as any).custom_schedule as Record<string, MealCount> | undefined;
         const populated: Record<string, MealSlotChoice> = {};
 
-        const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-
         if (customSlots && Object.keys(customSlots).length > 0) {
           Object.entries(customSlots).forEach(([k, v]) => {
             populated[k] = v;
@@ -247,10 +347,9 @@ export function MonthlyCustomPlanBuilder({
             activeMonthly.meal_type === 'both' ? 'both' :
             activeMonthly.meal_type === 'dinner' ? 'dinner' : 'lunch';
 
-          for (let d = 1; d <= daysInCurrentMonth; d++) {
-            const key = formatDateKey(currentYear, currentMonth, d);
-            populated[key] = defaultSlot;
-          }
+          days28.forEach((day) => {
+            populated[day.dateKey] = defaultSlot;
+          });
           setExistingPlanLoaded(
             `Pre-populated ${defaultSlot === 'both' ? 'Lunch + Dinner' : defaultSlot === 'dinner' ? 'Dinner' : 'Lunch'} from your active subscription`
           );
@@ -269,59 +368,17 @@ export function MonthlyCustomPlanBuilder({
     return () => {
       isMounted = false;
     };
-  }, [user?.id, currentYear, currentMonth, initialSelections, initialSlots]);
+  }, [user?.id, days28, initialSelections, initialSlots]);
 
-  // 3. Calendar Grid Construction (Mon-Sun)
-  const calendarData = useMemo(() => {
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    // getDay(): 0 is Sunday, 1 is Monday ... 6 is Saturday
-    // Mon-Sun grid offset: Monday = 0, ..., Sunday = 6
-    const startOffset = (firstDay.getDay() + 6) % 7;
-
-    const days: Array<{
-      dayNumber: number;
-      dateKey: string;
-      date: Date;
-      dayOfWeek: string;
-      isToday: boolean;
-    }> = [];
-
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(currentYear, currentMonth, day);
-      const isToday =
-        today.getFullYear() === currentYear &&
-        today.getMonth() === currentMonth &&
-        today.getDate() === day;
-
-      days.push({
-        dayNumber: day,
-        dateKey: formatDateKey(currentYear, currentMonth, day),
-        date: d,
-        dayOfWeek: dayNames[d.getDay()],
-        isToday,
-      });
-    }
-
-    return {
-      daysInMonth,
-      startOffset,
-      days,
-    };
-  }, [currentYear, currentMonth, today]);
-
-  // 4. Real-time Calculation using calculateCustomPlanPrice
-  // 4. Derive numeric meal selections from slots
+  // 3. Derive numeric meal selections from slots
   const selections = useMemo(() => {
     const map: Record<string, MealCount> = {};
-    calendarData.days.forEach((day) => {
+    days28.forEach((day) => {
       const s = slots[day.dateKey] || 'skip';
       map[day.dateKey] = s === 'both' ? 2 : (s === 'lunch' || s === 'dinner') ? 1 : 0;
     });
     return map;
-  }, [calendarData.days, slots]);
+  }, [days28, slots]);
 
   // Count slots
   const slotCounts = useMemo(() => {
@@ -329,7 +386,7 @@ export function MonthlyCustomPlanBuilder({
     let dinner = 0;
     let both = 0;
     let skip = 0;
-    calendarData.days.forEach((day) => {
+    days28.forEach((day) => {
       const s = slots[day.dateKey] || 'skip';
       if (s === 'lunch') lunch++;
       else if (s === 'dinner') dinner++;
@@ -337,13 +394,13 @@ export function MonthlyCustomPlanBuilder({
       else skip++;
     });
     return { lunch, dinner, both, skip };
-  }, [calendarData.days, slots]);
+  }, [days28, slots]);
 
   // Build monthly schedule for Central Pricing Engine
   const centralSchedule = useMemo(() => {
     const list: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [];
     const selectedItems = customMealConfig?.components || DEFAULT_STANDARD_MEAL.itemQuantities;
-    calendarData.days.forEach((day) => {
+    days28.forEach((day) => {
       const s = slots[day.dateKey] || 'skip';
       if (s === 'lunch' || s === 'dinner' || s === 'both') {
         list.push({
@@ -354,7 +411,7 @@ export function MonthlyCustomPlanBuilder({
       }
     });
     return list;
-  }, [calendarData.days, slots, customMealConfig?.components]);
+  }, [days28, slots, customMealConfig?.components]);
 
   const centralSubscriptionPricing = useMemo(() => {
     if (centralSchedule.length === 0) return null;
@@ -365,21 +422,24 @@ export function MonthlyCustomPlanBuilder({
     }
   }, [centralSchedule]);
 
-  // 5. Real-time Calculation using Central Pricing Engine & Custom Meal Deltas
+  // 4. Real-time Calculation using Central Pricing Engine & Custom Meal Deltas
   const totalMeals = Object.values(selections).reduce((a: number, b: number) => a + b, 0);
   const deltaPerMeal = customMealConfig?.customerDeltaPerMeal || 0;
-  const effectivePricePerMeal = totalMeals > 0
-    ? Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100)
-    : Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100);
+  const effectivePricePerMeal = Math.max(10, Math.round((pricePerMeal + deltaPerMeal) * 100) / 100);
   const monthlyTotal = Math.round(totalMeals * effectivePricePerMeal * 100) / 100;
 
   // Notify parent on changes
   useEffect(() => {
-    if (onPlanChange) {
-      const dateDetails: MonthlyPlanDateSelection[] = calendarData.days.map((day) => ({
+    if (onPlanChange && days28.length === 28) {
+      const dateDetails: MonthlyPlanDateSelection[] = days28.map((day) => ({
+        dayIndex: day.dayIndex,
         dateKey: day.dateKey,
         dayNumber: day.dayNumber,
+        monthName: day.monthName,
+        fullMonthName: day.fullMonthName,
+        year: day.year,
         dayOfWeek: day.dayOfWeek,
+        shortDay: day.shortDay,
         date: day.date,
         slot: slots[day.dateKey] || 'skip',
         meals: selections[day.dateKey] || 0,
@@ -387,9 +447,12 @@ export function MonthlyCustomPlanBuilder({
       }));
 
       onPlanChange({
-        year: currentYear,
-        month: currentMonth,
-        monthName: MONTH_NAMES[currentMonth],
+        startDate: days28[0].date,
+        endDate: days28[27].date,
+        dateRangeStr: dateRangeFormatted,
+        year: days28[0].year,
+        month: days28[0].date.getMonth(),
+        monthName: days28[0].fullMonthName,
         pattern: selections,
         slots,
         selections,
@@ -402,30 +465,31 @@ export function MonthlyCustomPlanBuilder({
         slotCounts,
       });
     }
-  }, [slots, selections, totalMeals, effectivePricePerMeal, monthlyTotal, currentYear, currentMonth, calendarData.days, customMealConfig, vendorId, slotCounts, onPlanChange]);
+  }, [slots, selections, totalMeals, effectivePricePerMeal, monthlyTotal, days28, dateRangeFormatted, customMealConfig, vendorId, slotCounts, onPlanChange]);
 
-  // Month navigation
-  const handlePrevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentYear((y) => y - 1);
-      setCurrentMonth(11);
-    } else {
-      setCurrentMonth((m) => m - 1);
-    }
+  // Start Date adjustments
+  const handleShiftStartDate = (deltaDays: number) => {
+    setCheckoutWarning(null);
+    setPlanStartDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() + deltaDays);
+      return next;
+    });
   };
 
-  const handleNextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentYear((y) => y + 1);
-      setCurrentMonth(0);
-    } else {
-      setCurrentMonth((m) => m + 1);
-    }
+  const handleSetStartTomorrow = () => {
+    setCheckoutWarning(null);
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    setPlanStartDate(d);
   };
 
-  const handleJumpToToday = () => {
-    setCurrentYear(today.getFullYear());
-    setCurrentMonth(today.getMonth());
+  const handleSetStartToday = () => {
+    setCheckoutWarning(null);
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    setPlanStartDate(d);
   };
 
   // Slot selector handlers
@@ -440,56 +504,63 @@ export function MonthlyCustomPlanBuilder({
     });
   }, []);
 
-  // Quick Preset Handlers with Slots
+  // Quick Preset Handlers with Slots across 28 days
   const handleSelectWorkdaysSlot = useCallback((slot: 'lunch' | 'dinner' | 'both') => {
     setCheckoutWarning(null);
     setSlots((prev) => {
       const updated = { ...prev };
-      calendarData.days.forEach((d) => {
+      days28.forEach((d) => {
         const dayOfWeek = d.date.getDay(); // 0 is Sun, 6 is Sat
         const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
         updated[d.dateKey] = isWeekday ? slot : 'skip';
       });
       return updated;
     });
-  }, [calendarData.days]);
+  }, [days28]);
 
-  const handleSelectEntireMonthSlot = useCallback((slot: 'lunch' | 'dinner' | 'both') => {
+  const handleSelectAll28DaysSlot = useCallback((slot: 'lunch' | 'dinner' | 'both') => {
     setCheckoutWarning(null);
     setSlots((prev) => {
       const updated = { ...prev };
-      calendarData.days.forEach((d) => {
+      days28.forEach((d) => {
         updated[d.dateKey] = slot;
       });
       return updated;
     });
-  }, [calendarData.days]);
+  }, [days28]);
 
   // Bottom action: Clear All
   const handleClearAll = useCallback(() => {
     setCheckoutWarning(null);
     setSlots((prev) => {
       const cleared = { ...prev };
-      calendarData.days.forEach((d) => {
+      days28.forEach((d) => {
         cleared[d.dateKey] = 'skip';
       });
       return cleared;
     });
     if (onReset) onReset();
-  }, [calendarData.days, onReset]);
+  }, [days28, onReset]);
 
-  // Bottom action: Confirm & Checkout
+  // Bottom action: Confirm & Checkout with strict >= 30 meals rule
   const handleConfirmCheckout = useCallback(() => {
-    if (totalMeals === 0) {
-      setCheckoutWarning('Please select at least 1 meal slot for this month to proceed.');
+    if (totalMeals < 30) {
+      setCheckoutWarning(
+        `Monthly plans require a minimum of 30 meals. You currently have ${totalMeals} scheduled. Please add at least ${30 - totalMeals} more meal(s) to proceed, or switch to a Weekly Plan.`
+      );
       return;
     }
 
     setCheckoutWarning(null);
-    const dateDetails: MonthlyPlanDateSelection[] = calendarData.days.map((day) => ({
+    const dateDetails: MonthlyPlanDateSelection[] = days28.map((day) => ({
+      dayIndex: day.dayIndex,
       dateKey: day.dateKey,
       dayNumber: day.dayNumber,
+      monthName: day.monthName,
+      fullMonthName: day.fullMonthName,
+      year: day.year,
       dayOfWeek: day.dayOfWeek,
+      shortDay: day.shortDay,
       date: day.date,
       slot: slots[day.dateKey] || 'skip',
       meals: selections[day.dateKey] || 0,
@@ -497,9 +568,12 @@ export function MonthlyCustomPlanBuilder({
     }));
 
     const result: MonthlyPlanBuilderResult = {
-      year: currentYear,
-      month: currentMonth,
-      monthName: MONTH_NAMES[currentMonth],
+      startDate: days28[0].date,
+      endDate: days28[27].date,
+      dateRangeStr: dateRangeFormatted,
+      year: days28[0].year,
+      month: days28[0].date.getMonth(),
+      monthName: days28[0].fullMonthName,
       pattern: selections,
       slots,
       selections,
@@ -517,7 +591,7 @@ export function MonthlyCustomPlanBuilder({
     } else {
       setShowConfirmationModal(true);
     }
-  }, [totalMeals, calendarData.days, slots, selections, currentYear, currentMonth, effectivePricePerMeal, monthlyTotal, customMealConfig, vendorId, slotCounts, onConfirmCheckout]);
+  }, [totalMeals, days28, dateRangeFormatted, slots, selections, effectivePricePerMeal, monthlyTotal, customMealConfig, vendorId, slotCounts, onConfirmCheckout]);
 
   return (
     <div
@@ -531,13 +605,13 @@ export function MonthlyCustomPlanBuilder({
         <div className="mb-6 text-left sm:text-center">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/80 border border-amber-300/80 text-amber-900 text-xs font-black tracking-wider uppercase mb-2 shadow-2xs">
             <CalendarDays className="w-3.5 h-3.5 text-amber-700" />
-            Dabzzo Monthly Meal Planner
+            Dabzzo 28-Day Monthly Plan Builder
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Design Your Custom Monthly Calendar
+            Design Your 28-Day Custom Meal Calendar
           </h2>
           <p className="text-slate-600 text-sm sm:text-base mt-1 font-medium">
-            Pick your exact meals and delivery slots (<span className="text-amber-700 font-bold">☀️ Lunch</span> or <span className="text-indigo-700 font-bold">🌙 Dinner</span>) for each date
+            Pick your meals and delivery slots (<span className="text-amber-700 font-bold">☀️ Lunch</span> or <span className="text-indigo-700 font-bold">🌙 Dinner</span>) for the next 28 days
           </p>
         </div>
       )}
@@ -559,58 +633,112 @@ export function MonthlyCustomPlanBuilder({
         </div>
       )}
 
-      {/* ── Month & Year Navigation Header ─────────────────────────────────── */}
+      {/* ── 28-Day Plan Period & Start Date Bar ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-amber-50/90 via-white to-orange-50/70 border border-amber-200 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handlePrevMonth}
-            className="w-9 h-9 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
-            aria-label="Previous Month"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleNextMonth}
-            className="w-9 h-9 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
-            aria-label="Next Month"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleShiftStartDate(-1)}
+              className="w-8 h-8 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
+              aria-label="Shift Start Date 1 Day Earlier"
+              title="Start 1 day earlier"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleShiftStartDate(1)}
+              className="w-8 h-8 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 flex items-center justify-center text-amber-900 active:scale-95 transition-all shadow-2xs"
+              aria-label="Shift Start Date 1 Day Later"
+              title="Start 1 day later"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
           <div className="ml-1">
-            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-              {MONTH_NAMES[currentMonth]} {currentYear}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md">
+                Next 28 Days
+              </span>
+              <span className="text-xs text-slate-500 font-bold hidden md:inline">
+                (4 Full Weeks)
+              </span>
+            </div>
+            <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight mt-0.5">
+              {dateRangeFormatted}
             </h3>
           </div>
         </div>
 
-        {/* Live Slot Counters in Header */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={handleJumpToToday}
-            className="px-3 py-1.5 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 text-xs font-black text-amber-900 active:scale-95 transition-all shadow-2xs"
-          >
-            Today
-          </button>
+        {/* Start Date Quick Switchers & Counters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleSetStartTomorrow}
+              className={cn(
+                'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95 shadow-2xs',
+                isStartTomorrow
+                  ? 'bg-amber-500 text-white shadow-amber-500/20'
+                  : 'bg-white border border-amber-200 hover:bg-amber-50 text-slate-700'
+              )}
+            >
+              Start Tomorrow
+            </button>
+            <button
+              type="button"
+              onClick={handleSetStartToday}
+              className={cn(
+                'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95 shadow-2xs',
+                isStartToday
+                  ? 'bg-amber-500 text-white shadow-amber-500/20'
+                  : 'bg-white border border-amber-200 hover:bg-amber-50 text-slate-700'
+              )}
+            >
+              Start Today
+            </button>
+          </div>
+
+          {/* Live Slot Counters in Header */}
           <div className="inline-flex items-center gap-1 text-[11px] font-black text-amber-900 bg-amber-100/90 px-2.5 py-1.5 rounded-xl border border-amber-200">
             <span>☀️ {slotCounts.lunch}</span>
             <span className="text-amber-400">•</span>
             <span>🌙 {slotCounts.dinner}</span>
             <span className="text-amber-400">•</span>
             <span>🍱 {slotCounts.both}</span>
-            <span className="text-amber-400">•</span>
-            <span>{totalMeals} Meals</span>
+          </div>
+
+          {/* Meals Status Pill */}
+          <div
+            className={cn(
+              'inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl border transition-colors shadow-2xs',
+              totalMeals >= 30
+                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                : 'bg-amber-100 text-amber-950 border-amber-300'
+            )}
+          >
+            {totalMeals >= 30 ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{totalMeals} Meals</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                <span>{totalMeals}/30 Meals</span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Quick Month Presets (Batch Selectors) ─────────────────────────── */}
+      {/* ── Quick 28-Day Presets (Batch Selectors) ─────────────────────────── */}
       <div className="mb-4 pb-3 border-b border-amber-100 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 min-w-max text-xs">
           <span className="text-slate-600 font-bold mr-1 flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-brand" /> Quick Presets:
+            <Sparkles className="w-3.5 h-3.5 text-brand" /> 28-Day Presets:
           </span>
 
           <button
@@ -618,7 +746,7 @@ export function MonthlyCustomPlanBuilder({
             onClick={() => handleSelectWorkdaysSlot('lunch')}
             className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold border border-amber-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            <Sun className="w-3.5 h-3.5 text-amber-600" /> Mon–Fri Lunch
+            <Sun className="w-3.5 h-3.5 text-amber-600" /> Mon–Fri Lunch (20)
           </button>
 
           <button
@@ -626,7 +754,7 @@ export function MonthlyCustomPlanBuilder({
             onClick={() => handleSelectWorkdaysSlot('dinner')}
             className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 font-bold border border-indigo-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            <Moon className="w-3.5 h-3.5 text-indigo-600" /> Mon–Fri Dinner
+            <Moon className="w-3.5 h-3.5 text-indigo-600" /> Mon–Fri Dinner (20)
           </button>
 
           <button
@@ -634,31 +762,31 @@ export function MonthlyCustomPlanBuilder({
             onClick={() => handleSelectWorkdaysSlot('both')}
             className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-900 font-bold border border-orange-200 transition-all active:scale-95 shadow-2xs flex items-center gap-1"
           >
-            🍱 Mon–Fri Both
+            🍱 Mon–Fri Both (40)
           </button>
 
           <button
             type="button"
-            onClick={() => handleSelectEntireMonthSlot('lunch')}
+            onClick={() => handleSelectAll28DaysSlot('lunch')}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-slate-800 font-bold border border-amber-200/80 transition-all active:scale-95 shadow-2xs"
           >
-            ☀️ All Month Lunch
+            ☀️ All 28 Days Lunch (28)
           </button>
 
           <button
             type="button"
-            onClick={() => handleSelectEntireMonthSlot('dinner')}
+            onClick={() => handleSelectAll28DaysSlot('dinner')}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-800 font-bold border border-indigo-200/80 transition-all active:scale-95 shadow-2xs"
           >
-            🌙 All Month Dinner
+            🌙 All 28 Days Dinner (28)
           </button>
 
           <button
             type="button"
-            onClick={() => handleSelectEntireMonthSlot('both')}
+            onClick={() => handleSelectAll28DaysSlot('both')}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-orange-50 text-slate-800 font-bold border border-orange-200/80 transition-all active:scale-95 shadow-2xs"
           >
-            🍱 All Month Both
+            🍱 All 28 Days Both (56)
           </button>
 
           <button
@@ -671,7 +799,7 @@ export function MonthlyCustomPlanBuilder({
         </div>
       </div>
 
-      {/* ── Calendar View: Full Mon-Sun Grid ──────────────────────────────── */}
+      {/* ── Calendar View: 28 Days in MON-SUN Grid ────────────────────────── */}
       <div className="mb-6 overflow-hidden rounded-3xl border border-amber-200/90 bg-amber-50/30 p-2 sm:p-3 shadow-inner">
         {/* Mon-Sun Grid Headers */}
         <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
@@ -688,18 +816,18 @@ export function MonthlyCustomPlanBuilder({
           ))}
         </div>
 
-        {/* Calendar Day Cells */}
+        {/* 28-Day Calendar Day Cells */}
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-          {/* Empty offset cells */}
-          {Array.from({ length: calendarData.startOffset }).map((_, idx) => (
+          {/* Empty initial offset cells (alignment to start day's weekday) */}
+          {Array.from({ length: startOffset }).map((_, idx) => (
             <div
-              key={`empty-${idx}`}
+              key={`empty-start-${idx}`}
               className="min-h-[78px] sm:min-h-[96px] rounded-2xl bg-amber-100/20 border border-dashed border-amber-200/40 opacity-40 select-none"
             />
           ))}
 
-          {/* Active Month Days */}
-          {calendarData.days.map((day) => {
+          {/* Active 28 Days */}
+          {days28.map((day) => {
             const slot = slots[day.dateKey] || 'skip';
             const isLunch = slot === 'lunch';
             const isDinner = slot === 'dinner';
@@ -718,16 +846,21 @@ export function MonthlyCustomPlanBuilder({
                   isSkipped && 'bg-white/95 border-amber-100/80 hover:border-amber-300'
                 )}
               >
-                {/* Top Row: Date Number & Slot Indicator */}
+                {/* Top Row: Date with Month Name + Day Indicator */}
                 <div className="flex items-center justify-between w-full mb-1">
-                  <span
-                    className={cn(
-                      'text-xs sm:text-sm font-black tracking-tight',
-                      day.isToday ? 'text-amber-700' : isSkipped ? 'text-slate-600' : 'text-slate-900'
-                    )}
-                  >
-                    {day.dayNumber}
-                  </span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span
+                      className={cn(
+                        'text-xs sm:text-sm font-black tracking-tight',
+                        day.isToday ? 'text-amber-700 font-black' : isSkipped ? 'text-slate-600' : 'text-slate-900'
+                      )}
+                    >
+                      {day.dayNumber}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                      {day.monthName}
+                    </span>
+                  </div>
 
                   {/* Visual Slot Pill */}
                   {isLunch && (
@@ -821,6 +954,14 @@ export function MonthlyCustomPlanBuilder({
               </div>
             );
           })}
+
+          {/* Empty trailing cells to finish the final week row */}
+          {Array.from({ length: endOffset }).map((_, idx) => (
+            <div
+              key={`empty-end-${idx}`}
+              className="min-h-[78px] sm:min-h-[96px] rounded-2xl bg-amber-100/20 border border-dashed border-amber-200/40 opacity-40 select-none"
+            />
+          ))}
         </div>
       </div>
 
@@ -842,7 +983,7 @@ export function MonthlyCustomPlanBuilder({
         <div className="flex items-center justify-between mb-3 pb-3 border-b border-amber-200/70">
           <span className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-amber-600" />
-            Monthly Plan Calculation Receipt
+            28-Day Monthly Plan Calculation Receipt
           </span>
           {isLoadingPricing && (
             <span className="text-[11px] font-medium text-amber-700 animate-pulse">
@@ -862,6 +1003,15 @@ export function MonthlyCustomPlanBuilder({
               <span className="text-xs font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-200">
                 ☀️ {slotCounts.lunch} Lunches • 🌙 {slotCounts.dinner} Dinners • 🍱 {slotCounts.both} Full Days
               </span>
+              {totalMeals >= 30 ? (
+                <span className="text-xs font-black text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-lg border border-emerald-300">
+                  ✓ Min. Requirement Met
+                </span>
+              ) : (
+                <span className="text-xs font-black text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-lg border border-amber-300">
+                  ⚠️ Need at least 30 meals
+                </span>
+              )}
             </div>
           </div>
 
@@ -884,8 +1034,7 @@ export function MonthlyCustomPlanBuilder({
           <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-amber-100">
             <span>Pricing Breakdown per Meal:</span>
             <span className="font-medium text-slate-700">
-              Kitchen Food Rate + ₹11 Delivery Fee + 5% Platform Margin
-              Kitchen Food Rate + ₹11 Delivery Fee + 4% Platform Margin
+              Kitchen Food Rate + ₹11 Delivery Fee + 13% Food Margin
             </span>
           </div>
 
@@ -896,7 +1045,7 @@ export function MonthlyCustomPlanBuilder({
                 Total Monthly Investment:
               </span>
               <span className="text-xs text-slate-500">
-                All-inclusive with doorstep delivery & daily hot packaging
+                28-day cycle with doorstep delivery & daily hot packaging
               </span>
             </div>
             <span className="text-2xl sm:text-3xl font-black text-amber-800 tracking-tight">
@@ -906,14 +1055,32 @@ export function MonthlyCustomPlanBuilder({
         </div>
 
         {totalMeals === 0 && (
-          <p className="text-xs text-amber-800/90 mt-3 flex items-center gap-1.5 bg-amber-100/60 p-2 rounded-xl border border-amber-200">
+          <p className="text-xs text-amber-800/90 mt-3 flex items-center gap-1.5 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200">
             <Info className="w-4 h-4 shrink-0 text-amber-600" />
-            Pick meals for any days in {MONTH_NAMES[currentMonth]} to calculate your customized monthly plan.
+            Pick meals for any days in the 28-day window ({dateRangeFormatted}). Monthly plans require a minimum of 30 meals.
           </p>
         )}
       </div>
 
-      {/* Warning message if checkout attempted with 0 meals */}
+      {/* ── Alert Banner: Minimum 30 Meals Rule ──────────────────────────────── */}
+      {totalMeals > 0 && totalMeals < 30 && (
+        <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs sm:text-sm font-semibold flex items-center justify-between gap-3 shadow-2xs animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-black text-amber-950 block">Monthly Plan Minimum: 30 Meals</span>
+              <span className="text-amber-900 text-xs font-medium">
+                You currently have {totalMeals} of 30 meals scheduled. Please add at least {30 - totalMeals} more meal{30 - totalMeals > 1 ? 's' : ''} to checkout, or switch to a Weekly Plan.
+              </span>
+            </div>
+          </div>
+          <span className="text-xs font-black bg-amber-200/90 text-amber-950 px-2.5 py-1 rounded-xl shrink-0 whitespace-nowrap">
+            Need {30 - totalMeals} more
+          </span>
+        </div>
+      )}
+
+      {/* Warning message if checkout attempted with invalid meal count */}
       <AnimatePresence>
         {checkoutWarning && (
           <motion.div
@@ -940,20 +1107,29 @@ export function MonthlyCustomPlanBuilder({
           Reset Plan
         </button>
 
-        {/* [Confirm & Checkout] Button */}
+        {/* [Confirm & Checkout] Button: Blocked when totalMeals < 30 */}
         <button
           type="button"
           onClick={handleConfirmCheckout}
+          disabled={totalMeals < 30}
           className={cn(
-            'w-full sm:flex-1 py-3.5 px-6 rounded-2xl font-black text-sm sm:text-base transition-all duration-150 flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg',
-            totalMeals > 0
+            'w-full sm:flex-1 py-3.5 px-6 rounded-2xl font-black text-sm sm:text-base transition-all duration-150 flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg select-none',
+            totalMeals >= 30
               ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/25 cursor-pointer'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
           )}
         >
-          <span>Confirm & Checkout</span>
-          {totalMeals > 0 && <span className="font-normal opacity-90">• ₹{monthlyTotal}</span>}
-          <ArrowRight className="w-4 h-4" />
+          {totalMeals === 0 ? (
+            <span>Select Meals to Checkout</span>
+          ) : totalMeals < 30 ? (
+            <span>Add {30 - totalMeals} More Meal(s) to Checkout ({totalMeals}/30)</span>
+          ) : (
+            <>
+              <span>Confirm & Checkout</span>
+              <span className="font-normal opacity-90">• ₹{monthlyTotal}</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
 
@@ -968,7 +1144,7 @@ export function MonthlyCustomPlanBuilder({
           slots,
           totalMeals,
           pricePerMeal: effectivePricePerMeal,
-          planStartDate: new Date(currentYear, currentMonth, 1),
+          planStartDate: days28[0]?.date || planStartDate,
           customMealConfig: customMealConfig || undefined,
           vendorId,
         }}

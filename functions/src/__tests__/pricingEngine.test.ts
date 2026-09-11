@@ -528,5 +528,68 @@ describe('Central Authoritative Pricing Engine', () => {
     expect(result.finalPrice).toBe(781.402); // 766.08 * 1.02 rounded
     expect(result.effectivePricePerMeal).toBe(86.82);
   });
+
+  // ─── 29. 28-DAY MONTHLY PLAN SCHEDULE WITH >= 30 MEALS ──────────────────────
+  test('29. 28-day monthly plan schedule with 40 meals (Mon-Fri Lunch + Dinner)', () => {
+    // 20 weekdays with 'both' (2 meals per day = 40 meals)
+    const schedule = [];
+    for (let day = 1; day <= 28; day++) {
+      // simulate 20 weekdays, 8 weekend days
+      const isWeekday = (day % 7 !== 6) && (day % 7 !== 0);
+      if (isWeekday) {
+        schedule.push({
+          dayKey: `2026-09-${String(day).padStart(2, '0')}`,
+          slot: 'both' as const,
+          items: { rice: 1, dal: 1, roti: 2, sabji: 1 },
+        });
+      }
+    }
+
+    expect(schedule.length).toBe(20);
+    const subResult = calculateSubscriptionPrice(schedule, DEFAULT_STANDARD_MEAL.itemQuantities, testCatalog, standardRules);
+
+    // 20 days * 2 meals/day = 40 meals
+    expect(subResult.totalMeals).toBe(40);
+    expect(subResult.totalMeals >= 30).toBe(true);
+    expect(subResult.finalPrice).toBeGreaterThan(0);
+    expect(subResult.mealDetails.length).toBe(40);
+  });
+
+  // ─── 30. MONTHLY PLAN SCHEDULE CONSTRAINT (< 30 MEALS DETECTION) ───────────
+  test('30. Monthly plan schedule constraint: Detects < 30 meals (e.g. 20 lunches, 28 lunches)', () => {
+    // Case A: 20 lunches (weekday only)
+    const schedule20: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [];
+    for (let day = 1; day <= 20; day++) {
+      schedule20.push({
+        dayKey: `2026-09-${String(day).padStart(2, '0')}`,
+        slot: 'lunch',
+        items: { rice: 1, dal: 1, roti: 2, sabji: 1 },
+      });
+    }
+    const result20 = calculateSubscriptionPrice(schedule20, DEFAULT_STANDARD_MEAL.itemQuantities, testCatalog, standardRules);
+    expect(result20.totalMeals).toBe(20);
+    expect(result20.totalMeals < 30).toBe(true);
+
+    // Case B: 28 lunches (1 meal every day for 28 days = 28 meals)
+    const schedule28: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [];
+    for (let day = 1; day <= 28; day++) {
+      schedule28.push({
+        dayKey: `2026-09-${String(day).padStart(2, '0')}`,
+        slot: 'lunch',
+        items: { rice: 1, dal: 1, roti: 2, sabji: 1 },
+      });
+    }
+    const result28 = calculateSubscriptionPrice(schedule28, DEFAULT_STANDARD_MEAL.itemQuantities, testCatalog, standardRules);
+    expect(result28.totalMeals).toBe(28);
+    expect(result28.totalMeals < 30).toBe(true); // Must be blocked since < 30
+
+    // Case C: 28 lunches + 2 dinners = 30 meals
+    const schedule30: Array<{ dayKey: string; slot: 'lunch' | 'dinner' | 'both'; items: Record<string, number> }> = [...schedule28];
+    schedule30[0] = { ...schedule30[0], slot: 'both' };
+    schedule30[1] = { ...schedule30[1], slot: 'both' };
+    const result30 = calculateSubscriptionPrice(schedule30, DEFAULT_STANDARD_MEAL.itemQuantities, testCatalog, standardRules);
+    expect(result30.totalMeals).toBe(30);
+    expect(result30.totalMeals >= 30).toBe(true); // Allowed
+  });
 });
 
