@@ -1,5 +1,5 @@
 /**
- * DABZZO CENTRAL PRICING ENGINE (Client-side isomorphic mirror)
+ * DABZZO CENTRAL PRICING ENGINE (Web-main client-side isomorphic mirror)
  *
  * Core Business Principle:
  * A subscription is a collection of individual meals, and each meal is a collection of priced items.
@@ -18,6 +18,8 @@ export interface PricingRules {
   paymentFee: number;
   /** Rounding strategy for customer price: 'round' (2 decimals / paise) | 'round_integer' | 'ceil' */
   roundingStrategy: 'round' | 'round_integer' | 'ceil';
+  /** Optional plan type discriminator for plan-specific margin/delivery/payment behavior */
+  planType?: 'weekly' | 'monthly' | 'standard';
   updatedAt?: any;
   updatedBy?: string;
   version?: string;
@@ -39,7 +41,7 @@ export interface ItemDefinition {
   id: string;
   name: string;
   price: number; // Centrally controlled Admin price in ₹
-  customerRate?: number; // Aliased to price for backwards compatibility
+  customerRate?: number;
   vendorRate?: number;
   unit: ItemUnit;
   category: ItemCategory;
@@ -387,6 +389,41 @@ export function calculateMealPrice(
   const vendorCost = applyRounding(rawVendorCost);
   const vendorDeduction = applyRounding(itemTotal - vendorCost);
 
+  // Weekly Plan Canonical Formula:
+  // Subtotal = Vendor Cost + Delivery Fee
+  // Food Selling Price = Subtotal * (1 + Weekly Margin [12%])
+  // Final Price = Food Selling Price * (1 + Payment Fee [2% Razorpay])
+  if (rules.planType === 'weekly') {
+    const deliveryCharge = applyRounding(rules.deliveryCharge);
+    const subtotal = applyRounding(vendorCost + deliveryCharge);
+    const marginRate = rules.margin !== undefined ? rules.margin : 0.12;
+    const foodSellingPrice = applyRounding(subtotal * (1 + marginRate));
+    const margin = applyRounding(foodSellingPrice - subtotal);
+    const paymentFeeRate = rules.paymentFee !== undefined ? rules.paymentFee : 0.02;
+    const rawFinalPrice = foodSellingPrice * (1 + paymentFeeRate);
+    const finalPrice = applyRounding(rawFinalPrice, rules.roundingStrategy);
+    const paymentFee = applyRounding(finalPrice - foodSellingPrice);
+
+    const manifestSummary = manifestParts.length > 0 ? manifestParts.join(', ') : 'Empty Meal';
+
+    return {
+      itemTotal,
+      vendorDeductionRate,
+      vendorDeduction,
+      vendorCost,
+      marginRate,
+      margin,
+      foodSellingPrice,
+      deliveryCharge,
+      subtotal,
+      paymentFeeRate,
+      paymentFee,
+      finalPrice,
+      items: pricedItems,
+      manifestSummary,
+    };
+  }
+
   // Step 3: Apply business margin
   const marginRate = rules.margin;
   const rawFoodSellingPrice = vendorCost * (1 + marginRate);
@@ -716,6 +753,69 @@ export function getAuditableOrderPrice(orderOrSub: any): AuditablePriceResult {
     deliveryCharge: 0,
     paymentFee: 0,
     isSnapshot: false,
+  };
+}
+
+// ─── 10. WEEKLY PLAN CANONICAL PRICING HELPER ────────────────────────────────
+
+export interface WeeklyPlanPricingResult {
+  totalMeals: number;
+  vendorCostPerMeal: number;
+  deliveryFeePerMeal: number;
+  subtotalPerMeal: number;
+  weeklyMarginRate: number;
+  ratePerMealWithMargin: number;
+  mealsSubtotal: number;
+  razorpayRate: number;
+  razorpayFee: number;
+  finalPrice: number;
+  effectivePricePerMeal: number;
+}
+
+/**
+ * Authoritative Weekly Plan Pricing Calculation:
+ * 1. Subtotal per meal = Vendor Cost + Delivery Fee (₹11)
+ * 2. Rate per meal with Weekly Margin (12%) = Subtotal * 1.12
+ * 3. Meals Subtotal = Total Meals * Rate per meal with Margin
+ * 4. Final Total with Razorpay (2%) = Meals Subtotal * 1.02
+ *
+ * Example:
+ * Total Meals = 9, Vendor Cost = ₹71.50, Delivery = ₹11
+ * Subtotal per meal = 71.50 + 11 = 82.50
+ * Rate per meal with Margin = 82.50 * 1.12 = 92.40
+ * Meals Subtotal = 9 * 92.40 = 831.60
+ * Final Price = 831.60 * 1.02 = 848.232
+ */
+export function calculateWeeklyPlanPrice(
+  totalMeals: number,
+  vendorCostPerMeal: number = 65,
+  deliveryFeePerMeal: number = 11,
+  weeklyMarginRate: number = 0.12,
+  razorpayRate: number = 0.02
+): WeeklyPlanPricingResult {
+  const safeMeals = Math.max(0, totalMeals);
+  const safeVendorCost = Math.max(0, Number(vendorCostPerMeal) || 0);
+  const safeDelivery = Math.max(0, Number(deliveryFeePerMeal) || 0);
+
+  const subtotalPerMeal = Math.round((safeVendorCost + safeDelivery) * 100) / 100;
+  const ratePerMealWithMargin = Math.round((subtotalPerMeal * (1 + weeklyMarginRate)) * 100) / 100;
+  const mealsSubtotal = Math.round((safeMeals * ratePerMealWithMargin) * 100) / 100;
+  const finalPrice = Math.round((mealsSubtotal * (1 + razorpayRate)) * 1000) / 1000;
+  const razorpayFee = Math.round((finalPrice - mealsSubtotal) * 1000) / 1000;
+  const effectivePricePerMeal = safeMeals > 0 ? Math.round((finalPrice / safeMeals) * 100) / 100 : 0;
+
+  return {
+    totalMeals: safeMeals,
+    vendorCostPerMeal: safeVendorCost,
+    deliveryFeePerMeal: safeDelivery,
+    subtotalPerMeal,
+    weeklyMarginRate,
+    ratePerMealWithMargin,
+    mealsSubtotal,
+    razorpayRate,
+    razorpayFee,
+    finalPrice,
+    effectivePricePerMeal,
   };
 }
 

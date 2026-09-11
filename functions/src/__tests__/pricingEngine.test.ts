@@ -2,6 +2,7 @@ import {
   calculateMealPrice,
   calculateSubscriptionPrice,
   calculateStandardSubscriptionProduct,
+  calculateWeeklyPlanPrice,
   getAuditableOrderPrice,
   applyRounding,
   deriveRatesFromVendorCost,
@@ -501,6 +502,31 @@ describe('Central Authoritative Pricing Engine', () => {
     const planTotal = 28 * mealWithDelivery;
     expect(Number(planTotal.toFixed(2))).toBe(2298.63);
     expect(Math.round(planTotal)).toBe(2299);
+  });
+
+  // ─── 27. WEEKLY PLAN CANONICAL PRICING (Vendor ₹71.50 + ₹11 Delivery with 12% Margin + 2% Razorpay) ───
+  test('27. Weekly plan formula: 9 meals at ₹71.50 vendor cost produces exactly ₹848.232', () => {
+    const result = calculateWeeklyPlanPrice(9, 71.5, 11, 0.12, 0.02);
+
+    expect(result.totalMeals).toBe(9);
+    expect(result.vendorCostPerMeal).toBe(71.5);
+    expect(result.deliveryFeePerMeal).toBe(11);
+    expect(result.subtotalPerMeal).toBe(82.5); // 71.50 + 11.00
+    expect(result.ratePerMealWithMargin).toBe(92.4); // 82.50 * 1.12
+    expect(result.mealsSubtotal).toBe(831.6); // 9 * 92.40
+    expect(result.razorpayRate).toBe(0.02);
+    expect(result.finalPrice).toBe(848.232); // 831.60 * 1.02
+    expect(result.effectivePricePerMeal).toBe(94.25);
+  });
+
+  test('28. Weekly plan standard base meal: 9 meals at ₹65.00 vendor cost produces ₹781.40', () => {
+    const result = calculateWeeklyPlanPrice(9, 65, 11, 0.12, 0.02);
+
+    expect(result.subtotalPerMeal).toBe(76); // 65.00 + 11.00
+    expect(result.ratePerMealWithMargin).toBe(85.12); // 76.00 * 1.12
+    expect(result.mealsSubtotal).toBe(766.08); // 9 * 85.12
+    expect(result.finalPrice).toBe(781.402); // 766.08 * 1.02 rounded
+    expect(result.effectivePricePerMeal).toBe(86.82);
   });
 });
 

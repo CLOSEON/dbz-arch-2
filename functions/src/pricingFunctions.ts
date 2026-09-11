@@ -61,10 +61,21 @@ export const getPricingConfig = functions.https.onCall(
       ]);
 
       // Calculate the standard meal breakdown authoritatively
+      // Calculate the standard meal breakdown authoritatively (with weekly plan rules if weekly)
+      const effectiveRules: PricingRules =
+        normalizedPlanType === 'weekly'
+          ? {
+              ...pricingRules,
+              margin: 0.12,
+              paymentFee: 0.02,
+              planType: 'weekly',
+            }
+          : pricingRules;
+
       const standardMeal = calculateMealPrice(
         DEFAULT_STANDARD_MEAL.itemQuantities,
         itemsCatalog,
-        pricingRules
+        effectiveRules
       );
 
       return {
@@ -76,7 +87,7 @@ export const getPricingConfig = functions.https.onCall(
         paymentFee: standardMeal.paymentFee,
         subtotal: standardMeal.subtotal,
         itemTotal: standardMeal.itemTotal,
-        pricingRules,
+        pricingRules: effectiveRules,
         standardMeal,
         itemsCatalog,
         lastUpdatedAt: pricingRules.updatedAt || admin.firestore.Timestamp.now(),
@@ -326,13 +337,23 @@ export const createCustomPlanSubscription = functions.https.onCall(
     }
 
     // Authoritative calculation from single backend pricing engine:
+    const effectiveRules: PricingRules =
+      planType === 'weekly'
+        ? {
+            ...rules,
+            margin: 0.12,
+            paymentFee: 0.02,
+            planType: 'weekly',
+          }
+        : rules;
+
     let subPricing: SubscriptionPricingBreakdown;
     try {
       subPricing = calculateSubscriptionPrice(
         schedule,
         DEFAULT_STANDARD_MEAL.itemQuantities,
         catalog,
-        rules
+        effectiveRules
       );
     } catch (calcErr: any) {
       console.error('[createCustomPlanSubscription] Pricing error:', calcErr);
