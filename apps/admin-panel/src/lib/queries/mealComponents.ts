@@ -4,6 +4,7 @@ import {
   MealComponent,
   DEFAULT_MEAL_COMPONENTS,
 } from '@/types';
+import { resolveComponentRates } from '@/lib/pricingEngine';
 
 export const MEAL_COMPONENTS_DOC_PATH = {
   collection: 'system_settings',
@@ -57,7 +58,8 @@ export async function saveMealComponentsCatalog(
 export function calculateComponentDeltas(
   selectedQuantities: Record<string, number>,
   catalog: MealComponent[] = DEFAULT_MEAL_COMPONENTS,
-  vendorOverrides?: Record<string, any>
+  vendorOverrides?: Record<string, any>,
+  marginPercent: number = 4
 ) {
   let customerDeltaPerMeal = 0;
   let vendorDeltaPerMeal = 0;
@@ -79,16 +81,10 @@ export function calculateComponentDeltas(
       : baseQty;
 
     const delta = selectedQty - baseQty;
-    const customerRate = comp.customerRate ?? 0;
-
-    // Resolve vendor rate (checking override first)
     const override = vendorOverrides?.[comp.id];
-    let vendorRate = comp.vendorRate ?? 0;
-    if (typeof override === 'number') {
-      vendorRate = override;
-    } else if (override && typeof override.vendorRate === 'number') {
-      vendorRate = override.vendorRate;
-    }
+    const resolved = resolveComponentRates(comp, override, marginPercent);
+    const customerRate = resolved.customerRate;
+    const vendorRate = resolved.vendorRate;
 
     const customerAdjustment = delta * customerRate;
     const vendorAdjustment = delta * vendorRate;
@@ -97,7 +93,13 @@ export function calculateComponentDeltas(
     vendorDeltaPerMeal += vendorAdjustment;
 
     breakdown.push({
-      component: comp,
+      component: {
+        ...comp,
+        customerRate,
+        vendorRate,
+        rawCost: resolved.rawCost,
+        price: customerRate,
+      },
       selectedQty,
       baseQty,
       delta,
@@ -149,18 +151,14 @@ export function buildBoxManifest(
  */
 export function calculateBaseVendorCost(
   catalog: MealComponent[] = DEFAULT_MEAL_COMPONENTS,
-  vendorOverrides?: Record<string, any>
+  vendorOverrides?: Record<string, any>,
+  marginPercent: number = 4
 ): number {
   return catalog.reduce((sum, comp) => {
     if (!comp.isActive) return sum;
     const override = vendorOverrides?.[comp.id];
-    let rate = comp.vendorRate ?? 0;
-    if (typeof override === 'number') {
-      rate = override;
-    } else if (override && typeof override.vendorRate === 'number') {
-      rate = override.vendorRate;
-    }
-    return sum + ((comp.baseQuantity ?? 0) * rate);
+    const resolved = resolveComponentRates(comp, override, marginPercent);
+    return sum + ((comp.baseQuantity ?? 0) * resolved.vendorRate);
   }, 0);
 }
 

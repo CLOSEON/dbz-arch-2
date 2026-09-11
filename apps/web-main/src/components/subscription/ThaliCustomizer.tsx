@@ -12,7 +12,7 @@ import {
   AlgorithmicMealPricingResult,
 } from '@/lib/queries/pricing';
 import { MealComponent, DEFAULT_MEAL_COMPONENTS, CustomMealConfig, ComponentCategory } from '@/types';
-import { calculateMealPrice, DEFAULT_PRICING_RULES } from '@/lib/pricingEngine';
+import { calculateMealPrice, DEFAULT_PRICING_RULES, resolveComponentRates } from '@/lib/pricingEngine';
 
 export interface ThaliCustomizerConfig extends CustomMealConfig {
   customerDeltaPerMeal: number;
@@ -129,15 +129,31 @@ export function ThaliCustomizer({
     };
   }, [algorithmSettings]);
 
+  // Dynamically resolve customer rates, vendor payout rates, and raw costs
+  const effectiveCatalog = useMemo(() => {
+    const margin = planType === 'monthly' ? 4 : 13;
+    return catalog.map((comp) => {
+      const override = vendorOverrides?.[comp.id];
+      const resolved = resolveComponentRates(comp, override, margin);
+      return {
+        ...comp,
+        rawCost: resolved.rawCost,
+        vendorRate: resolved.vendorRate,
+        customerRate: resolved.customerRate,
+        price: resolved.customerRate,
+      };
+    });
+  }, [catalog, vendorOverrides, planType]);
+
   // Compute raw kitchen cost from current portions
   const rawKitchenCost = useMemo(() => {
-    return catalog.reduce((sum, comp) => {
+    return effectiveCatalog.reduce((sum, comp) => {
       if (!comp.isActive) return sum;
       const qty = quantities[comp.id] !== undefined ? quantities[comp.id] : (comp.baseQuantity ?? 0);
       const raw = typeof comp.rawCost === 'number' ? comp.rawCost : 0;
       return sum + qty * raw;
     }, 0);
-  }, [quantities, catalog]);
+  }, [quantities, effectiveCatalog]);
 
   const effectiveVendorMargin = useMemo(() => {
     if (typeof vendorMarginOverride === 'number') return vendorMarginOverride;
@@ -160,24 +176,24 @@ export function ThaliCustomizer({
     if (typeof baseVendorCost === 'number' && baseVendorCost > 0 && baseVendorCost !== 30) {
       return baseVendorCost;
     }
-    const computed = calculateBaseVendorCost(catalog, vendorOverrides);
+    const computed = calculateBaseVendorCost(effectiveCatalog, vendorOverrides, planType === 'monthly' ? 4 : 13);
     if (computed > 0) return computed;
     return typeof baseVendorCost === 'number' && baseVendorCost > 0 ? baseVendorCost : 30;
-  }, [baseVendorCost, catalog, vendorOverrides]);
+  }, [baseVendorCost, effectiveCatalog, vendorOverrides, planType]);
 
   // Compute live deltas
   const deltaResult = useMemo(() => {
-    return calculateComponentDeltas(quantities, catalog, vendorOverrides);
-  }, [quantities, catalog, vendorOverrides]);
+    return calculateComponentDeltas(quantities, effectiveCatalog, vendorOverrides, planType === 'monthly' ? 4 : 13);
+  }, [quantities, effectiveCatalog, vendorOverrides, planType]);
 
   // Central Authoritative Meal Pricing Calculation
   const centralMealPricing = useMemo(() => {
     try {
-      return calculateMealPrice(quantities, catalog as any, DEFAULT_PRICING_RULES);
+      return calculateMealPrice(quantities, effectiveCatalog as any, DEFAULT_PRICING_RULES);
     } catch {
       return null;
     }
-  }, [quantities, catalog]);
+  }, [quantities, effectiveCatalog]);
 
   const effectiveCustomerPricePerMeal = centralMealPricing?.finalPrice ?? Math.max(
     10,
@@ -198,8 +214,8 @@ export function ThaliCustomizer({
     : deltaResult.vendorDeltaPerMeal;
 
   const manifestSummary = useMemo(() => {
-    return centralMealPricing?.manifestSummary || buildBoxManifest(quantities, catalog);
-  }, [centralMealPricing, quantities, catalog]);
+    return centralMealPricing?.manifestSummary || buildBoxManifest(quantities, effectiveCatalog);
+  }, [centralMealPricing, quantities, effectiveCatalog]);
 
   // Notify parent component on changes
   useEffect(() => {
@@ -256,7 +272,7 @@ export function ThaliCustomizer({
 
   const handleReset = () => {
     const reset: Record<string, number> = {};
-    catalog.forEach((c) => {
+    effectiveCatalog.forEach((c) => {
       reset[c.id] = c.baseQuantity;
     });
     setQuantities(reset);
@@ -269,7 +285,7 @@ export function ThaliCustomizer({
     dessert: 'Desserts & Sweets',
   };
 
-  const activeComponents = catalog.filter((c) => c.isActive);
+  const activeComponents = effectiveCatalog.filter((c) => c.isActive);
 
   return (
     <div

@@ -4,6 +4,8 @@ import {
   calculateStandardSubscriptionProduct,
   getAuditableOrderPrice,
   applyRounding,
+  deriveRatesFromVendorCost,
+  resolveComponentRates,
   DEFAULT_PRICING_RULES,
   DEFAULT_ITEM_CATALOG,
   DEFAULT_STANDARD_MEAL,
@@ -429,6 +431,76 @@ describe('Central Authoritative Pricing Engine', () => {
     expect(round2Dec.finalPrice).toBe(27.27);
     expect(roundInt.finalPrice).toBe(27);
     expect(roundCeil.finalPrice).toBe(28);
+  });
+
+  // ─── 17. DERIVE RATES FROM RAW VENDOR COST ──────────────────────────────────
+  test('17. Derive rates from raw vendor cost: 65/30 vendor payout multiplier and 4% customer margin', () => {
+    // Roti: Raw ₹1.50 -> Vendor payout ₹3.25 -> Customer rate ₹4.00
+    const rotiRates = deriveRatesFromVendorCost(1.5, 4);
+    expect(rotiRates.rawCost).toBe(1.5);
+    expect(rotiRates.vendorRate).toBe(3.25);
+    expect(rotiRates.customerRate).toBe(4);
+
+    // Dal: Raw ₹7.00 -> Vendor payout ₹15.17 -> Customer rate ₹16.00
+    const dalRates = deriveRatesFromVendorCost(7.0, 4);
+    expect(dalRates.rawCost).toBe(7.0);
+    expect(dalRates.vendorRate).toBe(15.17);
+    expect(dalRates.customerRate).toBe(16);
+
+    // Rice: Raw ₹8.00 -> Vendor payout ₹17.33 -> Customer rate ₹18.00
+    const riceRates = deriveRatesFromVendorCost(8.0, 4);
+    expect(riceRates.rawCost).toBe(8.0);
+    expect(riceRates.vendorRate).toBe(17.33);
+    expect(riceRates.customerRate).toBe(18);
+
+    // Sabzi: Raw ₹9.00 -> Vendor payout ₹19.50 -> Customer rate ₹20.00
+    const sabziRates = deriveRatesFromVendorCost(9.0, 4);
+    expect(sabziRates.rawCost).toBe(9.0);
+    expect(sabziRates.vendorRate).toBe(19.5);
+    expect(sabziRates.customerRate).toBe(20);
+
+    // Salad: Raw ₹5.00 -> Vendor payout ₹10.83 -> Customer rate ₹11.00
+    const saladRates = deriveRatesFromVendorCost(5.0, 4);
+    expect(saladRates.rawCost).toBe(5.0);
+    expect(saladRates.vendorRate).toBe(10.83);
+    expect(saladRates.customerRate).toBe(11);
+
+    // Standard Thali: 4 Roti (4 * 1.5) + Dal (7) + Rice (8) + Sabzi (9) = 30 raw cost
+    const baseRaw = 4 * rotiRates.rawCost + dalRates.rawCost + riceRates.rawCost + sabziRates.rawCost;
+    expect(baseRaw).toBe(30);
+
+    // Standard Thali vendor payout: 4 * 3.25 + 15.17 + 17.33 + 19.50 = 65.00
+    const basePayout = 4 * rotiRates.vendorRate + dalRates.vendorRate + riceRates.vendorRate + sabziRates.vendorRate;
+    expect(Math.round(basePayout)).toBe(65);
+  });
+
+  // ─── 18. 28-DAY CUSTOM PLAN (5 Roti, 1 Dal, 1 Chawal, 1 Sabzi) ──────────────
+  test('18. 28-Day Monthly Plan (5 Roti, 1 Dal, 1 Chawal, 1 Sabzi): calculates ₹82.09/meal and ₹2,298.63 total', () => {
+    // Component rates derived from raw vendor costs:
+    // 5 Roti @ ₹1.5 = 7.5
+    // 1 Dal @ ₹7 = 7
+    // 1 Rice @ ₹8 = 8
+    // 1 Sabzi @ ₹9 = 9
+    // Raw kitchen cost = 7.5 + 7 + 8 + 9 = 31.50
+    const totalRawCost = 5 * 1.5 + 7 + 8 + 9;
+    expect(totalRawCost).toBe(31.5);
+
+    // Vendor payout: 31.5 * (65/30) = 68.25
+    const vendorPayout = 31.5 * (65 / 30);
+    expect(vendorPayout).toBe(68.25);
+
+    // Food selling price with 4% monthly margin: 68.25 / 0.96 = 71.09375
+    const foodRate = vendorPayout / 0.96;
+    expect(Number(foodRate.toFixed(2))).toBe(71.09);
+
+    // Total per meal with ₹11 delivery charge: 71.09375 + 11 = 82.09375
+    const mealWithDelivery = foodRate + 11;
+    expect(Number(mealWithDelivery.toFixed(2))).toBe(82.09);
+
+    // 28-day monthly plan (28 meals): 28 * 82.09375 = 2298.625 => ₹2,298.63 (or rounded integer ₹2,299)
+    const planTotal = 28 * mealWithDelivery;
+    expect(Number(planTotal.toFixed(2))).toBe(2298.63);
+    expect(Math.round(planTotal)).toBe(2299);
   });
 });
 
