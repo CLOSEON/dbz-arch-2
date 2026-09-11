@@ -662,7 +662,7 @@ export function SubscriptionOnboardingModal({
                     {/* Thali Portions Customizer */}
                     <div className="rounded-2xl border border-amber-200/80 bg-amber-50/20 p-3.5">
                       <ThaliCustomizer
-                        baseMealPrice={Math.max(10, Math.round(basePrice / Math.max(1, mealsCount)))}
+                        baseMealPrice={Math.round((basePrice / Math.max(1, mealsCount)) * 100) / 100}
                         planType={selectedFrequency === 'monthly' ? 'monthly' : selectedFrequency === 'weekly' ? 'weekly' : 'daily'}
                         vendorOverrides={vendor.custom_component_rates}
                         vendorMarginOverride={vendor.vendor_margin_percent ?? vendor.vendor_margin_override}
@@ -869,8 +869,8 @@ export function SubscriptionOnboardingModal({
                     onClick={handleConfirmStep3} 
                     className="w-full py-3.5 sm:py-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-transform active:scale-95 shadow-md shadow-slate-950/10 cursor-pointer"
                   >
-                    {customMealConfig && customMealConfig.customerDeltaPerMeal !== 0
-                      ? `Continue with Portions (${customMealConfig.customerDeltaPerMeal > 0 ? '+' : ''}₹${customMealConfig.customerDeltaPerMeal}/meal)`
+                    {customMealConfig && customMealConfig.customerDeltaPerMeal > 0
+                      ? `Continue with Portions (+₹${customMealConfig.customerDeltaPerMeal}/meal)`
                       : selectedAddonIds.length > 0 
                         ? `Continue with ${selectedAddonIds.length} Add-On${selectedAddonIds.length > 1 ? 's' : ''}` 
                         : 'Continue to Delivery Slot'}
