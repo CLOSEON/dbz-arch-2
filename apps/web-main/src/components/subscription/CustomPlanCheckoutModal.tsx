@@ -110,6 +110,11 @@ export function CustomPlanCheckoutModal({
   // ── Payment & Subscription Creation Handler ─────────────────────────────────
   const handleInitiatePayment = async () => {
     if (loading) return;
+    if (planType === 'monthly' && totalMeals < 30) {
+      setPaymentStep('failed');
+      setErrorMessage(`Monthly plans require a minimum of 30 meals. You have ${totalMeals} meals scheduled.`);
+      return;
+    }
     setLoading(true);
     setErrorMessage(null);
     setPaymentStep('processing_order');
@@ -240,6 +245,11 @@ export function CustomPlanCheckoutModal({
   // Direct demo pay handler for instant validation
   const handleTestDemoPay = async () => {
     if (loading) return;
+    if (planType === 'monthly' && totalMeals < 30) {
+      setPaymentStep('failed');
+      setErrorMessage(`Monthly plans require a minimum of 30 meals. You have ${totalMeals} meals scheduled.`);
+      return;
+    }
     setLoading(true);
     setErrorMessage(null);
     setPaymentStep('creating_subscription');

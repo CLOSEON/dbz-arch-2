@@ -362,6 +362,14 @@ export const createCustomPlanSubscription = functions.https.onCall(
 
     const authoritativeFinalPrice = subPricing.finalPrice;
     const authoritativeTotalMeals = subPricing.totalMeals;
+
+    if (planType === 'monthly' && authoritativeTotalMeals < 30) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        `Monthly plans require a minimum of 30 meals (received ${authoritativeTotalMeals}).`
+      );
+    }
+
     const authoritativeVendorCost = subPricing.vendorCost;
     const authoritativePricePerMeal = applyRounding(authoritativeFinalPrice / authoritativeTotalMeals);
 
