@@ -73,33 +73,51 @@ export const updateDeliveryStatus = onCall(async (request) => {
   }
 
   const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
   const deliveryRef = db.collection('deliveries').doc(orderId);
   
   // 2. State Machine Enforcement within a Transaction
   const transitionResult = await db.runTransaction(async (transaction) => {
-    const docSnap = await transaction.get(deliveryRef);
+    let docSnap = await transaction.get(orderRef);
+    let isCanonicalOrder = true;
+    if (!docSnap.exists) {
+      docSnap = await transaction.get(deliveryRef);
+      isCanonicalOrder = false;
+    }
     if (!docSnap.exists) {
       throw new HttpsError('not-found', 'Delivery order not found');
     }
 
-    const deliveryData = docSnap.data()!;
+    const orderData = docSnap.data()!;
     
-    // Validate matching agent
-    if (deliveryData.agentId !== auth.uid) {
+    // Validate matching agent or admin
+    const isAssignedRider =
+      orderData.rider_id === auth.uid ||
+      orderData.driverId === auth.uid ||
+      orderData.agentId === auth.uid ||
+      orderData.agent_id === auth.uid ||
+      auth.token?.role === 'admin' ||
+      auth.token?.admin === true ||
+      auth.token?.email === 'closeon.st@gmail.com';
+
+    if (!isAssignedRider) {
       throw new HttpsError('permission-denied', 'You are not assigned to this delivery');
     }
 
-    const currentStatus = deliveryData.status;
+    const currentStatus = orderData.status;
 
     // Validate transitions
-    if (status === 'picked_up' && currentStatus !== 'pending') {
-      throw new HttpsError('failed-precondition', 'Can only transition to picked_up from pending');
+    if (status === 'picked_up' && !['pending', 'created', 'vendor_ready', 'rider_assigned'].includes(currentStatus)) {
+      throw new HttpsError('failed-precondition', `Cannot transition to picked_up from ${currentStatus}`);
     }
-    if (status === 'delivered' && currentStatus !== 'picked_up') {
-      throw new HttpsError('failed-precondition', 'Can only transition to delivered from picked_up');
+    if (status === 'out_for_delivery' && !['picked_up', 'vendor_ready', 'rider_assigned'].includes(currentStatus)) {
+      throw new HttpsError('failed-precondition', `Cannot transition to out_for_delivery from ${currentStatus}`);
     }
-    if (status === 'failed_attempt' && currentStatus !== 'picked_up') {
-      throw new HttpsError('failed-precondition', 'Can only transition to failed_attempt from picked_up');
+    if (status === 'delivered' && !['picked_up', 'out_for_delivery'].includes(currentStatus)) {
+      throw new HttpsError('failed-precondition', `Can only transition to delivered from picked_up or out_for_delivery`);
+    }
+    if (status === 'failed_attempt' && !['picked_up', 'out_for_delivery'].includes(currentStatus)) {
+      throw new HttpsError('failed-precondition', `Can only transition to failed_attempt from picked_up or out_for_delivery`);
     }
     if (status === 'failed_attempt' && (!reason || reason.trim() === '')) {
       throw new HttpsError('invalid-argument', 'Must provide a non-empty reason when setting status to failed_attempt');
@@ -112,20 +130,38 @@ export const updateDeliveryStatus = onCall(async (request) => {
         status,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
         agentId: auth.uid
-      })
+      }),
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     if (status === 'delivered') {
       updatePayload.delivered_at = admin.firestore.FieldValue.serverTimestamp();
+      updatePayload.otpVerified = true;
     } else if (status === 'failed_attempt') {
       updatePayload.failedReason = reason;
+      updatePayload.failure_reason = reason;
     }
 
-    transaction.update(deliveryRef, updatePayload);
+    if (isCanonicalOrder) {
+      transaction.update(orderRef, updatePayload);
+      const logRef = db.collection('order_status_logs').doc();
+      transaction.set(logRef, {
+        id: logRef.id,
+        order_id: orderId,
+        from_status: currentStatus,
+        to_status: status,
+        actor: auth.uid,
+        reason: reason || null,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      transaction.update(deliveryRef, updatePayload);
+    }
 
     return {
-      customerId: deliveryData.customerId,
-      vendorId: deliveryData.vendorId,
+      customerId: orderData.user_id || orderData.customerId,
+      vendorId: orderData.vendor_id || orderData.vendorId,
       oldStatus: currentStatus,
       newStatus: status,
       reason: reason
@@ -222,35 +258,29 @@ async function processDailyDeliveries(force: boolean = false) {
   // 2. Fetch today's already-existing delivery_orders by date (skipped when force=true)
   const existingSubOrderKeys = new Set<string>();
   if (!force) {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
     const existingSnap = await db.collection('orders')
-      .where('created_at', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-      .where('created_at', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
       .where('date', '==', todayStr)
       .get();
 
     existingSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => {
       const docData = d.data();
-      if (docData.subscription_id) existingSubIds.add(docData.subscription_id);
-      if (docData.subscription_id) {
-        existingSubOrderKeys.add(`${docData.subscription_id}_${docData.meal_type}`);
+      const sId = docData.subscription_id || docData.subscriptionId;
+      if (sId) {
+        existingSubIds.add(sId);
+        existingSubOrderKeys.add(`${sId}_${docData.meal_type}`);
       }
     });
   }
 
   // 3. Process each subscription
-  const batch = db.batch();
+  let batch = db.batch();
   let batchCount = 0;
 
   for (const subDoc of subsSnap.docs) {
     const sub = subDoc.data();
     const subId = subDoc.id;
 
-    if (existingSubIds.has(subId) && !sub.deliveryPattern && sub.meal_type !== 'both') {
+    if (existingSubIds.has(subId) && !sub.deliveryPattern && !sub.customPlan && sub.meal_type !== 'both') {
       result.skipped++;
       result.details.push({ subId, userName: sub.user_id, status: 'skipped', reason: 'Order already exists today' });
       continue;
@@ -269,6 +299,13 @@ async function processDailyDeliveries(force: boolean = false) {
       continue;
     }
 
+    // If sub specifies exact dates in selected_dates array, honor them
+    if (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 0) {
+      if (!sub.selected_dates.includes(todayStr)) {
+        continue;
+      }
+    }
+
     try {
       const [userSnap, vendorSnap] = await Promise.all([
         db.collection('users').doc(sub.user_id).get(),
@@ -284,25 +321,51 @@ async function processDailyDeliveries(force: boolean = false) {
         continue;
       }
 
-      const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+      const customPattern = sub.deliveryPattern || sub.delivery_pattern || sub.customPlan?.pattern || sub.custom_schedule || null;
       let mealTypesToGenerate: string[] = [];
-      if (customPattern) {
-        const mealsToday = Number(customPattern[todayDayName] || 0);
-        if (mealsToday === 1) {
-          mealTypesToGenerate = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
-        } else if (mealsToday >= 2) {
-          mealTypesToGenerate = ['lunch', 'dinner'];
-        } else {
-          mealTypesToGenerate = []; // No delivery for this day in custom plan
+
+      // Check day-specific slot overrides first
+      const daySlotConfig = sub.slots?.[todayStr] ?? 
+                            sub.custom_slots?.[todayStr] ?? 
+                            sub.day_slots?.[todayStr] ?? 
+                            sub.slots?.[todayDayName] ?? 
+                            sub.custom_slots?.[todayDayName];
+      if (daySlotConfig !== undefined && daySlotConfig !== null) {
+        if (typeof daySlotConfig === 'string') {
+          const lower = daySlotConfig.toLowerCase().trim();
+          mealTypesToGenerate = lower === 'both' ? ['lunch', 'dinner'] : [lower === 'dinner' || lower === '8pm' ? 'dinner' : 'lunch'];
+        } else if (Array.isArray(daySlotConfig)) {
+          mealTypesToGenerate = daySlotConfig.map(v => String(v).toLowerCase().trim()).filter(v => v === 'lunch' || v === 'dinner');
+        } else if (typeof daySlotConfig === 'object') {
+          if (daySlotConfig.lunch) mealTypesToGenerate.push('lunch');
+          if (daySlotConfig.dinner) mealTypesToGenerate.push('dinner');
+        }
+      } else if (customPattern) {
+        const patternEntry = customPattern[todayStr] ?? customPattern[todayDayName] ?? customPattern[todayDayName.slice(0, 3)];
+        if (patternEntry !== undefined && patternEntry !== null) {
+          if (typeof patternEntry === 'string') {
+            const lower = patternEntry.toLowerCase().trim();
+            mealTypesToGenerate = lower === 'both' ? ['lunch', 'dinner'] : [lower === 'dinner' || lower === '8pm' ? 'dinner' : 'lunch'];
+          } else if (typeof patternEntry === 'object') {
+            if (patternEntry.lunch) mealTypesToGenerate.push('lunch');
+            if (patternEntry.dinner) mealTypesToGenerate.push('dinner');
+          } else if (typeof patternEntry === 'number' || !isNaN(Number(patternEntry))) {
+            const mealsToday = Number(patternEntry);
+            if (mealsToday === 1) {
+              mealTypesToGenerate = [sub.delivery_slot === 'dinner' || sub.deliverySlot === 'dinner' ? 'dinner' : 'lunch'];
+            } else if (mealsToday >= 2) {
+              mealTypesToGenerate = ['lunch', 'dinner'];
+            }
+          }
         }
       } else {
-        mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+        mealTypesToGenerate = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type || 'lunch'];
       }
 
       if (mealTypesToGenerate.length === 0) continue;
 
-      const userLat = user.location?.lat ?? 18.5204;
-      const userLng = user.location?.lng ?? 73.8567;
+      const userLat = user.location?.lat ?? vendor.location?.lat ?? 21.1458;
+      const userLng = user.location?.lng ?? vendor.location?.lng ?? 79.0882;
       const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMeals) : 91));
 
       for (const mealType of mealTypesToGenerate) {
@@ -319,7 +382,6 @@ async function processDailyDeliveries(force: boolean = false) {
         const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
 
         const newOrderRef = db.collection('orders').doc();
-        const todayStr = new Date().toISOString().split('T')[0];
         
         batch.set(newOrderRef, {
           order_id: newOrderRef.id,
@@ -339,6 +401,8 @@ async function processDailyDeliveries(force: boolean = false) {
           },
           status: 'created',
           otp: otp,
+          delivery_otp: otp,
+          box_tag: `${mealType === 'dinner' ? 'D' : 'L'}-${((sub.dietary || sub.category || 'veg') + '').toLowerCase().includes('non') ? 'NONVEG' : 'VEG'}-${String(result.created + 1).padStart(3, '0')}`,
           total_amount: pricePerMeal,
           amount: pricePerMeal,
           custom_meal_config: sub.custom_meal_config || null,
@@ -371,6 +435,7 @@ async function processDailyDeliveries(force: boolean = false) {
 
       if (batchCount >= 490) {
         await batch.commit();
+        batch = db.batch();
         batchCount = 0;
       }
     } catch (err: any) {
@@ -647,22 +712,44 @@ export const verifyDeliveryOTP = onCall(async (request) => {
   const orderData = txResult.orderData;
 
   // 2. Synchronize trip status if order is linked to a rider_trip
-  if (orderData?.rider_trip_id) {
+  const tripId = orderData?.rider_trip_id || orderData?.riderTripId || orderData?.tripId || orderData?.trip_id;
+  if (tripId) {
     try {
-      const tripId = orderData.rider_trip_id;
       const tripRef = db.collection('rider_trips').doc(tripId);
-      const remainingOrdersSnap = await db.collection('orders')
-        .where('rider_trip_id', '==', tripId)
-        .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
-        .get();
+      const tripSnap = await tripRef.get();
 
-      const stillActive = remainingOrdersSnap.docs.filter(d => d.id !== orderId);
-      if (stillActive.length === 0) {
-        await tripRef.update({
-          status: 'completed',
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      if (tripSnap.exists) {
+        const tripData = tripSnap.data()!;
+        const dropStops = (tripData.dropStops || []).map((s: any) => {
+          if (s.orderId === orderId || s.order_id === orderId) {
+            return {
+              ...s,
+              status: 'completed',
+              deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+          }
+          return s;
         });
+
+        const remainingOrdersSnap = await db.collection('orders')
+          .where('rider_trip_id', '==', tripId)
+          .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
+          .get();
+
+        const stillActive = remainingOrdersSnap.docs.filter(d => d.id !== orderId);
+        const allDropStopsTerminal = dropStops.length > 0 && dropStops.every((s: any) => s.status === 'completed' || s.status === 'failed');
+
+        const tripUpdatePayload: any = {
+          dropStops,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (allDropStopsTerminal && stillActive.length === 0) {
+          tripUpdatePayload.status = 'completed';
+          tripUpdatePayload.completedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await tripRef.update(tripUpdatePayload);
       }
     } catch (tripSyncErr) {
       console.warn('[verifyDeliveryOTP] Trip sync check failed:', tripSyncErr);
@@ -673,10 +760,239 @@ export const verifyDeliveryOTP = onCall(async (request) => {
 });
 
 /**
+ * Callable function for a rider to initiate the 10-minute customer unavailability countdown.
+ * Stamps unavailability_started_at on the order and alerts the customer.
+ */
+export const startCustomerUnavailability = onCall(async (request) => {
+  const { data, auth } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const { orderId, tripId } = data || {};
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'Missing orderId');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    throw new HttpsError('not-found', 'Order not found');
+  }
+
+  const order = orderSnap.data()!;
+  const isAssigned = order.rider_id === auth.uid || 
+                     order.driverId === auth.uid || 
+                     order.agentId === auth.uid || 
+                     order.agent_id === auth.uid || 
+                     order.riderId === auth.uid;
+  const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true || auth.token?.email === 'closeon.st@gmail.com';
+
+  if (!isAssigned && !isAdmin) {
+    throw new HttpsError('permission-denied', 'Only the assigned rider or admin can report unavailability.');
+  }
+
+  if (order.status === 'delivered') {
+    throw new HttpsError('failed-precondition', 'Order is already delivered.');
+  }
+  if (order.status === 'failed' || order.status === 'cancelled') {
+    throw new HttpsError('failed-precondition', 'Order is already in a terminal state.');
+  }
+
+  const now = admin.firestore.Timestamp.now();
+  const existingStart = order.unavailability_started_at;
+  const startTime = existingStart || now;
+
+  if (!existingStart) {
+    await orderRef.update({
+      unavailability_started_at: startTime,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  if (order.user_id) {
+    publishEvent(
+      'delivery_failed',
+      order.user_id,
+      'customer',
+      `unavail_alert_${orderId}_${now.toMillis()}`,
+      {
+        orderId,
+        message: 'Your rider has arrived at your doorstep! Please share your Delivery PIN within 10 minutes.'
+      }
+    ).catch(e => console.error('[startCustomerUnavailability] Alert error:', e));
+  }
+
+  const startMs = startTime.toMillis 
+    ? startTime.toMillis() 
+    : startTime.toDate 
+    ? startTime.toDate().getTime() 
+    : startTime.seconds 
+    ? startTime.seconds * 1000 
+    : Date.now();
+
+  return {
+    success: true,
+    unavailability_started_at: startMs,
+    startedAt: startTime.toDate ? startTime.toDate().toISOString() : new Date(startMs).toISOString(),
+    message: 'Customer unavailability timer started.'
+  };
+});
+
+/**
+ * Callable function for a rider to confirm customer unavailability after the 10-minute wait.
+ * Server verifies that >= 10 minutes have elapsed before allowing transition to 'failed'.
+ */
+export const confirmCustomerUnavailable = onCall(async (request) => {
+  const { data, auth } = request;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const { orderId, tripId } = data || {};
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'Missing orderId');
+  }
+
+  const db = admin.firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+
+  const txResult = await db.runTransaction(async (t) => {
+    const orderDoc = await t.get(orderRef);
+    if (!orderDoc.exists) {
+      throw new HttpsError('not-found', 'Order not found');
+    }
+
+    const order = orderDoc.data()!;
+    const isAssigned = order.rider_id === auth.uid || 
+                       order.driverId === auth.uid || 
+                       order.agentId === auth.uid || 
+                       order.agent_id === auth.uid || 
+                       order.riderId === auth.uid;
+    const isAdmin = auth.token?.role === 'admin' || auth.token?.admin === true || auth.token?.email === 'closeon.st@gmail.com';
+
+    if (!isAssigned && !isAdmin) {
+      throw new HttpsError('permission-denied', 'Only the assigned rider or admin can confirm unavailability.');
+    }
+
+    if (order.status === 'delivered') {
+      throw new HttpsError('failed-precondition', 'Order is already delivered.');
+    }
+    if (order.status === 'failed' || order.status === 'cancelled') {
+      throw new HttpsError('failed-precondition', 'Order is already in a terminal state.');
+    }
+
+    if (!order.unavailability_started_at) {
+      throw new HttpsError('failed-precondition', 'Unavailability timer has not been started for this order.');
+    }
+
+    const startMs = order.unavailability_started_at.toMillis 
+      ? order.unavailability_started_at.toMillis() 
+      : order.unavailability_started_at.toDate
+      ? order.unavailability_started_at.toDate().getTime()
+      : order.unavailability_started_at.seconds
+      ? order.unavailability_started_at.seconds * 1000
+      : new Date(order.unavailability_started_at).getTime();
+    const elapsedMinutes = (Date.now() - startMs) / (60 * 1000);
+
+    // Validate that at least 10 minutes have elapsed (with a 5s clock-skew margin)
+    if (elapsedMinutes < 9.9 && !isAdmin) {
+      const remainingSeconds = Math.ceil((10 * 60) - ((Date.now() - startMs) / 1000));
+      throw new HttpsError('failed-precondition', `10-minute wait is required. ${remainingSeconds}s remaining.`);
+    }
+
+    t.update(orderRef, {
+      status: 'failed',
+      failure_reason: 'customer_unavailable',
+      failedReason: 'customer_unavailable',
+      unavailability_confirmed_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    const reviewRef = db.collection('failed_delivery_reviews').doc();
+    t.set(reviewRef, {
+      id: reviewRef.id,
+      order_id: orderId,
+      batch_id: order.batch_id || null,
+      rider_id: auth.uid,
+      failed_at: admin.firestore.FieldValue.serverTimestamp(),
+      failure_reason: 'customer_unavailable',
+      reviewed: false
+    });
+
+    const logRef = db.collection('order_status_logs').doc();
+    t.set(logRef, {
+      id: logRef.id,
+      order_id: orderId,
+      from_status: order.status,
+      to_status: 'failed',
+      actor: auth.uid,
+      reason: 'customer_unavailable',
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { order, tripId: tripId || order.rider_trip_id || order.riderTripId || order.tripId || order.trip_id };
+  });
+
+  const effectiveTripId = txResult.tripId;
+  if (effectiveTripId) {
+    try {
+      const tripRef = db.collection('rider_trips').doc(effectiveTripId);
+      const tripSnap = await tripRef.get();
+      if (tripSnap.exists) {
+        const tripData = tripSnap.data()!;
+        const dropStops = (tripData.dropStops || []).map((s: any) => {
+          if (s.orderId === orderId || s.order_id === orderId) {
+            return { ...s, status: 'failed', failureReason: 'customer_unavailable' };
+          }
+          return s;
+        });
+
+        const remainingOrdersSnap = await db.collection('orders')
+          .where('rider_trip_id', '==', effectiveTripId)
+          .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
+          .get();
+
+        const stillActive = remainingOrdersSnap.docs.filter(d => d.id !== orderId);
+        const allDropStopsTerminal = dropStops.length > 0 && dropStops.every((s: any) => s.status === 'completed' || s.status === 'failed');
+
+        const tripUpdatePayload: any = {
+          dropStops,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (allDropStopsTerminal && stillActive.length === 0) {
+          tripUpdatePayload.status = 'completed';
+          tripUpdatePayload.completedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await tripRef.update(tripUpdatePayload);
+      }
+    } catch (tripErr) {
+      console.warn('[confirmCustomerUnavailable] Failed syncing trip:', tripErr);
+    }
+  }
+
+  if (txResult.order?.user_id) {
+    publishEvent(
+      'delivery_failed',
+      txResult.order.user_id,
+      'customer',
+      `delivery_failed_${orderId}`,
+      { orderId, reason: 'Customer unavailable after 10-minute wait' }
+    ).catch(e => console.error('[confirmCustomerUnavailable] Notification error:', e));
+  }
+
+  return { success: true, message: 'Delivery marked as failed (customer unavailable).' };
+});
+
+/**
  * Triggers when a subscription document is created OR re-activated.
  * Uses onDocumentWritten because setDoc with a deterministic ID overwrites
  * existing docs (no create event fires on resubscription).
- * Immediately generates 3 days of delivery_orders.
+ * Generates canonical daily delivery orders for the full plan duration (up to 28 days for monthly).
  */
 export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', async (event) => {
   const before = event.data?.before;
@@ -708,21 +1024,98 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
     return;
   }
 
-  const driversSnap = await db.collection('users').where('role', 'in', ['delivery', 'delivery_agent']).get();
-  const driverIds = driversSnap.docs.map(d => d.id);
-
-  const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
   const isCustom = sub.isCustomPlan || sub.is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly';
-  const customPattern = sub.deliveryPattern || sub.customPlan?.pattern || null;
+  const customPattern = sub.deliveryPattern || sub.delivery_pattern || sub.customPlan?.pattern || sub.custom_schedule || null;
   const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || (isCustom ? 9 : 14));
-  const userLat = user.location?.lat ?? 18.5204;
-  const userLng = user.location?.lng ?? 73.8567;
+  const userLat = user.location?.lat ?? vendor.location?.lat ?? 21.1458;
+  const userLng = user.location?.lng ?? vendor.location?.lng ?? 79.0882;
   const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMealsTotal) : 91));
+
+  const isMonthly = sub.plan_duration === 'monthly' || 
+                    sub.frequency === 'monthly' || 
+                    sub.plan_id === 'custom_monthly' || 
+                    (typeof sub.plan_id === 'string' && sub.plan_id.includes('month')) ||
+                    maxMealsTotal > 14 ||
+                    (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 7);
 
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
   const istNow = new Date(now.getTime() + istOffset);
   const istHour = istNow.getUTCHours();
+  const istYear = istNow.getUTCFullYear();
+  const istMonth = istNow.getUTCMonth();
+  const istDate = istNow.getUTCDate();
+
+  let maxDays = isMonthly ? Math.max(60, Math.ceil(maxMealsTotal * 2.5)) : Math.max(14, maxMealsTotal * 2);
+  if (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 0) {
+    const validDates = sub.selected_dates
+      .filter((d: any) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort();
+    if (validDates.length > 0) {
+      const lastDate = new Date(validDates[validDates.length - 1]);
+      const diffMs = lastDate.getTime() - new Date(Date.UTC(istYear, istMonth, istDate)).getTime();
+      const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000)) + 1;
+      maxDays = Math.max(maxDays, diffDays);
+    }
+  }
+  maxDays = Math.min(maxDays, 90);
+
+  // Helper to parse slot entries into clean string[] of meal types
+  const parseSlotEntry = (val: any): string[] => {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (lower === 'both') return ['lunch', 'dinner'];
+      if (lower === 'dinner' || lower === '8pm') return ['dinner'];
+      if (lower === 'lunch' || lower === '11am' || lower === '1pm') return ['lunch'];
+      return [lower];
+    }
+    if (Array.isArray(val)) {
+      return val.map(v => String(v).toLowerCase().trim()).filter(v => v === 'lunch' || v === 'dinner');
+    }
+    if (typeof val === 'object') {
+      const slots: string[] = [];
+      if (val.lunch) slots.push('lunch');
+      if (val.dinner) slots.push('dinner');
+      return slots;
+    }
+    return [];
+  };
+
+  // Helper to resolve day meal types respecting day-specific slots & patterns
+  const resolveDayMealTypes = (dateStr: string, dayName: string, shortDay: string): string[] => {
+    const daySlotConfig = sub.slots?.[dateStr] ?? 
+                          sub.custom_slots?.[dateStr] ?? 
+                          sub.day_slots?.[dateStr] ?? 
+                          sub.slots?.[dayName] ?? 
+                          sub.custom_slots?.[dayName];
+    if (daySlotConfig !== undefined && daySlotConfig !== null) {
+      const parsed = parseSlotEntry(daySlotConfig);
+      if (parsed.length > 0) return parsed;
+    }
+
+    if (customPattern) {
+      const patternEntry = customPattern[dateStr] ?? customPattern[dayName] ?? customPattern[shortDay];
+      if (patternEntry !== undefined && patternEntry !== null) {
+        if (typeof patternEntry === 'string' || typeof patternEntry === 'object') {
+          const parsed = parseSlotEntry(patternEntry);
+          if (parsed.length > 0) return parsed;
+        }
+        if (typeof patternEntry === 'number' || !isNaN(Number(patternEntry))) {
+          const count = Number(patternEntry);
+          if (count <= 0) return [];
+          if (count >= 2) return ['lunch', 'dinner'];
+          const pref = (sub.delivery_slot || sub.deliverySlot || '').toLowerCase();
+          return [pref === 'dinner' || pref === '8pm' ? 'dinner' : 'lunch'];
+        }
+      }
+      return [];
+    }
+
+    if (sub.meal_type === 'both') return ['lunch', 'dinner'];
+    const pref = (sub.delivery_slot || sub.deliverySlot || sub.meal_type || 'lunch').toLowerCase();
+    return [pref === 'dinner' || pref === '8pm' ? 'dinner' : 'lunch'];
+  };
 
   // First, cancel any existing pending orders for this sub (clean slate on reactivation)
   const existingSnap = await db.collection('orders')
@@ -733,29 +1126,24 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   existingSnap.docs.forEach(d => cleanBatch.delete(d.ref));
   if (!existingSnap.empty) await cleanBatch.commit();
 
-  const batch = db.batch();
+  let batch = db.batch();
+  let batchCount = 0;
   let ordersCreated = 0;
 
-  for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < maxDays; dayOffset++) {
     if (ordersCreated >= maxMealsTotal) break;
 
-    const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-    const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
-    const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const orderDate = new Date(Date.UTC(istYear, istMonth, istDate + dayOffset));
+    const dateStr = orderDate.toISOString().split('T')[0];
+    const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }).toLowerCase();
+    const shortDay = orderDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }).toLowerCase();
 
-    let dayMealTypes: string[] = [];
-    if (customPattern) {
-      const mealsForDay = Number(customPattern[dayName] || 0);
-      if (mealsForDay === 1) {
-        dayMealTypes = [sub.delivery_slot === 'dinner' ? 'dinner' : 'lunch'];
-      } else if (mealsForDay >= 2) {
-        dayMealTypes = ['lunch', 'dinner'];
-      } else {
-        dayMealTypes = [];
-      }
-    } else {
-      dayMealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
+    // If sub specifies exact dates in selected_dates array, honor them
+    if (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 0) {
+      if (!sub.selected_dates.includes(dateStr)) continue;
     }
+
+    const dayMealTypes = resolveDayMealTypes(dateStr, dayName, shortDay);
 
     for (const mealType of dayMealTypes) {
       if (ordersCreated >= maxMealsTotal) break;
@@ -765,29 +1153,41 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
       }
 
       const scheduledSlot = mealType === 'lunch' ? (user.deliveryPreference || '11am') : '8pm';
-      const orderDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
-      const dateStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
       const otp = String(Math.floor(1000 + Math.random() * 9000));
+      const slotInitial = mealType === 'dinner' ? 'D' : 'L';
+      const dietaryCode = ((sub.dietary || sub.category || user.dietary || 'veg') + '').toLowerCase().includes('non') ? 'NONVEG' : 'VEG';
+      const seqStr = String(ordersCreated + 1).padStart(3, '0');
+      const boxTag = `${slotInitial}-${dietaryCode}-${seqStr}`;
 
       const newOrderRef = db.collection('orders').doc();
       batch.set(newOrderRef, {
         order_id: newOrderRef.id,
         user_id: sub.user_id,
+        customerId: sub.user_id,
         customer_phone: user.phone || user.phoneNumber || '',
         subscription_id: subId,
         date: dateStr,
         meal_type: mealType,
         delivery_slot: scheduledSlot,
+        scheduledSlot: scheduledSlot,
         vendor_id: sub.vendor_id,
+        vendorId: sub.vendor_id,
         vendor_phone: vendor.phone || vendor.phoneNumber || '',
         batch_id: null,
         delivery_address: {
-          line1: user.address || `${user.name}'s Location`,
+          line1: user.address || `${user.name || 'Customer'}'s Location`,
+          lat: userLat,
+          lng: userLng,
+        },
+        address: {
+          line1: user.address || `${user.name || 'Customer'}'s Location`,
           lat: userLat,
           lng: userLng,
         },
         status: 'created',
         otp,
+        delivery_otp: otp,
+        box_tag: boxTag,
         total_amount: pricePerMeal,
         amount: pricePerMeal,
         custom_meal_config: sub.custom_meal_config || null,
@@ -800,11 +1200,20 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
       ordersCreated++;
+      batchCount++;
+
+      if (batchCount >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
     }
   }
 
-  if (ordersCreated > 0) await batch.commit();
-  console.log(`[onSubscriptionCreated] Generated ${ordersCreated} canonical orders for sub ${subId}`);
+  if (batchCount > 0) {
+    await batch.commit();
+  }
+  console.log(`[onSubscriptionCreated] Generated ${ordersCreated} canonical orders for sub ${subId} (maxDays: ${maxDays})`);
 });
 
 /**
@@ -1062,7 +1471,7 @@ export const skipMealOrder = onCall(async (request) => {
   }
 
   // Check if order is already past skippable stages
-  if (['out_for_delivery', 'picked_up', 'delivered'].includes(orderData.status)) {
+  if (['out_for_delivery', 'picked_up', 'delivered', 'vendor_ready', 'rider_assigned'].includes(orderData.status)) {
     throw new HttpsError('failed-precondition', `Cannot skip order that is ${orderData.status}.`);
   }
 
@@ -1165,10 +1574,11 @@ export const undoSkipMealOrder = onCall(async (request) => {
   }
 
   const batch = db.batch();
+  const restoredStatus = orderData.batch_id ? 'vendor_notified' : 'created';
 
-  // 1. Re-activate order to pending / created
+  // 1. Re-activate order to created / vendor_notified
   batch.update(orderRef, {
-    status: 'pending',
+    status: restoredStatus,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updated_at: admin.firestore.FieldValue.serverTimestamp()
   });
@@ -1204,7 +1614,7 @@ export const undoSkipMealOrder = onCall(async (request) => {
     id: logRef.id,
     order_id: orderId,
     from_status: 'skipped',
-    to_status: 'pending',
+    to_status: restoredStatus,
     actor: userId,
     timestamp: admin.firestore.FieldValue.serverTimestamp()
   });

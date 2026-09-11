@@ -118,8 +118,8 @@ export default function AdminDeliveryOversightPage() {
   // Payments
   useEffect(() => {
     if (!isHydrated || !user || !isAdmin) return;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const startOfDay = new Date(`${todayStr}T00:00:00+05:30`);
     const q = query(
       collection(db, 'rider_payments').withConverter(riderPaymentConverter),
       where('calculatedAt', '>=', Timestamp.fromDate(startOfDay))
@@ -260,13 +260,13 @@ export default function AdminDeliveryOversightPage() {
   // Data Listeners: Orders and RiderTrips for today
   useEffect(() => {
     if (!isHydrated || !user || !isAdmin) return;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     const unsubOrders = onSnapshot(query(collection(db, 'orders'), where('date', '==', todayStr)), snap => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
     }, err => console.warn("Admin Orders listener error:", err.message));
 
-    const start = new Date(); start.setHours(0,0,0,0);
+    const start = new Date(`${todayStr}T00:00:00+05:30`);
     const unsubTrips = onSnapshot(query(collection(db, 'rider_trips'), where('createdAt', '>=', Timestamp.fromDate(start))), snap => {
       setRiderTrips(snap.docs.map(d => ({ id: d.id, ...d.data() } as RiderTrip)));
     }, err => console.warn("Admin Trips listener error:", err.message));

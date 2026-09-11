@@ -97,6 +97,7 @@ describe('Delivery Status Updates and Payouts', () => {
       tx = {
         get: jest.fn(),
         update: jest.fn(),
+        set: jest.fn(),
       };
       return cb(tx);
     }) as any;
@@ -115,6 +116,7 @@ describe('Delivery Status Updates and Payouts', () => {
           data: () => ({ status: 'pending', agentId: 'agent_123', customerId: 'cust_1' }),
         }),
         update: jest.fn(),
+        set: jest.fn(),
       };
       return cb(tx);
     });
@@ -138,6 +140,7 @@ describe('Delivery Status Updates and Payouts', () => {
           data: () => ({ status: 'pending', agentId: 'agent_123' }),
         }),
         update: jest.fn(),
+        set: jest.fn(),
       };
       return cb(tx);
     });
@@ -159,6 +162,7 @@ describe('Delivery Status Updates and Payouts', () => {
           data: () => ({ status: 'pending', agentId: 'agent_123' }), // assigned to agent_123
         }),
         update: jest.fn(),
+        set: jest.fn(),
       };
       return cb(tx);
     });
@@ -180,6 +184,7 @@ describe('Delivery Status Updates and Payouts', () => {
           data: () => ({ status: 'picked_up', agentId: 'agent_123' }),
         }),
         update: jest.fn(),
+        set: jest.fn(),
       };
       return cb(tx);
     });

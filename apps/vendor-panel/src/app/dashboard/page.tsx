@@ -252,7 +252,7 @@ export default function VendorDashboard() {
     });
   };
 
-  const localToday = new Date().toLocaleDateString('en-CA');
+  const localToday = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const todayBatches = batches.filter(b => b.date === localToday);
   const totalTodayTiffins = todayBatches.reduce((acc, b) => acc + (b.total_orders || b.tiffin_count || b.total_count || 1), 0);
   const kitchenCapacity = vendorProfile?.capacity || user?.capacity || 20;

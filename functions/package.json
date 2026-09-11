@@ -7,7 +7,7 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "node ./node_modules/typescript/bin/tsc -p tsconfig.test.json && node ./node_modules/jest/bin/jest.js lib/__tests__/"
+    "test": "node ./node_modules/typescript/bin/tsc -p tsconfig.test.json && node ./node_modules/jest/bin/jest.js lib/__tests__/ --verbose"
   },
   "main": "lib/index.js",
   "dependencies": {

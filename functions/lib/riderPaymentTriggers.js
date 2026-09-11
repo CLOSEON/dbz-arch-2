@@ -61,34 +61,64 @@ exports.calculateRiderPayment = functions.firestore
         functions.logger.warn(`[calculateRiderPayment] Payment already exists for trip ${tripId}. Skipping.`);
         return null;
     }
-    const gpsDistanceKm = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
-    const totalDistanceKm = gpsDistanceKm;
     const pickupStops = after.pickupStops ?? [];
     const dropStops = after.dropStops ?? [];
     const pickupDistanceKm = pickupStops.reduce((sum, s) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0), 0);
     const dropDistanceKm = dropStops.reduce((sum, s) => sum + (typeof s.distanceKm === 'number' ? s.distanceKm : 0), 0);
     const routeDistanceKm = pickupDistanceKm + dropDistanceKm;
+    const gpsDistanceKm = typeof after.gpsDistanceKm === 'number' ? after.gpsDistanceKm : 0;
+    let billableDistanceKm = routeDistanceKm;
+    if (gpsDistanceKm > 0) {
+        if (routeDistanceKm > 0 && gpsDistanceKm > 2.5 * routeDistanceKm) {
+            billableDistanceKm = routeDistanceKm;
+            functions.logger.warn(`[calculateRiderPayment] GPS distance (${gpsDistanceKm}km) > 2.5x route distance (${routeDistanceKm}km) for trip ${tripId}. Fraud protection capped at route distance.`);
+        }
+        else if (routeDistanceKm > 0 && gpsDistanceKm >= 0.7 * routeDistanceKm) {
+            billableDistanceKm = gpsDistanceKm;
+        }
+        else {
+            billableDistanceKm = routeDistanceKm;
+        }
+    }
+    else {
+        billableDistanceKm = routeDistanceKm;
+    }
+    const totalDistanceKm = Math.max(billableDistanceKm, routeDistanceKm > 0 ? routeDistanceKm : 1.0);
     let riderConfirmedCount = 0;
     pickupStops.forEach(stop => {
-        riderConfirmedCount += (typeof stop.confirmedCount === 'number' ? stop.confirmedCount : 0);
+        const cnt = (typeof stop.confirmedCount === 'number' && stop.confirmedCount > 0)
+            ? stop.confirmedCount
+            : (typeof stop.expectedTiffinCount === 'number' && stop.expectedTiffinCount > 0)
+                ? stop.expectedTiffinCount
+                : 1;
+        riderConfirmedCount += cnt;
     });
+    if (riderConfirmedCount === 0 && after.assignedOrderIds?.length > 0) {
+        riderConfirmedCount = after.assignedOrderIds.length;
+    }
     const orderIds = after.assignedOrderIds ?? [];
-    let unavailableDropsCount = 0;
+    let undeliveredDropsCount = 0;
+    dropStops.forEach((stop) => {
+        if (stop.status === 'failed' || stop.status === 'cancelled') {
+            undeliveredDropsCount++;
+        }
+    });
     if (orderIds.length > 0) {
         const chunks = [];
         for (let i = 0; i < orderIds.length; i += 30) {
             chunks.push(orderIds.slice(i, i + 30));
         }
+        let dbFailedCount = 0;
         for (const chunk of chunks) {
             const snap = await db.collection('orders')
                 .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-                .where('status', '==', 'failed')
-                .where('failure_reason', '==', 'customer_unavailable')
+                .where('status', 'in', ['failed', 'cancelled'])
                 .get();
-            unavailableDropsCount += snap.size;
+            dbFailedCount += snap.size;
         }
+        undeliveredDropsCount = Math.max(undeliveredDropsCount, dbFailedCount);
     }
-    const paidTiffinCount = Math.max(0, riderConfirmedCount - unavailableDropsCount);
+    const paidTiffinCount = Math.max(0, riderConfirmedCount - undeliveredDropsCount);
     const basePayment = parseFloat((totalDistanceKm * BASE_RATE_PER_KM).toFixed(2));
     const extraTiffins = Math.max(0, paidTiffinCount - TIFFIN_BONUS_THRESHOLD);
     const tiffinBonus = extraTiffins * TIFFIN_BONUS_PER_EXTRA;

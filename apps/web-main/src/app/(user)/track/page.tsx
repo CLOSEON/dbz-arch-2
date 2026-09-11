@@ -236,13 +236,11 @@ function CustomerTrackContent() {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
 
-    const todayStr = now.toLocaleDateString('en-CA');
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-    const dayAfter = new Date(now);
-    dayAfter.setDate(now.getDate() + 2);
-    const dayAfterStr = dayAfter.toLocaleDateString('en-CA');
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const dayAfter = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    const dayAfterStr = dayAfter.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     let fromOrders: any[] = [];
     let fromDeliveryOrders: any[] = [];
@@ -395,8 +393,8 @@ function CustomerTrackContent() {
   // 1. Build a map of existing real orders by slot to avoid projecting over them
   const slotMap = new Set<string>();
   allOrders.forEach(o => {
-    const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date());
-    slotMap.add(`${d.toLocaleDateString('en-CA')}_${o.meal?.type || 'lunch'}`);
+    const dateKey = o.date || o.delivery_date || (o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date())).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    slotMap.add(`${dateKey}_${o.meal?.type || 'lunch'}`);
   });
 
   // 2. Project future orders from active subscriptions for the next 2 days

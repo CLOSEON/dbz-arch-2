@@ -27,16 +27,17 @@ export const processTimeBasedReminders = onSchedule({
       
     for (const doc of ordersSnap.docs) {
       const order = doc.data();
+      if (!order.date) continue;
       
-      // Parse order date string
-      const [year, month, day] = order.date.split('-').map(Number);
-      let deliveryDate = new Date(year, month - 1, day);
+      const normSlot = (order.delivery_slot || order.scheduledSlot || '').toLowerCase();
+      let slotHour = 13;
+      if (normSlot === '8am' || normSlot === 'breakfast') slotHour = 8;
+      else if (normSlot === '11am' || normSlot === 'lunch') slotHour = 11;
+      else if (normSlot === '8pm' || normSlot === 'dinner') slotHour = 20;
       
-      // Calculate actual delivery time based on slot
-      if (order.delivery_slot === '8am') deliveryDate.setHours(8, 0, 0, 0);
-      else if (order.delivery_slot === '11am') deliveryDate.setHours(11, 0, 0, 0);
-      else if (order.delivery_slot === '8pm') deliveryDate.setHours(20, 0, 0, 0);
-      else deliveryDate.setHours(13, 0, 0, 0); // fallback
+      // Construct exact IST datetime and parse to UTC moment
+      const deliveryDate = new Date(`${order.date}T${String(slotHour).padStart(2, '0')}:00:00+05:30`);
+      if (isNaN(deliveryDate.getTime())) continue;
       
       // Check 4-hour window (Swap reminder)
       if (deliveryDate >= fourHoursFromNow && deliveryDate < fiveHoursFromNow) {
@@ -72,12 +73,16 @@ export const processTimeBasedReminders = onSchedule({
 
     for (const batchDoc of batchesSnap.docs) {
       const batch = batchDoc.data();
-      const [year, month, day] = batch.date.split('-').map(Number);
-      let deliveryDate = new Date(year, month - 1, day);
-      
-      if (batch.slot === '8am') deliveryDate.setHours(8, 0, 0, 0);
-      else if (batch.slot === '11am') deliveryDate.setHours(11, 0, 0, 0);
-      else if (batch.slot === '8pm') deliveryDate.setHours(20, 0, 0, 0);
+      if (!batch.date) continue;
+
+      const normSlot = (batch.slot || '').toLowerCase();
+      let slotHour = 13;
+      if (normSlot === '8am' || normSlot === 'breakfast') slotHour = 8;
+      else if (normSlot === '11am' || normSlot === 'lunch') slotHour = 11;
+      else if (normSlot === '8pm' || normSlot === 'dinner') slotHour = 20;
+
+      const deliveryDate = new Date(`${batch.date}T${String(slotHour).padStart(2, '0')}:00:00+05:30`);
+      if (isNaN(deliveryDate.getTime())) continue;
 
       // If delivery is exactly in the 1-2 hour window, send reminder
       if (deliveryDate >= oneHourFromNow && deliveryDate < twoHoursFromNow) {
@@ -96,32 +101,22 @@ export const processTimeBasedReminders = onSchedule({
 
 
 /**
- * Forms Batches for vendors exactly 4 hours prior to the delivery slot.
+ * Helper to get IST date string (YYYY-MM-DD).
  */
-export const formBatches = onSchedule({
-  schedule: '0 * * * *',
-  timeZone: 'Asia/Kolkata'
-}, async (event) => {
-  const db = admin.firestore();
-  const now = new Date();
-  
-  // Calculate target delivery time (4 hours from now)
-  const targetDate = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  const targetDateStr = targetDate.toISOString().split('T')[0];
-  const targetHour = targetDate.getHours();
-  
-  let targetSlot = '';
-  if (targetHour === 8) targetSlot = '8am';
-  else if (targetHour === 11) targetSlot = '11am';
-  else if (targetHour === 20) targetSlot = '8pm';
-  
-  if (!targetSlot) {
-    console.log(`[formBatches] No slot aligned with target hour ${targetHour}. Skipping.`);
-    return;
-  }
-  
-  console.log(`[formBatches] Forming batches for date: ${targetDateStr}, slot: ${targetSlot}`);
-  
+export const getISTDateString = (d: Date = new Date()): string => {
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  return new Date(d.getTime() + istOffsetMs).toISOString().split('T')[0];
+};
+
+/**
+ * Helper to batch orders for a specific date and slot, supporting initial formation and catch-up.
+ */
+async function processSlotBatches(
+  db: FirebaseFirestore.Firestore,
+  targetDateStr: string,
+  targetSlot: string,
+  slotAliases: string[]
+): Promise<number> {
   // 0. Expire any pending swaps for this slot to ensure no race conditions with batch formation
   const pendingSwapsSnap = await db.collection('swap_requests').where('status', '==', 'broadcasted').get();
   const swapPromises = pendingSwapsSnap.docs.map(async (swapDoc) => {
@@ -130,7 +125,7 @@ export const formBatches = onSchedule({
       const orderDoc = await db.collection('orders').doc(swap.order_id).get();
       if (orderDoc.exists) {
         const order = orderDoc.data()!;
-        if (order.date === targetDateStr && order.delivery_slot === targetSlot) {
+        if (order.date === targetDateStr && (order.delivery_slot === targetSlot || slotAliases.includes(order.delivery_slot))) {
           await swapDoc.ref.update({ status: 'expired' });
           const broadcastsSnap = await db.collection('swap_broadcasts')
             .where('swap_request_id', '==', swapDoc.id)
@@ -147,77 +142,185 @@ export const formBatches = onSchedule({
   });
   await Promise.all(swapPromises);
 
-  // 1. Only lock orders that are strictly in 'created' status and already assigned to a vendor
+  // 1. Query orders for this slot and date that are unbatched and ready to be batched
   const ordersSnap = await db.collection('orders')
     .where('date', '==', targetDateStr)
-    .where('delivery_slot', '==', targetSlot)
-    .where('status', '==', 'created')
+    .where('status', 'in', ['created', 'pending'])
     .get();
-    
+
   const vendorOrders = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
   for (const doc of ordersSnap.docs) {
     const order = doc.data();
-    if (order.vendor_id) {
-      if (!vendorOrders.has(order.vendor_id)) vendorOrders.set(order.vendor_id, []);
-      vendorOrders.get(order.vendor_id)!.push(doc);
+    const orderSlot = (order.delivery_slot || order.scheduledSlot || '').toLowerCase();
+    const isMatchingSlot = orderSlot === targetSlot || slotAliases.includes(orderSlot);
+
+    // Only lock orders that belong to this slot and are not already assigned to another batch
+    if (isMatchingSlot && (!order.batch_id || order.batch_id.trim() === '')) {
+      const vId = order.vendor_id || order.vendorId;
+      if (vId) {
+        if (!vendorOrders.has(vId)) vendorOrders.set(vId, []);
+        vendorOrders.get(vId)!.push(doc);
+      }
     }
   }
-  
+
   for (const [vendorId, docs] of vendorOrders.entries()) {
     const batchId = `BATCH-${vendorId}-${targetDateStr}-${targetSlot}`;
     const orderIds = docs.map(d => d.id);
     const batchRef = db.collection('batches').doc(batchId);
-    
+
+    let isNewBatch = false;
+
     await db.runTransaction(async (transaction) => {
       const batchDoc = await transaction.get(batchRef);
-      if (batchDoc.exists) return; // Batch already formed (idempotent check)
-      
-      // 1. Create Batch
-      transaction.set(batchRef, {
-        id: batchId,
-        vendor_id: vendorId,
-        date: targetDateStr,
-        slot: targetSlot,
-        order_ids: orderIds,
-        status: 'notified',
-        total_count: orderIds.length,
-        last_notified_count: orderIds.length, // Initialize for debounce tracking
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // 2. Update Orders
-      for (const d of docs) {
-        transaction.update(d.ref, {
-          batch_id: batchId,
-          status: 'vendor_notified',
+
+      if (batchDoc.exists) {
+        // Catch-up batching: append newly arrived unbatched orders to existing batch
+        const existingData = batchDoc.data()!;
+        const existingOrderIds: string[] = existingData.order_ids || [];
+        const newOrderIds = orderIds.filter(id => !existingOrderIds.includes(id));
+
+        if (newOrderIds.length > 0) {
+          const combinedIds = [...existingOrderIds, ...newOrderIds];
+          transaction.update(batchRef, {
+            order_ids: combinedIds,
+            total_count: combinedIds.length,
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          for (const d of docs.filter(doc => newOrderIds.includes(doc.id))) {
+            transaction.update(d.ref, {
+              batch_id: batchId,
+              delivery_slot: targetSlot,
+              status: existingData.status === 'ready' ? 'vendor_ready' : 'vendor_notified',
+              updated_at: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const logRef = db.collection('order_status_logs').doc();
+            transaction.set(logRef, {
+              id: logRef.id,
+              order_id: d.id,
+              from_status: d.data().status,
+              to_status: existingData.status === 'ready' ? 'vendor_ready' : 'vendor_notified',
+              actor: 'system_batcher_catchup',
+              timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
+      } else {
+        isNewBatch = true;
+        // 1. Create Batch
+        transaction.set(batchRef, {
+          id: batchId,
+          vendor_id: vendorId,
+          date: targetDateStr,
+          slot: targetSlot,
+          order_ids: orderIds,
+          status: 'notified',
+          total_count: orderIds.length,
+          last_notified_count: orderIds.length, // Initialize for debounce tracking
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
           updated_at: admin.firestore.FieldValue.serverTimestamp()
         });
-        
-        // 3. Status Log
-        const logRef = db.collection('order_status_logs').doc();
-        transaction.set(logRef, {
-          id: logRef.id,
-          order_id: d.id,
-          from_status: d.data().status,
-          to_status: 'vendor_notified',
-          actor: 'system_batcher',
-          timestamp: admin.firestore.FieldValue.serverTimestamp()
-        });
+
+        // 2. Update Orders
+        for (const d of docs) {
+          transaction.update(d.ref, {
+            batch_id: batchId,
+            delivery_slot: targetSlot,
+            status: 'vendor_notified',
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // 3. Status Log
+          const logRef = db.collection('order_status_logs').doc();
+          transaction.set(logRef, {
+            id: logRef.id,
+            order_id: d.id,
+            from_status: d.data().status,
+            to_status: 'vendor_notified',
+            actor: 'system_batcher',
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
       }
     });
-    
-    // Send initial vendor notification: "Prepare {count} tiffins for {slot} today"
-    await publishEvent(
-      'batch_created',
-      vendorId,
-      'vendor',
-      `batch_created_${batchId}`,
-      { slot: targetSlot, count: orderIds.length, batch_id: batchId }
-    );
+
+    if (isNewBatch) {
+      await publishEvent(
+        'batch_created',
+        vendorId,
+        'vendor',
+        `batch_created_${batchId}`,
+        { slot: targetSlot, count: orderIds.length, batch_id: batchId }
+      );
+    }
   }
+
+  return vendorOrders.size;
+}
+
+/**
+ * Forms Batches for vendors exactly 4 hours prior to the delivery slot in IST,
+ * and performs catch-up batching for any unbatched active orders in today's slot.
+ */
+export const formBatches = onSchedule({
+  schedule: '0 * * * *',
+  timeZone: 'Asia/Kolkata'
+}, async (event) => {
+  const db = admin.firestore();
+  const now = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
   
-  console.log(`[formBatches] Processed ${vendorOrders.size} batches.`);
+  const istNow = new Date(now.getTime() + istOffsetMs);
+  const todayDateStr = istNow.toISOString().split('T')[0];
+  const currentHourIST = istNow.getUTCHours();
+
+  // 1. 4-hour advance batching window
+  const istTarget = new Date(now.getTime() + (4 * 60 * 60 * 1000) + istOffsetMs);
+  const targetDateStr = istTarget.toISOString().split('T')[0];
+  const targetHour = istTarget.getUTCHours();
+  
+  let targetSlot = '';
+  let slotAliases: string[] = [];
+  if (targetHour === 8) {
+    targetSlot = '8am';
+    slotAliases = ['8am', 'breakfast', '8'];
+  } else if (targetHour === 11) {
+    targetSlot = '11am';
+    slotAliases = ['11am', 'lunch', '1pm', '13'];
+  } else if (targetHour === 20) {
+    targetSlot = '8pm';
+    slotAliases = ['8pm', 'dinner', '20'];
+  }
+
+  let totalBatchesProcessed = 0;
+
+  if (targetSlot) {
+    console.log(`[formBatches] 4-Hour advance batching for IST date: ${targetDateStr}, slot: ${targetSlot} (hour: ${targetHour})`);
+    const count = await processSlotBatches(db, targetDateStr, targetSlot, slotAliases);
+    totalBatchesProcessed += count;
+  }
+
+  // 2. Dynamic Catch-Up Batching: Check active slots for today (orders placed within 4-hour window)
+  const todaySlots: { slot: string; aliases: string[]; cutoffHour: number }[] = [
+    { slot: '8am', aliases: ['8am', 'breakfast', '8'], cutoffHour: 9 },
+    { slot: '11am', aliases: ['11am', 'lunch', '1pm', '13'], cutoffHour: 13 },
+    { slot: '8pm', aliases: ['8pm', 'dinner', '20'], cutoffHour: 21 },
+  ];
+
+  for (const s of todaySlots) {
+    // Only check if current IST time hasn't passed the meal window and not already processed as targetSlot
+    if (currentHourIST <= s.cutoffHour && !(targetDateStr === todayDateStr && targetSlot === s.slot)) {
+      const catchupCount = await processSlotBatches(db, todayDateStr, s.slot, s.aliases);
+      if (catchupCount > 0) {
+        console.log(`[formBatches] Catch-up batching added orders to ${catchupCount} batches for slot ${s.slot} today.`);
+        totalBatchesProcessed += catchupCount;
+      }
+    }
+  }
+
+  console.log(`[formBatches] Total batches processed: ${totalBatchesProcessed}.`);
 });
 
 /**
@@ -231,7 +334,7 @@ export const processBatchSkipUpdates = onSchedule({
 }, async (event) => {
   const db = admin.firestore();
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getISTDateString(now);
 
   // Find all active notified batches for today where the count changed
   const batchesSnap = await db.collection('batches')
@@ -274,7 +377,7 @@ export const checkStuckOrders = onSchedule({
   const db = admin.firestore();
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getISTDateString(now);
 
   // We only check today's active orders in specific states
   const statusesToCheck = ['vendor_preparing', 'picked_up', 'out_for_delivery'];
@@ -337,7 +440,7 @@ export const dispatchRetryAndExpansion = onSchedule({
   // that don't have a rider_trip_id. For simplicity, we just query all batches that 
   // have dispatch tracking fields initialized (or we can initialize them here).
   
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getISTDateString();
   const batchesSnap = await db.collection('batches')
     .where('date', '==', todayStr)
     .get();

@@ -50,6 +50,7 @@ export function subscribeToAgentDeliveries(
     q,
     { includeMetadataChanges: true },
     (snap) => {
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const end = new Date();
@@ -68,15 +69,20 @@ export function subscribeToAgentDeliveries(
             vendorId: data.vendor_id || data.vendorId,
             vendorPhone: data.vendor_phone || data.vendorPhone || '',
             driverId: data.driverId || data.rider_id || null,
+            date: data.date || data.delivery_date,
             createdAt: data.created_at || data.createdAt,
             meal: data.meal || { type: data.meal_type || 'lunch', name: 'Tiffin' },
             address: data.address || data.delivery_address || { lat: 0, lng: 0, line1: '' },
             scheduledSlot: data.delivery_slot || data.scheduledSlot || '11am',
             status: data.status,
-          } as DeliveryOrder;
+          } as unknown as DeliveryOrder;
         })
         .filter((order) => {
-          // Filter to only include today's orders
+          // Filter to only include today's orders (by date string first, then fallback to createdAt)
+          const orderDate = (order as any).date || (order as any).delivery_date;
+          if (orderDate) {
+            return orderDate === todayStr;
+          }
           if (!order.createdAt) return false;
           const createdAt = order.createdAt as { seconds?: number } | string | Date;
           const timestamp = typeof createdAt === 'string'
@@ -223,7 +229,6 @@ export async function getVendorTodayOrders(
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
   const end = new Date(date);
-  end.setDate(end.getDate() + 5);
   end.setHours(23, 59, 59, 999);
 
   // Query only by vendor_id (or vendorId) to avoid composite index requirement
@@ -252,7 +257,11 @@ export async function getVendorTodayOrders(
   return docs
     .map((d) => ({ id: d.id, ...d.data() } as DeliveryOrder))
     .filter((o: any) => {
-      // In-memory date filtering
+      // In-memory date filtering: check canonical date string first
+      const oDate = o.date || o.delivery_date;
+      if (oDate) {
+        return oDate === date;
+      }
       const createdAt = o.createdAt || o.created_at;
       if (!createdAt) return false;
       
@@ -410,18 +419,36 @@ export async function markVendorOrdersReady(
   const end = new Date(date);
   end.setHours(23, 59, 59, 999);
 
-  const q = query(
+  let q = query(
     collection(db, 'orders'),
-    where('vendorId', '==', vendorId),
-    where('createdAt', '>=', Timestamp.fromDate(start)),
-    where('createdAt', '<=', Timestamp.fromDate(end))
+    where('vendor_id', '==', vendorId)
   );
-
-  const snap = await getDocs(q);
+  let snap = await getDocs(q);
+  if (snap.empty) {
+    q = query(
+      collection(db, 'orders'),
+      where('vendorId', '==', vendorId)
+    );
+    snap = await getDocs(q);
+  }
   if (snap.empty) return;
 
   const batch = writeBatch(db);
+  let count = 0;
   snap.docs.forEach((d) => {
+    const data = d.data();
+    const oDate = data.date || data.delivery_date;
+    if (oDate) {
+      if (oDate !== date) return;
+    } else {
+      const createdAt = data.createdAt || data.created_at;
+      if (!createdAt) return;
+      const timeMs = createdAt?.toDate ? createdAt.toDate().getTime() : (createdAt?.seconds ? createdAt.seconds * 1000 : new Date(createdAt).getTime());
+      if (timeMs < start.getTime() || timeMs > end.getTime()) return;
+    }
+
+    if (['delivered', 'cancelled', 'failed', 'swapped_out'].includes(data.status)) return;
+
     batch.update(d.ref, {
       status: 'picked_up',
       'timestamps.pickedAt': Timestamp.now(),
@@ -435,9 +462,12 @@ export async function markVendorOrdersReady(
       message: `Your assigned batch #${d.id.slice(-4).toUpperCase()} from the kitchen is ready for handover!`,
       createdAt: Timestamp.now(),
     });
+    count++;
   });
 
-  await batch.commit();
+  if (count > 0) {
+    await batch.commit();
+  }
 }
 
 /**
@@ -454,13 +484,6 @@ export async function getAdminDeliveryOverview(
   const end = new Date(date);
   end.setHours(23, 59, 59, 999);
 
-  const q = query(
-    collection(db, 'orders'),
-    where('createdAt', '>=', Timestamp.fromDate(start)),
-    where('createdAt', '<=', Timestamp.fromDate(end))
-  );
-
-  const snap = await getDocs(q);
   const overview: Record<string, number> = {
     preparing: 0,
     picked_up: 0,
@@ -469,12 +492,47 @@ export async function getAdminDeliveryOverview(
     failed: 0,
   };
 
-  snap.docs.forEach((d) => {
-    const status = d.data().status as string;
-    if (status && status in overview) {
-      overview[status]++;
-    }
-  });
+  const seenIds = new Set<string>();
+
+  // Primary: query by canonical date
+  try {
+    const qDate = query(
+      collection(db, 'orders'),
+      where('date', '==', date)
+    );
+    const snapDate = await getDocs(qDate);
+    snapDate.docs.forEach((d) => {
+      seenIds.add(d.id);
+      const status = d.data().status as string;
+      if (status && status in overview) {
+        overview[status]++;
+      }
+    });
+  } catch (err) {
+    console.warn('Error querying orders by date in getAdminDeliveryOverview:', err);
+  }
+
+  // Secondary fallback: query by createdAt for legacy orders without date field
+  try {
+    const qCreated = query(
+      collection(db, 'orders'),
+      where('createdAt', '>=', Timestamp.fromDate(start)),
+      where('createdAt', '<=', Timestamp.fromDate(end))
+    );
+    const snapCreated = await getDocs(qCreated);
+    snapCreated.docs.forEach((d) => {
+      if (seenIds.has(d.id)) return;
+      seenIds.add(d.id);
+      const data = d.data();
+      if (data.date && data.date !== date) return;
+      const status = data.status as string;
+      if (status && status in overview) {
+        overview[status]++;
+      }
+    });
+  } catch (err) {
+    console.warn('Error querying orders by createdAt in getAdminDeliveryOverview:', err);
+  }
 
   return overview;
 }
@@ -496,25 +554,43 @@ export async function sendDelayNotification(
   vendorId: string,
   payload: DelayPayload
 ): Promise<void> {
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
 
   // Get active delivery orders (where status is preparing, picked_up, or out_for_delivery)
-  const q = query(
+  let q = query(
     collection(db, 'orders'),
-    where('vendorId', '==', vendorId),
-    where('createdAt', '>=', Timestamp.fromDate(start)),
-    where('createdAt', '<=', Timestamp.fromDate(end)),
-    where('status', 'in', ['preparing', 'picked_up', 'out_for_delivery'])
+    where('vendor_id', '==', vendorId),
+    where('status', 'in', ['preparing', 'picked_up', 'out_for_delivery', 'vendor_ready', 'rider_assigned'])
   );
-
-  const snap = await getDocs(q);
+  let snap = await getDocs(q);
+  if (snap.empty) {
+    q = query(
+      collection(db, 'orders'),
+      where('vendorId', '==', vendorId),
+      where('status', 'in', ['preparing', 'picked_up', 'out_for_delivery', 'vendor_ready', 'rider_assigned'])
+    );
+    snap = await getDocs(q);
+  }
   if (snap.empty) return;
 
   const batch = writeBatch(db);
+  let count = 0;
   snap.docs.forEach((docSnap) => {
+    const data = docSnap.data();
+    const orderDate = data.date || data.delivery_date;
+    if (orderDate) {
+      if (orderDate !== todayStr) return;
+    } else {
+      const createdAt = data.createdAt || data.created_at;
+      if (!createdAt) return;
+      const timeMs = createdAt?.toDate ? createdAt.toDate().getTime() : (createdAt?.seconds ? createdAt.seconds * 1000 : new Date(createdAt).getTime());
+      if (timeMs < start.getTime() || timeMs > end.getTime()) return;
+    }
+    count++;
     // Generate a reference for the notifications subcollection
     const notifRef = doc(collection(db, 'orders', docSnap.id, 'notifications'));
     batch.set(notifRef, {
@@ -525,7 +601,9 @@ export async function sendDelayNotification(
     });
   });
 
-  await batch.commit();
+  if (count > 0) {
+    await batch.commit();
+  }
 }
 
 /**
