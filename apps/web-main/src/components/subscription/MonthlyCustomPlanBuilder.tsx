@@ -884,6 +884,7 @@ export function MonthlyCustomPlanBuilder({
             <span>Pricing Breakdown per Meal:</span>
             <span className="font-medium text-slate-700">
               Kitchen Food Rate + ₹11 Delivery Fee + 5% Platform Margin
+              Kitchen Food Rate + ₹11 Delivery Fee + 4% Platform Margin
             </span>
           </div>
 

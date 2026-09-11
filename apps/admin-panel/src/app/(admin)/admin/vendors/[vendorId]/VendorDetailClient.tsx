@@ -531,11 +531,25 @@ export default function VendorDetailClient(props: PageProps) {
           return !isNaN(p) && p > 0 ? p : 65;
         })(),
         custom_component_rates: (() => {
-          const sanitizedRates: Record<string, { vendorRate: number }> = {};
+          const sanitizedRates: Record<string, {
+            vendorCost: number;
+            rawCost: number;
+            vendorRate: number;
+            customerRate: number;
+            updatedAt: string;
+          }> = {};
           Object.entries(editForm.custom_component_rates || {}).forEach(([compId, val]) => {
             const num = Number(val);
             if (!isNaN(num) && num > 0) {
-              sanitizedRates[compId] = { vendorRate: num };
+              const vendorPayout = Math.round(num * (65 / 30) * 100) / 100;
+              const customerPrice = Math.max(1, Math.ceil(vendorPayout), Math.round(vendorPayout / 0.96));
+              sanitizedRates[compId] = {
+                vendorCost: num,
+                rawCost: num,
+                vendorRate: vendorPayout,
+                customerRate: customerPrice,
+                updatedAt: new Date().toISOString(),
+              };
             }
           });
           return sanitizedRates;
@@ -549,7 +563,8 @@ export default function VendorDetailClient(props: PageProps) {
               overrideVal !== '' &&
               !isNaN(Number(overrideVal)) &&
               Number(overrideVal) > 0;
-            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+            const rawCost = isOverridden ? Number(overrideVal) : (comp.rawCost ?? (comp.id === 'roti' ? 1.5 : 5));
+            const rate = Math.round(rawCost * (65 / 30) * 100) / 100;
             return sum + (comp.baseQuantity ?? 0) * rate;
           }, 0);
           return Math.round(basePayout * 100) / 100;
@@ -563,7 +578,8 @@ export default function VendorDetailClient(props: PageProps) {
               overrideVal !== '' &&
               !isNaN(Number(overrideVal)) &&
               Number(overrideVal) > 0;
-            const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+            const rawCost = isOverridden ? Number(overrideVal) : (comp.rawCost ?? (comp.id === 'roti' ? 1.5 : 5));
+            const rate = Math.round(rawCost * (65 / 30) * 100) / 100;
             return sum + (comp.baseQuantity ?? 0) * rate;
           }, 0);
           return Math.round(basePayout * 100) / 100;
@@ -1481,14 +1497,17 @@ export default function VendorDetailClient(props: PageProps) {
                       overrideVal !== '' &&
                       !isNaN(Number(overrideVal)) &&
                       Number(overrideVal) > 0;
-                    const rate = isOverridden ? Number(overrideVal) : (comp.vendorRate ?? 0);
+                    const rawCost = isOverridden ? Number(overrideVal) : (comp.rawCost ?? (comp.id === 'roti' ? 1.5 : 5));
+                    const rate = Math.round(rawCost * (65 / 30) * 100) / 100;
                     return sum + (comp.baseQuantity ?? 0) * rate;
                   }, 0);
 
                   const effectivePayout =
                     standardMealPayout > 0
                       ? standardMealPayout
-                      : (30 / (100 - safeMargin)) * 100;
+                      : 65;
+
+                  const customerMealFoodPrice = Math.max(1, Math.round(effectivePayout / 0.96));
 
                   return (
                     <>
@@ -1507,25 +1526,32 @@ export default function VendorDetailClient(props: PageProps) {
                         >
                           {overriddenComps.length > 0
                             ? `${overriddenComps.length} Custom Component Rates`
-                            : `${activeMargin}% kitchen margin`}
+                            : 'Standard Payout Ratio'}
                         </span>
                       </div>
 
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-2xl font-black text-slate-900">
-                          ₹{effectivePayout.toFixed(2)}
-                        </span>
-                        <span className="text-xs font-bold text-slate-500">payout / standard meal</span>
+                      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-black text-slate-900">
+                            ₹{effectivePayout.toFixed(2)}
+                          </span>
+                          <span className="text-xs font-bold text-slate-500">payout / standard meal</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            Customer Food Price: ₹{customerMealFoodPrice} (+ ₹11 del = ₹{customerMealFoodPrice + 11})
+                          </span>
+                        </div>
                       </div>
 
                       <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
                         {overriddenComps.length > 0 ? (
                           <>
-                            Base thali payout calculated dynamically from custom rates: 4× Roti, 1× Rice, 1× Sabzi, 1× Dal.
+                            Base thali payout calculated dynamically from raw vendor costs: 4× Roti, 1× Rice, 1× Sabzi, 1× Dal.
                           </>
                         ) : (
                           <>
-                            Global standard thali is ₹50.00 (40% margin). Override component rates below to customize this kitchen's payout.
+                            Global standard thali base payout is ₹65.00 (from ₹30 raw kitchen cost). Override raw component costs below to customize this kitchen.
                           </>
                         )}
                       </p>
@@ -1541,7 +1567,9 @@ export default function VendorDetailClient(props: PageProps) {
                               overrideVal !== '' &&
                               !isNaN(Number(overrideVal)) &&
                               Number(overrideVal) > 0;
-                            const rate = isOverridden ? Number(overrideVal) : (c.vendorRate ?? 0);
+                            const rawCost = isOverridden ? Number(overrideVal) : (c.rawCost ?? (c.id === 'roti' ? 1.5 : 5));
+                            const rate = Math.round(rawCost * (65 / 30) * 100) / 100;
+                            const custItemPrice = Math.max(1, Math.ceil(rate), Math.round(rate / 0.96));
                             const subtotal = (c.baseQuantity ?? 0) * rate;
 
                             return (
@@ -1554,8 +1582,11 @@ export default function VendorDetailClient(props: PageProps) {
                                 }`}
                               >
                                 <span>{c.baseQuantity}× {c.name}:</span>
-                                <span>₹{rate.toFixed(1)}</span>
-                                <span className="text-slate-400 font-normal">(= ₹{subtotal.toFixed(1)})</span>
+                                <span>Cost ₹{rawCost.toFixed(1)}</span>
+                                <span className="text-slate-400">→</span>
+                                <span>Payout ₹{rate.toFixed(1)}</span>
+                                <span className="text-slate-400">→</span>
+                                <span className="text-emerald-800 font-bold">Cust ₹{custItemPrice}</span>
                               </span>
                             );
                           })}
@@ -1576,9 +1607,11 @@ export default function VendorDetailClient(props: PageProps) {
                 <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                   <UtensilsCrossed className="w-3.5 h-3.5 text-brand" />
                   Kitchen Component Rate Overrides
+                  Kitchen Component Rate Overrides (Raw Vendor Cost)
                 </h4>
                 <p className="text-[11px] text-slate-500">
                   Override standard vendor payout rates for this specific kitchen (saved under <code>users/{'{'}vendorId{'}'}.custom_component_rates</code>). Leave blank to inherit global catalog rates.
+                  Directly enter the raw vendor cost per item (e.g. ₹1.5 for Roti). The system internally calculates the Vendor Payout (multiplier 65/30), 4% monthly margin, and Customer Price in real-time.
                 </p>
               </div>
               <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
@@ -1590,6 +1623,9 @@ export default function VendorDetailClient(props: PageProps) {
               {componentCatalog.map((comp) => {
                 const currentOverride = editForm.custom_component_rates[comp.id] || '';
                 const isOverridden = Boolean(currentOverride && Number(currentOverride) > 0);
+                const rawCost = isOverridden ? Number(currentOverride) : (comp.rawCost ?? (comp.id === 'roti' ? 1.5 : 5));
+                const vendorPayout = Math.round(rawCost * (65 / 30) * 100) / 100;
+                const customerPrice = Math.max(1, Math.ceil(vendorPayout), Math.round(vendorPayout / 0.96));
 
                 return (
                   <div
@@ -1607,23 +1643,23 @@ export default function VendorDetailClient(props: PageProps) {
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-slate-200/80 text-slate-600'
                       }`}>
-                        {isOverridden ? `Override ₹${currentOverride}` : 'Global Default'}
+                        {isOverridden ? `Cost ₹${currentOverride}` : 'Global Default'}
                       </span>
                     </div>
 
                     <div className="text-[11px] text-slate-500 font-medium mb-2 flex items-center justify-between">
-                      <span>Global Rate: ₹{comp.vendorRate}/{comp.unit}</span>
+                      <span>Default Cost: ₹{comp.rawCost ?? 1.5}/{comp.unit}</span>
                       <span className="text-slate-400 capitalize">{comp.category}</span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 mb-2">
                       <div className="relative flex-1">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
                         <input
                           type="number"
                           min="0"
                           step="0.5"
-                          placeholder={String(comp.vendorRate)}
+                          placeholder={String(comp.rawCost ?? 1.5)}
                           value={currentOverride}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -1654,6 +1690,18 @@ export default function VendorDetailClient(props: PageProps) {
                           <X className="w-3.5 h-3.5" />
                         </button>
                       )}
+                    </div>
+
+                    {/* Live Derived Rates Preview */}
+                    <div className="bg-white/80 p-2 rounded-lg border border-amber-200/60 text-[10px] space-y-0.5">
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Vendor Payout (×2.167):</span>
+                        <span className="font-bold text-slate-900">₹{vendorPayout.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-emerald-800">
+                        <span className="font-bold">Customer Price (4% margin):</span>
+                        <span className="font-black text-emerald-900">₹{customerPrice.toFixed(0)}/{comp.unit}</span>
+                      </div>
                     </div>
                   </div>
                 );
