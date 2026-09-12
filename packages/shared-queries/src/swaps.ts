@@ -13,6 +13,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from '@dabzzo/shared-auth';
+import { readOrder, addressCoords } from './converters';
 import type { 
   SwapRequest, 
   SwapBroadcastRecipient, 
@@ -157,18 +158,21 @@ export async function requestSwap(
   
   // Find candidates
   for (const d of deliverySnap.docs) {
-    const delivery = d.data() as any; // canonical Order schema
+    const delivery = readOrder(d)!; // canonical Order schema + legacy aliases
     
     // Ignore self, ignore same meal types, ignore colluders
     if (delivery.user_id === userId) continue;
     if (delivery.meal_type === myMealType) continue; // They must have the opposite meal
     if (excludedUsers.has(delivery.user_id)) continue;
     
-    // Use delivery_address snapshot
-    if (!delivery.delivery_address?.lat || !delivery.delivery_address?.lng) continue;
+    // Use delivery_address snapshot. This is a string on subscription-created
+    // orders and an object on trigger-created ones, so coordinates are only
+    // available for the latter; skip candidates we cannot place.
+    const coords = addressCoords(delivery.delivery_address);
+    if (!coords) continue;
 
     // Check distance
-    const dist = getDistance(myLat, myLng, delivery.delivery_address.lat, delivery.delivery_address.lng);
+    const dist = getDistance(myLat, myLng, coords.lat, coords.lng);
     if (dist <= 2.0) { // 2km radius
       // Create broadcast entry
       const bRef = doc(collection(db, 'swap_broadcasts'));

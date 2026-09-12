@@ -312,6 +312,12 @@ export type OrderStatus =
   | 'dispatched'
   | 'cancelled';
 
+export interface DeliveryAddress {
+  line1?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface Order {
   id: string;                  // format: ORD-{date}-{sequence}
   user_id: string;
@@ -320,7 +326,15 @@ export interface Order {
   delivery_slot: string;       // '8am', '11am', '8pm'
   vendor_id?: string;          // Nullable until batch assignment
   batch_id?: string;           // Nullable until batch assignment, FK to Batch
-  delivery_address: string;    // Snapshot at order creation
+  /**
+   * Snapshot at order creation. Genuinely polymorphic in Firestore: the
+   * delivery trigger (functions/src/deliveryTriggers.ts) writes an object with
+   * coordinates, while subscription creation writes a plain address string.
+   * Typed as the union so call sites have to handle both — reading `.lat` off
+   * the string form silently yields undefined, which is how the swap-candidate
+   * search could quietly match nobody.
+   */
+  delivery_address: string | DeliveryAddress;
   status: OrderStatus;
   total_amount?: number;
   amount?: number;
@@ -332,6 +346,50 @@ export interface Order {
   created_at: FirestoreTimestamp;
   updated_at: FirestoreTimestamp;
 }
+
+/**
+ * What an `orders` document actually looks like in Firestore today.
+ *
+ * `Order` above is the canonical schema. Real documents also still carry
+ * camelCase fields from before the consolidation described in
+ * deliveryTriggers.ts, because existing documents were never backfilled. Code
+ * reading orders was casting `snap.data() as any` to reach them, which turned
+ * off checking for the canonical fields too.
+ *
+ * Use this type (via the converters in @dabzzo/shared-queries/converters) when
+ * READING order documents. Use `Order` when writing new ones — new documents
+ * should only use the canonical names.
+ */
+export interface LegacyOrderFields {
+  /** Pre-consolidation alias for `user_id`. */
+  customerId?: string;
+  /** Pre-consolidation alias for `vendor_id`. */
+  vendorId?: string;
+  /** Pre-consolidation alias for the assigned rider. */
+  driverId?: string;
+  /** Pre-consolidation alias for `subscription_id`. */
+  subscriptionId?: string;
+  /** Pre-consolidation alias for `delivery_slot`. */
+  scheduledSlot?: string;
+  /** Pre-consolidation alias for `created_at`. */
+  createdAt?: FirestoreTimestamp;
+  /** Pre-consolidation alias for `date`. */
+  delivery_date?: string;
+  subscription_id?: string;
+  customer_phone?: string;
+  customerPhone?: string;
+  vendor_phone?: string;
+  vendorPhone?: string;
+  address?: string;
+  meal?: string;
+  order_id?: string;
+  rider_id?: string;
+  /** Set on client-side projected (not yet persisted) orders. */
+  isProjected?: boolean;
+}
+
+/** An order document as read from Firestore: canonical fields plus legacy aliases. */
+export type StoredOrder = Order & LegacyOrderFields;
 
 export interface OrderStatusLog {
   id: string;

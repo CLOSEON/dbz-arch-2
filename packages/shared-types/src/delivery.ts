@@ -7,6 +7,10 @@ export type DeliveryStatus = "pending" | "preparing" | "vendor_ready" | "rider_a
 export interface DeliveryOrder {
   /** Unique identifier of the delivery order transaction */
   id: string;
+  /** Scheduled date (YYYY-MM-DD). Present on documents read from Firestore. */
+  date?: string;
+  /** Pre-consolidation alias for `date`, still present on older documents. */
+  delivery_date?: string;
   /** Reference to the associated active subscription plan */
   subscriptionId: string;
   /** Reference to the customer's user account identifier */

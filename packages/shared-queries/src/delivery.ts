@@ -20,11 +20,12 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@dabzzo/shared-auth';
-import type { Delivery, DeliveryStatus as OldDeliveryStatus } from '@dabzzo/shared-types';
+import type { Delivery, DeliveryStatus as OldDeliveryStatus, StoredOrder } from '@dabzzo/shared-types';
 import type { DeliveryOrder, DriverProfile, DeliveryStatus, RiderTrip, PickupStop, DropStop } from '@dabzzo/shared-types/delivery';
 import { awardUserCredit, consumeUserCreditsTx } from './swaps';
 import { createAuditLog } from './audit';
 import { getErrorMessage } from '@dabzzo/shared-lib/errors';
+import { readOrder } from './converters';
 
 // ==========================================
 // BACKWARD COMPATIBILITY LAYER FOR OLD FLIGHTS
@@ -80,7 +81,7 @@ export function subscribeToAgentDeliveries(
         })
         .filter((order) => {
           // Filter to only include today's orders (by date string first, then fallback to createdAt)
-          const orderDate = (order as any).date || (order as any).delivery_date;
+          const orderDate = order.date || order.delivery_date;
           if (orderDate) {
             return orderDate === todayStr;
           }
@@ -95,8 +96,8 @@ export function subscribeToAgentDeliveries(
         })
         .sort((a, b) => {
           // Sort by createdAt ascending (oldest first)
-          const aTime = (a as any).createdAt?.seconds ?? 0;
-          const bTime = (b as any).createdAt?.seconds ?? 0;
+          const aTime = a.createdAt?.seconds ?? 0;
+          const bTime = b.createdAt?.seconds ?? 0;
           return aTime - bTime;
         });
       callback(list, snap.metadata.fromCache);
@@ -689,7 +690,7 @@ export async function rescheduleDelivery(orderId: string): Promise<void> {
     throw new Error('Delivery order does not exist in collection.');
   }
 
-  const data = orderSnap.data() as any;
+  const data = readOrder(orderSnap)!;
 
   // Calculate tomorrow's exact date bounds
   const tomorrow = new Date();
@@ -888,7 +889,7 @@ export async function cancelScheduledTiffin(delivery: any, userId: string): Prom
       throw new Error('Order not found.');
     }
   } else {
-    data = snap.data() as any;
+    data = readOrder(snap)!;
   }
 
   if (data.user_id && data.user_id !== userId) throw new Error('Unauthorized.');
@@ -1014,7 +1015,7 @@ export async function undoSkipScheduledTiffin(delivery: any, userId: string): Pr
     throw new Error('Order not found.');
   }
   
-  const data = snap.data() as any;
+  const data = readOrder(snap)!;
   if (data.user_id && data.user_id !== userId) throw new Error('Unauthorized.');
   if (data.customerId && data.customerId !== userId) throw new Error('Unauthorized.');
 
