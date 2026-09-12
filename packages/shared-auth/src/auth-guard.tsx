@@ -62,8 +62,20 @@ function hasExtendedRoleMembership(user: AuthGuardUser | null, role: string): bo
       const vendor = roles?.vendor as { status?: string } | boolean | undefined;
       return (typeof vendor === 'object' && vendor?.status === 'verified') || vendor === true;
     }
-    case 'delivery':
-      return user.role === 'delivery_agent' || Boolean(roles?.delivery);
+    case 'delivery': {
+      // verifyRider (functions/src/adminManagementTriggers.ts) writes
+      // roles.rider.status while setting role 'delivery' -- the roles-map key
+      // and the role string genuinely differ for riders, unlike vendors.
+      // roles.delivery is checked too, but nothing in the codebase writes it;
+      // it is kept only in case legacy documents carry it.
+      const rider = roles?.rider as { status?: string } | boolean | undefined;
+      return (
+        user.role === 'delivery_agent' ||
+        (typeof rider === 'object' && rider?.status === 'verified') ||
+        rider === true ||
+        Boolean(roles?.delivery)
+      );
+    }
     default:
       return false;
   }

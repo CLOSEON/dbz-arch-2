@@ -1,3 +1,7 @@
+export {}; // module marker: without a top-level import/export TypeScript
+           // treats this file as a script, so its top-level consts collide
+           // with the other test files' in one global scope.
+
 const functionsTest = require('firebase-functions-test');
 
 /**
