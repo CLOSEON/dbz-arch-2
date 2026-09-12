@@ -1,0 +1,25 @@
+{
+  "name": "@dabzzo/shared-auth",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./admin": "./src/firebaseAdmin.ts"
+  },
+  "dependencies": {
+    "@capacitor-firebase/authentication": "^8.2.0",
+    "@capacitor-firebase/crashlytics": "^8.2.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.3.4",
+    "firebase": "^12.13.0",
+    "firebase-admin": "^13.1.0"
+  },
+  "peerDependencies": {
+    "next": "*",
+    "react": "*",
+    "react-dom": "*"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "functions",
+  "scripts": {
+    "build": "node ./node_modules/typescript/bin/tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "node ./node_modules/typescript/bin/tsc -p tsconfig.test.json && node ./node_modules/jest/bin/jest.js lib/__tests__/ --verbose"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.2.5",
+    "razorpay": "^2.9.8"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "firebase-functions-test": "^3.5.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "private": true
+}

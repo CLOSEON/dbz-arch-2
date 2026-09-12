@@ -1,0 +1,57 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Shared helpers ────────────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == "admin";
+    }
+
+    // Max upload size: 5 MB
+    function isUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // Allow only common image content types
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|gif|webp|svg\\+xml)');
+    }
+
+    // ── User profile images ───────────────────────────────────────────────
+    // Users may only upload to their own folder: uploads/users/{uid}/*
+    match /uploads/users/{userId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+                   && request.auth.uid == userId
+                   && isUnder5MB()
+                   && isImage();
+    }
+
+    // ── Vendor assets (menus, kitchen photos) ─────────────────────────────
+    // Vendors upload to their own folder: uploads/vendors/{uid}/*
+    match /uploads/vendors/{vendorId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+                   && request.auth.uid == vendorId
+                   && isUnder5MB()
+                   && isImage();
+    }
+
+    // ── General / shared uploads ──────────────────────────────────────────
+    // Any authenticated user can read; only admins can write to uncategorized paths
+    match /uploads/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isUnder5MB();
+    }
+
+    // ── Catch-all: deny everything else ───────────────────────────────────
+    match /{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+  }
+}
