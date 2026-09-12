@@ -4,9 +4,12 @@ import * as crypto from 'crypto';
 import Razorpay from 'razorpay';
 
 // Helper to get configured Razorpay client
+// SECURITY: no hardcoded fallback credentials. These must come from Cloud
+// Functions config/secrets in every environment; a missing value fails loudly
+// instead of silently falling back to a shared literal.
 export function getRazorpayInstance(): Razorpay {
-  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
+  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!key_id || !key_secret) {
     throw new HttpsError('failed-precondition', 'Razorpay credentials not configured.');
@@ -19,7 +22,11 @@ export function getRazorpayInstance(): Razorpay {
 }
 
 function getKeySecret(): string {
-  return process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
+  const secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!secret) {
+    throw new HttpsError('failed-precondition', 'Razorpay credentials not configured.');
+  }
+  return secret;
 }
 
 import {
@@ -464,7 +471,14 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
     }
 
     if (path === 'webhook' || path === 'webhook/') {
-      const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.NEXT_PUBLIC_RAZORPAY_WEBHOOK_SECRET || 'dabzzo_webhook_secret';
+      // SECURITY: server-only secret, no hardcoded fallback, and deliberately
+      // NOT read from a NEXT_PUBLIC_* var — that prefix is inlined into
+      // client bundles by Next.js and would leak the webhook secret to the browser.
+      const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      if (!secret) {
+        res.status(500).json({ error: 'Webhook secret not configured.' });
+        return;
+      }
       const signature = req.headers['x-razorpay-signature'] as string;
 
       if (!signature) {

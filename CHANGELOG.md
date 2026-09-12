@@ -6,13 +6,72 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
-## [Unreleased]
+## 2026-09-12 — Phase 0: Safety net
 
-Planning complete. Baseline captured in `IMPLEMENTATION_PLAN.md` §0:
-- 5 Next.js apps typecheck clean (0 errors)
-- `functions/` cannot typecheck/test until `npm --prefix functions install` runs (Phase 0)
-- Repo-wide lint: 1,142 errors / 626 warnings across 5 apps
-- No git repository exists yet
-- 117 files duplicated across apps; 39 have drifted into different versions
+**Baseline established:**
+- `git init` + baseline commit `9a04ece` (804 files, everything as of session start, nothing changed yet).
+- `.gitignore` hardened: added `android/.idea/`, `android/local.properties`, `android/app/build/`, `ios/App/Pods/`, `*.iml`, `.xcuserstate` and related IDE/build-artifact patterns not previously covered.
+- `npm --prefix functions install` (529 packages) — `functions/` had never been installed, which is why its `tsc --noEmit` appeared broken. Confirmed clean once installed.
+- `npm audit fix` (non-breaking) on `functions/`: 22 → 13 vulnerabilities. Eliminated 1 critical (`websocket-driver`) and all 6 high-severity findings. Remaining 13 moderate are all transitively pinned by `firebase-admin`'s dependency tree on an old `uuid`; fixing those needs a `firebase-admin` major version bump, deliberately deferred (not done silently — would need testing against the actual Cloud Functions before landing).
+- `functions` test baseline: 47/47 passing across 3 suites (`deliveryRedesign`, `deliveryTriggers`, `pricingEngine`). A 4th file, `integration.test.ts`, is excluded from the build — see finding below.
+- Added `typecheck` npm script to all 5 apps and to `functions/`; added root `npm run verify` (`typecheck:apps` + `typecheck:functions` + `lint:apps` + `test:functions`) as the one command that answers "is anything broken."
+- Added `.env.example` (repo root) and `functions/.env.example` — keys only, documents which vars are client-safe vs. server-only-never-NEXT_PUBLIC.
+- **Files:** `.gitignore`, `package.json` (root + 5 apps + functions), `.env.example`, `functions/.env.example` — new.
 
-No code changes made yet — awaiting go-ahead to begin Phase 0.
+### 🔴 Critical, fixed immediately: hardcoded live Razorpay secrets in source
+
+**Found:** `functions/src/razorpayFunctions.ts` had three `process.env.X || 'literal'` fallbacks using real, live values:
+- `RAZORPAY_KEY_ID` → a live (`rzp_live_...`) key id
+- `RAZORPAY_KEY_SECRET` → the paired API secret
+- `RAZORPAY_WEBHOOK_SECRET` → the webhook HMAC signature secret (also readable via a `NEXT_PUBLIC_*`-named var, which would have leaked it into the browser bundle had anyone ever set that variant)
+
+Anyone who could read this source file had live payment-gateway API access and could forge webhook signatures to fabricate "payment succeeded" events.
+
+**Fixed:** all three fallbacks removed. Each now throws (`HttpsError('failed-precondition', ...)`) or returns `500` if the real env var is missing, instead of silently authenticating with an exposed value. Verified: `functions` typecheck clean, 47/47 tests still pass.
+
+**⚠️ Outstanding, requires you:**
+1. Rotate both the Razorpay API key secret and the webhook secret in the Razorpay dashboard — treat the old ones as compromised regardless of git history, since they were plaintext in a source file.
+2. Before deploying this fix, confirm `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` are actually configured in the deployed Cloud Functions environment (`firebase functions:secrets:access RAZORPAY_KEY_SECRET`, or the Firebase console). If they aren't, this fix will make live payments/webhooks start failing the moment it ships — right now they're silently authenticating with the leaked literal instead.
+
+**Files:** `functions/src/razorpayFunctions.ts` — modified.
+
+### 🟠 Root `.env`/`.env.local` never reached any app's build
+
+**Found:** Next.js reads `.env`/`.env.local` from `process.cwd()`. Every app under `apps/*` builds with its own directory as cwd, and none had its own `.env` file — so the root `.env` was inert. The gap was masked by a hardcoded Firebase-project-config fallback baked into `lib/firebase.ts` in all 4 client apps (same anti-pattern as the Razorpay finding, lower severity since Firebase web config isn't secret — but it meant a prior claim in `.agents/skills/task.md` ("Move Firebase config to env vars") wasn't actually true in practice, and a staging/dev build with different env vars would have silently written to production Firestore instead).
+
+**Fixed:**
+- New `scripts/sync-env.mjs` copies root `.env`/`.env.local` into each `apps/*` directory (gitignored copies, never committed).
+- Wired into every app's `predev`/`prebuild` npm scripts, and into `scripts/build-web.mjs` directly (it calls `next build` via `execSync`, bypassing npm lifecycle hooks).
+- Removed the hardcoded Firebase config literal from all 4 apps' `lib/firebase.ts`; replaced with a `requireEnv()` helper that fails loudly on a missing var instead of silently substituting another project's config.
+- **Verified end-to-end:** rebuilt all 5 apps from a clean env sync — all succeeded; build logs confirmed `Environments: .env.local, .env` were actually loaded.
+
+**Files:** `scripts/sync-env.mjs` (new), `scripts/build-web.mjs`, `apps/{web-main,admin-panel,vendor-panel,rider-panel}/src/lib/firebase.ts`, all 5 apps' `package.json` — modified.
+
+### 🟡 `eslint.config.mjs` global ignores didn't actually match per-app builds
+
+**Found:** the root `eslint.config.mjs`'s `globalIgnores(['.next/**', 'out/**', 'build/**'])` is resolved relative to the *config file's* directory (repo root), not the invoking cwd. Every app's `"lint": "eslint"` script runs with cwd = `apps/<name>` (via npm workspaces), so those patterns never matched `apps/<name>/out/**` or `apps/<name>/.next/**` at all. As long as no build had run yet in the working tree, this was invisible — nothing existed there to lint. The moment a build runs (exactly what a CI pipeline does before or after lint), a plain `npm run lint` scans the entire minified build output as source: verified this inflates web-main's lint run from 369 errors / 215 warnings to **1,944 errors / 24,104 warnings** on the same source tree.
+
+**Fixed:** patterns changed to `**/.next/**`, `**/out/**`, `**/build/**`, `**/next-env.d.ts` (leading `**/` matches at any depth regardless of invocation directory). Verified: re-ran lint on web-main immediately after a full build — back to 369/215, matching the true source-only baseline.
+
+**Files:** `eslint.config.mjs` — modified. **This would otherwise have broken CI the first time it ran lint after a build**, exactly the scenario Phase 6 (deployment readiness) is meant to catch — caught now instead.
+
+### 🟡 `functions/src/__tests__/integration.test.ts` is orphaned, not just untested
+
+Imports `../../src/lib/queries/{delivery,swaps,credits}` and the *client* `firebase/firestore` SDK — none of which exist under `functions/src/`; those paths and APIs belong to the web apps' query layer (`apps/*/src/lib/queries/*.ts`). It cannot compile from where it sits, which is why `tsconfig.test.json` explicitly excludes it. No app in the monorepo has Jest configured at all, so this file currently has no valid home. Not fixed yet — deferred to Phase 4, documented here rather than left silently excluded.
+
+### Repo-wide lint baseline (post-eslint-config-fix, source only)
+
+| App | Errors | Warnings | Total |
+|---|---|---|---|
+| web-main | 369 | 215 | 584 |
+| admin-panel | 296 | 227 | 523 |
+| vendor-panel | 241 | 99 | 340 |
+| rider-panel | 230 | 88 | 318 |
+| gig | 6 | 1 | 7 |
+| **Total** | **1,142** | **630** | **1,772** |
+
+### `npm run verify` redesigned mid-Phase-0
+
+The first version chained steps with `&&`, so a failing `lint:apps` (which is currently guaranteed, given the table above) silently prevented `test:functions` from ever running — the opposite of what a "tell me everything that's broken" script should do. Replaced with `scripts/verify.mjs`, which runs all four steps unconditionally and prints a pass/fail summary at the end, exiting non-zero only if something failed. **Files:** `scripts/verify.mjs` (new), `package.json` (`verify` script now calls it).
+
+No code changes made to app source logic yet beyond the security fixes above — Phase 1 (canonicalize shared code) has not started.

@@ -15,12 +15,12 @@ Verified directly (not assumed) on 2026-09-12:
 |---|---|
 | `tsc --noEmit` — web-main, admin-panel, vendor-panel, rider-panel, gig | ✅ **0 errors**, all 5 |
 | `tsc --noEmit` — functions | ❌ Fails — **`functions/node_modules` is not installed**, so every `firebase-functions/*` import resolves to nothing. Not a code bug; a setup gap. |
-| `eslint` — web-main | ❌ **369 errors / 214 warnings** (311 `no-explicit-any`, 200 `no-unused-vars`, 23 `set-state-in-effect`, 19 `no-unescaped-entities`, 11 `exhaustive-deps`, 5 `purity`, 5 `immutability`) |
-| `eslint` — admin-panel | ❌ **296 errors / 226 warnings** (522 total) |
-| `eslint` — vendor-panel | ❌ **241 errors / 98 warnings** (339 total) |
-| `eslint` — rider-panel | ❌ **230 errors / 87 warnings** (317 total) |
+| `eslint` — web-main | ❌ **369 errors / 215 warnings** (311 `no-explicit-any`, 200 `no-unused-vars`, 23 `set-state-in-effect`, 19 `no-unescaped-entities`, 11 `exhaustive-deps`, 5 `purity`, 5 `immutability`) |
+| `eslint` — admin-panel | ❌ **296 errors / 227 warnings** (523 total) |
+| `eslint` — vendor-panel | ❌ **241 errors / 99 warnings** (340 total) |
+| `eslint` — rider-panel | ❌ **230 errors / 88 warnings** (318 total) |
 | `eslint` — gig | ❌ **6 errors / 1 warning** (7 total — much smaller app, 3 source files) |
-| **Repo-wide lint total** | **1,142 errors / 626 warnings** (1,768 problems) across the 5 apps |
+| **Repo-wide lint total** | **1,142 errors / 630 warnings** (1,772 problems) across the 5 apps |
 | Git repository | ❌ **None.** No `.git` anywhere in the tree. Nothing is version-controlled yet. |
 | TODO/FIXME/HACK markers | 0 across the whole repo |
 | `.agents/skills/task.md` | A prior 5-phase security hardening pass, **fully checked off** (rules, auth, rate limiting, cron fixes, vendor mgmt) |
@@ -88,14 +88,55 @@ If you want to skip straight to execution, say so and I'll proceed with all defa
 
 ## 3. Phased plan
 
-### Phase 0 — Safety net (½ day)
-- [ ] **D1:** `git init`, add a real `.gitignore` pass (confirm `functions/lib/`, `.next/`, `out/`, `android/.gradle` etc. are excluded — mostly already are), commit as baseline.
-- [ ] `npm --prefix functions install`, re-run `tsc --noEmit` in `functions/` to confirm the `firebase-functions/*` resolution errors disappear (expected: yes, since they're all module-not-found, not type errors).
-- [ ] `npm --prefix functions run test` (Jest) — capture current pass/fail as the real baseline, not an assumption.
-- [ ] Add root script `npm run verify` = typecheck + lint across every workspace in one command, so "is it broken" has one answer going forward.
-- [ ] Write `.env.example` (keys only, no values) at repo root and `functions/.env.example` if functions consume any env vars directly.
+### Phase 0 — Safety net (½ day) — ✅ COMPLETE (2026-09-12)
+- [x] **D1:** `git init`, gitignore hardened (added `.idea/`, `local.properties`, `build/`, `Pods/`, `.xcuserstate` etc. for android/ios), committed baseline as `9a04ece`.
+- [x] `npm --prefix functions install` (529 packages), `tsc --noEmit` in `functions/` now clean — confirmed the prior errors were 100% missing-`node_modules`, not real type errors.
+- [x] `npm audit fix` (non-breaking) on `functions/`: **22 → 13 vulnerabilities** (eliminated the 1 critical + all 6 high). Remaining 13 are moderate, all transitively pinned by `firebase-admin`'s dependency tree on an old `uuid`; a real fix needs a `firebase-admin` major bump — deferred, tracked below, not done silently.
+- [x] `npm --prefix functions run test` — **47/47 tests pass, 3 suites.** A 4th file, `src/__tests__/integration.test.ts`, is excluded from the build by `tsconfig.test.json` and **cannot compile as written** — see finding below.
+- [x] Root `npm run verify` added (`typecheck:apps` + `typecheck:functions` + `lint:apps` + `test:functions`), plus a `typecheck` script added to each of the 5 apps and to `functions/`.
+- [x] `.env.example` (repo root) and `functions/.env.example` written — keys only, documents which vars are client-safe (`NEXT_PUBLIC_*`) vs. server-only.
 
-**Done when:** `npm run verify` exists and its output is the tracked baseline; `git log` has commit 1; functions build and test.
+**Done when:** `npm run verify` exists and its output is the tracked baseline; `git log` has commit 1; functions build and test. **✅ All met.**
+
+#### 🔴 Critical finding surfaced during Phase 0 (not in the original plan — fixed immediately, ahead of schedule)
+
+While verifying the Razorpay integration for Phase 2, found **three hardcoded live secrets** as fallback values in `functions/src/razorpayFunctions.ts`:
+- `RAZORPAY_KEY_ID` fallback → a live (`rzp_live_...`) key id
+- `RAZORPAY_KEY_SECRET` fallback → the paired API secret
+- `RAZORPAY_WEBHOOK_SECRET` fallback → the webhook HMAC signature secret, additionally readable from a `NEXT_PUBLIC_*`-prefixed var name (which Next.js would have inlined into the browser bundle had anyone ever set it)
+
+**Fixed:** all three `|| 'literal'` fallbacks removed; each now throws/`500`s loudly if the real env var is missing, instead of silently authenticating with a value anyone reading the source could see. Verified: `functions` typecheck clean, all 47 tests still pass.
+
+**⚠️ Action needed from you, not something I can do:** rotate both the Razorpay API key secret and the webhook secret in the Razorpay dashboard — treat the old values as compromised regardless of whether this repo is ever pushed anywhere, since they were plaintext in source. **Also confirm before any functions deploy** that `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` are actually set in the deployed Cloud Functions environment (`firebase functions:secrets:access RAZORPAY_KEY_SECRET` or the Firebase console) — I have no visibility into that from this checkout, and if they aren't set, this fix will make live payment/webhook requests start failing the moment it's deployed (right now they'd silently be authenticating with the leaked literal instead).
+
+#### 🟠 Second finding: root `.env`/`.env.local` never reached any app's build
+
+Next.js loads `.env`/`.env.local` from `process.cwd()`, not the monorepo root. Since every app under `apps/*` builds with its own directory as cwd, and no app had its own `.env` file, **the root env file was inert** — every env-driven value was silently falling back to a hardcoded literal baked into `lib/firebase.ts` (same anti-pattern as the Razorpay finding, lower severity since Firebase web config isn't secret, but it meant the `.agents/skills/task.md` claim "[x] Move Firebase config to env vars" wasn't actually true in practice).
+
+**Fixed:**
+- Added `scripts/sync-env.mjs` — copies root `.env`/`.env.local` into each `apps/*` directory (gitignored copies, never committed).
+- Wired it into every app's `predev`/`prebuild` npm scripts and into `scripts/build-web.mjs` (the actual production build orchestrator, which calls `next build` directly and bypasses npm lifecycle hooks).
+- Removed the hardcoded Firebase config fallback from all 4 client apps' `lib/firebase.ts`, replaced with a `requireEnv()` helper that fails loudly instead of silently using another project's config.
+- **Verified end-to-end:** rebuilt all 5 apps from a clean sync — all succeeded, confirmed via build log (`Environments: .env.local, .env`) that real values are now flowing through, not the old hardcoded ones.
+
+#### 🟡 Third finding: `functions/src/__tests__/integration.test.ts` is orphaned, not just untested
+
+It imports `../../src/lib/queries/delivery`, `../../src/lib/queries/swaps`, `firebase/firestore` (the *client* SDK) — paths and APIs that belong to the web app's query layer (`apps/*/src/lib/queries/*.ts`), not to `functions/`. It cannot compile from where it sits (`functions/src/src/lib/...` doesn't exist) and `tsconfig.test.json` explicitly excludes it for exactly that reason. No app in the monorepo has Jest configured at all, so this file has no home anywhere today. Deferred to Phase 4 — flagged here rather than silently left excluded forever.
+
+#### 🟡 Fourth finding: `eslint.config.mjs`'s `globalIgnores` didn't match per-app builds
+
+Patterns like `.next/**`/`out/**` resolve relative to the *config file's* directory (repo root), not the invoking cwd — every app lints via `cd apps/<name> && eslint .`, so those patterns never matched `apps/<name>/out/**`. Invisible until a build actually exists in the tree; once one does, a plain lint run scans the entire minified build output as source (verified: inflated web-main from 369/215 to 1,944 errors / 24,104 warnings on identical code). **Fixed:** patterns now prefixed `**/` to match at any depth. This would have broken any CI pipeline that lints after building — caught here instead of in CI.
+
+#### `npm run verify` redesigned mid-phase
+
+First version chained steps with `&&`; since `lint:apps` currently always fails (1,142 known errors — that's expected and tracked, not a bug), the chain never reached `test:functions`. Replaced with `scripts/verify.mjs`, which runs all four steps unconditionally and prints a pass/fail summary, so "is anything broken" always gets a complete answer. Current real output:
+
+```
+✅ typecheck:apps
+✅ typecheck:functions
+❌ lint:apps      (1,142 known errors — tracked, Phase 3 scope)
+✅ test:functions (47/47)
+```
 
 ### Phase 1 — Canonicalize shared code (2–3 days, highest leverage)
 Create/extend shared packages so there is exactly **one** definition of anything that must stay consistent across apps, while preserving each app's real behavioral differences as configuration, not forks.

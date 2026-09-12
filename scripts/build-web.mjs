@@ -38,6 +38,11 @@ for (const appName of apps) {
   console.log(`📦 Building static export for app: ${appName}...`);
   console.log(`--------------------------------------------------`);
 
+  // Copy root .env/.env.local into the app dir — Next.js reads env files
+  // from process.cwd(), and this script runs `next build` with cwd set to
+  // apps/<name>, so the root env would otherwise be invisible to the build.
+  execSync(`"${process.execPath}" "${path.join(root, 'scripts', 'sync-env.mjs')}" ${appName}`, { stdio: 'inherit' });
+
   const apiDir = path.join(appPath, 'src', 'app', 'api');
   const apiBackup = path.join(appPath, 'src', 'app', '_api_backup');
 

@@ -23,7 +23,12 @@
     "deploy:admin": "npm run build --workspace=admin-panel && npx firebase deploy --only hosting:admin-panel",
     "deploy:gig": "npm run build --workspace=gig && npx firebase deploy --only hosting:gig",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck:apps": "npm run typecheck --workspaces --if-present",
+    "typecheck:functions": "npm --prefix functions run typecheck",
+    "lint:apps": "npm run lint --workspaces --if-present",
+    "test:functions": "npm --prefix functions run test",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

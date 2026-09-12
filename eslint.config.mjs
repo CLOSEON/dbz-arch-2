@@ -6,12 +6,21 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   // Override default ignores of eslint-config-next.
+  //
+  // IMPORTANT: patterns here are resolved relative to THIS config file's
+  // directory (the repo root), not to whatever cwd eslint is invoked from.
+  // Since every app under apps/* is linted via `cd apps/<name> && eslint .`
+  // (npm workspaces sets cwd per-package), a bare "out/**" only matches
+  // <root>/out/**, never apps/<name>/out/**. Without the leading "**/", a
+  // lint run after a build silently scans the entire minified build output
+  // as source — this previously inflated one app's lint run from ~600
+  // problems to 26,000+. Keep the "**/" prefix.
   globalIgnores([
     // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
+    "**/.next/**",
+    "**/out/**",
+    "**/build/**",
+    "**/next-env.d.ts",
   ]),
 ]);
 
