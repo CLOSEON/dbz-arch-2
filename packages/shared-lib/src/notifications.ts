@@ -1,5 +1,6 @@
 import { db } from '@dabzzo/shared-auth';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export interface NotificationPayload {
   userId: string;
@@ -28,8 +29,8 @@ export async function sendNotificationAlert(payload: NotificationPayload) {
     console.log(`[SMS Alert Sent] To ${payload.phone}: "${payload.title} - ${payload.message}"`);
 
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Notification Alert Failed]', err);
-    return { success: false, error: err.message };
+    return { success: false, error: getErrorMessage(err) };
   }
 }

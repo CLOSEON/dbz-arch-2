@@ -19,6 +19,7 @@ import {
   Flame,
   Users
 } from 'lucide-react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type PartnerType = 'kitchen' | 'rider';
 
@@ -68,9 +69,9 @@ export default function GigHomePage() {
         created_at: serverTimestamp(),
       });
       setSubmittedId(docRef.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to submit kitchen application:', err);
-      setError(err?.message || 'Submission failed. Please try again or WhatsApp us directly.');
+      setError(getErrorMessage(err) || 'Submission failed. Please try again or WhatsApp us directly.');
     } finally {
       setSubmitting(false);
     }
@@ -93,9 +94,9 @@ export default function GigHomePage() {
         created_at: serverTimestamp(),
       });
       setSubmittedId(docRef.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to submit rider application:', err);
-      setError(err?.message || 'Submission failed. Please try again or WhatsApp us directly.');
+      setError(getErrorMessage(err) || 'Submission failed. Please try again or WhatsApp us directly.');
     } finally {
       setSubmitting(false);
     }

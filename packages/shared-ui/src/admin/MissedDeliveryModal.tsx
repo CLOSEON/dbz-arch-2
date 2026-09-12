@@ -21,6 +21,7 @@ import {
 } from '@dabzzo/shared-queries/delivery';
 import toast from 'react-hot-toast';
 import type { DeliveryOrder, DriverProfile } from '@dabzzo/shared-types/delivery';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface MissedDeliveryModalProps {
   /** If the modal drawer is open */
@@ -87,9 +88,9 @@ export function MissedDeliveryModal({
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[MissedDelivery] Resolve error:', err);
-      toast.error(err.message || 'Failed to apply fleet action');
+      toast.error(getErrorMessage(err) || 'Failed to apply fleet action');
     } finally {
       setIsSubmitting(false);
     }

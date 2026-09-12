@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 import { useAuthStore } from '@/store/authStore';
 import { collection, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -208,8 +209,9 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       }, (err) => console.error("Menu listener error:", err));
 
       setLoading(false);
-    } catch (e: any) {
-      setError(e);
+    } catch (e: unknown) {
+      // setError holds an Error; normalise whatever was thrown into one.
+      setError(e instanceof Error ? e : new Error(getErrorMessage(e)));
       setLoading(false);
     }
 

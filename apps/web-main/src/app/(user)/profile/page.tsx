@@ -16,6 +16,7 @@ import { RewardsModal } from '@/components/shared/RewardsModal';
 import { redeemCreditsForDays } from '@/lib/queries/swaps';
 import type { SubscriptionSwapAllowance } from '@/types';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -146,8 +147,8 @@ export default function ProfilePage() {
     try {
       const days = await redeemCreditsForDays(user.id, activeSubscriptions[0].id);
       addToast(`Successfully redeemed! Added ${days} days to your subscription. 🎉`, 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Failed to redeem credits.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Failed to redeem credits.', 'error');
     } finally {
       setRedeemingCredits(false);
     }
@@ -232,8 +233,8 @@ export default function ProfilePage() {
         addToast(`Successfully bought ${qty} extra swaps! 🎉`, 'success');
         setPurchaseQty(prev => ({ ...prev, [subId]: 1 }));
       }
-    } catch (err: any) {
-      addToast(err.message || 'Swap purchase failed', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Swap purchase failed', 'error');
     } finally {
       setBuyingSwapId(null);
     }

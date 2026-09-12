@@ -24,6 +24,7 @@ import { createCustomPlanSubscription } from '@/lib/queries/subscriptions';
 import { createRazorpayOrder, openRazorpayCheckout } from '@/lib/razorpay';
 import { formatDate, cn } from '@/lib/utils';
 import { CustomMealConfig } from '@/types';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export interface CustomPlanCheckoutData {
   planType: 'weekly' | 'monthly';
@@ -230,11 +231,11 @@ export function CustomPlanCheckoutModal({
       router.push(
         `/subscription-active?subscriptionId=${subscriptionId}&planType=${planType}&totalMeals=${totalMeals}&totalPrice=${totalPrice}`
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[CustomPlanCheckout] Payment / Subscription error:', err);
       setPaymentStep('failed');
       setErrorMessage(
-        err?.message ||
+        getErrorMessage(err) ||
         'Payment was cancelled or could not be processed. Please check your card or UPI details and try again.'
       );
     } finally {
@@ -280,9 +281,9 @@ export function CustomPlanCheckoutModal({
       router.push(
         `/subscription-active?subscriptionId=${subscriptionId}&planType=${planType}&totalMeals=${totalMeals}&totalPrice=${totalPrice}`
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       setPaymentStep('failed');
-      setErrorMessage(err?.message || 'Failed to create subscription.');
+      setErrorMessage(getErrorMessage(err) || 'Failed to create subscription.');
     } finally {
       setLoading(false);
     }

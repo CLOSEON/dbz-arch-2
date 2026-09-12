@@ -1,5 +1,6 @@
 import { storage } from '@dabzzo/shared-auth';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 /**
  * Supported MIME types and extensions for offer promotional images.
@@ -172,12 +173,12 @@ export async function deleteStorageFileByUrl(url?: string | null): Promise<void>
     const fileRef = ref(storage, url);
     await deleteObject(fileRef);
     console.log('[Storage] Successfully deleted storage file for URL:', url);
-  } catch (err: any) {
+  } catch (err: unknown) {
     // If already deleted or not found (storage/object-not-found), ignore
-    if (err?.code === 'storage/object-not-found') {
+    if (getErrorCode(err) === 'storage/object-not-found') {
       console.warn('[Storage] Object already deleted or not found:', url);
     } else {
-      console.warn('[Storage] Warning while deleting file:', err?.message || err);
+      console.warn('[Storage] Warning while deleting file:', getErrorMessage(err) || err);
     }
   }
 }
@@ -234,10 +235,10 @@ export async function uploadImage(file: File | Blob, path = 'uploads'): Promise<
 
       reader.readAsArrayBuffer(file);
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Storage] UNEXPECTED ERROR:', err);
     if (typeof window !== 'undefined') {
-      alert(`Unexpected Error: ${err.message}`);
+      alert(`Unexpected Error: ${getErrorMessage(err)}`);
     }
     return null;
   }

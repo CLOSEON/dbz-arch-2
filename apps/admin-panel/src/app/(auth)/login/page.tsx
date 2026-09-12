@@ -8,6 +8,7 @@ import { useUiStore } from '@/store/uiStore';
 import { signInWithGoogle, isSuperadminEmail, extractUserEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
 import { resolveUserProfile } from '@/lib/queries/users';
 import type { User } from 'firebase/auth';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -74,8 +75,8 @@ export default function AdminLoginPage() {
       setUser(profile);
       addToast(`Welcome back, ${profile.name || 'Admin'}! 🎉`, 'success');
       router.replace('/admin/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Sign-in failed.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Sign-in failed.', 'error');
     }
   }, [setUser, addToast, router]);
 
@@ -88,8 +89,8 @@ export default function AdminLoginPage() {
         return;
       }
       await handleAuthSuccess(result.user);
-    } catch (err: any) {
-      addToast(err.message || 'Login error occurred.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Login error occurred.', 'error');
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,7 @@ import { ShieldAlert, Clock, Send, PhoneCall, CheckCircle2, FileText, Store, Tru
 import { useAuthStore } from '@dabzzo/shared-lib/stores/authStore';
 import { updateUser } from '@dabzzo/shared-queries/users';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface PendingVerificationProps {
   role: 'vendor' | 'delivery' | 'user';
@@ -48,8 +49,8 @@ export function PendingVerificationScreen({ role }: PendingVerificationProps) {
       await updateUser(user.id, updates);
       setUser({ ...user, ...updates });
       toast.success('Updated application details! Under review by Admin. 📩');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update details');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to update details');
     } finally {
       setLoading(false);
     }

@@ -104,7 +104,7 @@ async function signInNativeGoogle(): Promise<SignInResult> {
     const credential = GAP.credential(result.credential.idToken);
     const userCred = await signInWithCredential(auth, credential);
     return { success: true, user: userCred.user };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return mapFirebaseError(err);
   }
 }
@@ -122,7 +122,7 @@ async function signInNativeApple(): Promise<SignInResult> {
     });
     const userCred = await signInWithCredential(auth, credential);
     return { success: true, user: userCred.user };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return mapFirebaseError(err);
   }
 }
@@ -136,7 +136,7 @@ async function signInNativeFacebook(): Promise<SignInResult> {
     const credential = FAP.credential(result.credential.accessToken);
     const userCred = await signInWithCredential(auth, credential);
     return { success: true, user: userCred.user };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return mapFirebaseError(err);
   }
 }
@@ -147,7 +147,7 @@ async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvide
   try {
     const result = await signInWithPopup(auth, provider);
     return { success: true, user: result.user };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return mapFirebaseError(err);
   }
 }

@@ -13,6 +13,7 @@ import { isAdminUser } from '@/lib/auth';
 import { Order, OrderStatusLog, Batch } from '@/types';
 import type { RiderTrip } from '@/types/delivery';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function AdminOrdersTrackingPage() {
   const { user, isHydrated } = useAuthStore();
@@ -120,8 +121,8 @@ export default function AdminOrdersTrackingPage() {
           if (searchQuery === order.id) {
             handleSearch();
           }
-        } catch (err: any) {
-          toast.error('Failed to force status: ' + err.message, { id: toastId });
+        } catch (err: unknown) {
+          toast.error('Failed to force status: ' + getErrorMessage(err), { id: toastId });
         }
       }
     });
@@ -201,8 +202,8 @@ export default function AdminOrdersTrackingPage() {
 
       setRelatedRecords(related);
 
-    } catch (err: any) {
-      toast.error('Search failed: ' + err.message, { id: toastId });
+    } catch (err: unknown) {
+      toast.error('Search failed: ' + getErrorMessage(err), { id: toastId });
     } finally {
       setIsSearching(false);
     }

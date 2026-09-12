@@ -1,6 +1,7 @@
 import { collection, getDocs, query, where, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@dabzzo/shared-auth';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export async function getAdminStats() {
   // Use getCountFromServer to avoid full collection downloads (highly optimized)
@@ -136,8 +137,8 @@ export async function fetchCustomPlanStats(): Promise<CustomPlanStats> {
     if (result && result.data) {
       return result.data;
     }
-  } catch (callableErr: any) {
-    console.warn('[AdminQueries] Callable getCustomPlanStats fallback to client aggregation:', callableErr?.message || callableErr);
+  } catch (callableErr: unknown) {
+    console.warn('[AdminQueries] Callable getCustomPlanStats fallback to client aggregation:', getErrorMessage(callableErr) || callableErr);
   }
 
   // 2. Client-side fallback aggregation

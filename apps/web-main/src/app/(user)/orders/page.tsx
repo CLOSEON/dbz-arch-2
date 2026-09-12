@@ -19,6 +19,7 @@ import { db } from '@/lib/firebase';
 import { Box, History, CreditCard, Utensils, Calendar, ChevronRight, Navigation, ArrowLeftRight, SkipForward, Clock, XCircle, Sun, Moon } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { generateBoxTag } from '@/lib/boxTag';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
   ssr: false,
@@ -555,8 +556,8 @@ export default function OrdersPage() {
           const slotKey = `${d.toLocaleDateString('en-CA')}_${delivery.meal?.type || 'lunch'}`;
           setSkippedSlots(prev => [...new Set([...prev, slotKey])]);
           addToast(`Skipped! You earned ${result.creditsEarned} credits 🎉`, 'success');
-        } catch (err: any) {
-          addToast(err?.message || 'Cannot skip this delivery', 'error');
+        } catch (err: unknown) {
+          addToast(getErrorMessage(err) || 'Cannot skip this delivery', 'error');
         } finally { setSkipping(null); }
       }
     });
@@ -575,8 +576,8 @@ export default function OrdersPage() {
       } else {
         addToast('Skip cancelled — 1 day deducted, remainder refunded ✓', 'success');
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Cannot undo skip', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Cannot undo skip', 'error');
     } finally { setSkipping(null); }
   }
 
@@ -599,8 +600,8 @@ export default function OrdersPage() {
       await cancelSwapRequest(delivery.id, user.id);
       setSwappedIds(prev => prev.filter(id => id !== delivery.id));
       addToast('Swap request cancelled.', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Cannot cancel swap request', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Cannot cancel swap request', 'error');
     } finally { setSwapping(null); }
   }
 

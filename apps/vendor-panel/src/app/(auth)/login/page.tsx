@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import type { UserRole, AppUser } from '@/types';
 import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type AuthStep = 'social' | 'onboarding';
 
@@ -115,8 +116,8 @@ export default function VendorLoginPage() {
       setPrefillPhoto(firebaseUser.photoURL || null);
       setKitchenName(profile.kitchen_name || '');
       setStep('onboarding');
-    } catch (err: any) {
-      addToast(err.message || 'Sign-in failed. Please try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Sign-in failed. Please try again.', 'error');
     }
   }, [setUser, addToast, router]);
 
@@ -148,8 +149,8 @@ export default function VendorLoginPage() {
       setUser(user);
       addToast('Kitchen registered! Awaiting admin approval.', 'success');
       router.replace('/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Registration failed. Try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Registration failed. Try again.', 'error');
     } finally {
       setSaving(false);
     }

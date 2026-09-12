@@ -58,6 +58,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { formatDate, cn } from '@/lib/utils';
 import type { AppUser, Vendor, Subscription } from '@/types';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const WEEKDAYS = [
   { full: 'monday', short: 'Mon' },
@@ -370,9 +371,9 @@ export function UserManagementHub() {
       // Immediate fresh refresh
       await selectUser(selectedUser);
       await loadAllData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to activate external subscription:', err);
-      const errMsg = err?.message || 'Failed to activate external subscription. Please check permissions.';
+      const errMsg = getErrorMessage(err) || 'Failed to activate external subscription. Please check permissions.';
       setExtModalError(errMsg);
       setNotification({
         text: errMsg,

@@ -23,6 +23,7 @@ import type {
   Order
 } from '@dabzzo/shared-types';
 import { createAuditLog } from './audit';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 // Haversine distance formula (returns km)
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -610,9 +611,9 @@ export async function getSubscriptionSwapAllowance(subscriptionId: string): Prom
     const snap = await getDoc(docRef);
     if (!snap.exists()) return null;
     return snap.data() as SubscriptionSwapAllowance;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Firestore rules evaluate resource.data, which throws permission denied if the doc doesn't exist.
-    if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+    if (getErrorCode(error) === 'permission-denied' || getErrorMessage(error)?.includes('Missing or insufficient permissions')) {
       return null;
     }
     throw error;

@@ -24,6 +24,7 @@ import type { Delivery, DeliveryStatus as OldDeliveryStatus } from '@dabzzo/shar
 import type { DeliveryOrder, DriverProfile, DeliveryStatus, RiderTrip, PickupStop, DropStop } from '@dabzzo/shared-types/delivery';
 import { awardUserCredit, consumeUserCreditsTx } from './swaps';
 import { createAuditLog } from './audit';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 // ==========================================
 // BACKWARD COMPATIBILITY LAYER FOR OLD FLIGHTS
@@ -398,8 +399,8 @@ export async function verifyDeliveryOTP(
     });
 
     return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message || 'OTP verification failed' };
+  } catch (e: unknown) {
+    return { success: false, error: getErrorMessage(e) || 'OTP verification failed' };
   }
 }
 
@@ -745,7 +746,7 @@ export async function generateTodayDeliveries(force = false): Promise<GenerateRe
     const generateFn = httpsCallable<{ force: boolean }, GenerateResult>(functions, 'generateTodayDeliveries');
     const result = await generateFn({ force });
     return result.data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('generateTodayDeliveries Error:', err);
     throw err;
   }
@@ -756,7 +757,7 @@ export async function generateTestDeliveryFn(): Promise<any> {
     const generateTest = httpsCallable<any, any>(functions, 'generateTestDelivery');
     const result = await generateTest({});
     return result.data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('generateTestDelivery Error:', err);
     throw err;
   }
@@ -767,7 +768,7 @@ export async function forceAssignRiders(vendorId?: string, slot?: string): Promi
     const assignFn = httpsCallable<any, any>(functions, 'assignRiderTrips');
     const result = await assignFn({ vendorId, slot });
     return result.data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('forceAssignRiders Error:', err);
     throw err;
   }
@@ -850,7 +851,7 @@ export async function forceFormBatches(): Promise<{ success: boolean; batchesCre
 
     await batch.commit();
     return { success: true, batchesCreated, debugStr: `Batched ${unbatchedCount} orders into ${batchesCreated} batches.` };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('forceFormBatches Error:', err);
     throw err;
   }

@@ -23,6 +23,7 @@ import { PendingVerificationScreen } from '@/components/shared/PendingVerificati
 import { generateBoxTag } from '@/lib/boxTag';
 import { getBoxManifest } from '@/lib/mealManifest';
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type ActiveTab = 'overview' | 'tags' | 'menu' | 'subscribers' | 'rates';
 
@@ -243,9 +244,9 @@ export default function VendorDashboard() {
           } else {
             toast.error(res.data?.message || 'Failed to mark ready.');
           }
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error(e);
-          toast.error(e.message || 'Error marking batch ready.');
+          toast.error(getErrorMessage(e) || 'Error marking batch ready.');
         } finally {
           setIsMarkingReady(null);
         }

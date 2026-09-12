@@ -35,6 +35,7 @@ import { riderPaymentConverter, RiderPayment } from '@/types/payout';
 import type { Order, AppUser } from '@/types';
 import { MissedDeliveryModal } from '@/components/admin/MissedDeliveryModal';
 import { useAuthStore } from '@/store/authStore';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
  
 declare global {
@@ -283,8 +284,8 @@ export default function AdminDeliveryOversightPage() {
     try {
       await approveUserRole(rider.id, rider.phone, rider.name || 'Rider', 'delivery');
       toast.success(`Approved & Verified Rider ${rider.name || rider.phone}! 🎉`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to approve rider');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to approve rider');
     }
   };
 
@@ -298,8 +299,8 @@ export default function AdminDeliveryOversightPage() {
         updated_at: Timestamp.now()
       });
       toast.success(`Approval revoked for ${rider.name || rider.phone}. Account set to Pending.`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to revoke approval');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to revoke approval');
     }
   };
 
@@ -323,8 +324,8 @@ export default function AdminDeliveryOversightPage() {
           toast.error(`No user registered with phone number ${phoneInput.trim()}`);
         }
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to approve rider by phone');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to approve rider by phone');
     }
   };
 
@@ -341,8 +342,8 @@ export default function AdminDeliveryOversightPage() {
       toast.success(`Info requested from ${infoModalRider.name || infoModalRider.phone}`);
       setInfoModalRider(null);
       setInfoNote('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to request info');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to request info');
     }
   };
 
@@ -353,8 +354,8 @@ export default function AdminDeliveryOversightPage() {
     try {
       await rejectUserRole(rider.id, rider.phone, reason);
       toast.success(`Rejected rider application for ${rider.name || rider.phone}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to reject rider');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to reject rider');
     }
   };
 
@@ -439,8 +440,8 @@ export default function AdminDeliveryOversightPage() {
                 
                 const assignRes = await forceAssignRiders();
                 toast.success(`🎉 Auto-Dispatch Completed! Assigned ${assignRes.assignedCount || 0} batches to riders.`, { id: toastId, duration: 4000 });
-              } catch (err: any) {
-                toast.error(err.message || 'Auto-dispatch failed', { id: toastId });
+              } catch (err: unknown) {
+                toast.error(getErrorMessage(err) || 'Auto-dispatch failed', { id: toastId });
               } finally {
                 setIsDispatching(false);
               }

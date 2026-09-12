@@ -39,6 +39,7 @@ import { useAuthStore } from '@/store/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function AdminOffersPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -121,7 +122,7 @@ export default function AdminOffersPage() {
     try {
       const allOffers = await getAllOffers();
       setOffers(allOffers);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[AdminOffers] Error loading offers data:', err);
       addToast('Failed to load offers data', 'error');
     } finally {
@@ -192,8 +193,8 @@ export default function AdminOffersPage() {
 
     try {
       validateImageFile(file);
-    } catch (err: any) {
-      addToast(err.message || 'Invalid image file', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Invalid image file', 'error');
       triggerHapticNotification(NotificationType.Error);
       return;
     }
@@ -272,9 +273,9 @@ export default function AdminOffersPage() {
       triggerHapticNotification(NotificationType.Success);
       setIsModalOpen(false);
       await loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[AdminOffers] Save error:', err);
-      addToast(err.message || 'Failed to save offer', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save offer', 'error');
       triggerHapticNotification(NotificationType.Error);
     } finally {
       setSaving(false);
@@ -295,7 +296,7 @@ export default function AdminOffersPage() {
           addToast('Offer deleted successfully', 'success');
           triggerHapticNotification(NotificationType.Success);
           await loadData();
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('[AdminOffers] Delete error:', err);
           addToast('Failed to delete offer', 'error');
           triggerHapticNotification(NotificationType.Error);

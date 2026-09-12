@@ -15,6 +15,7 @@ import {
 import { db } from '@dabzzo/shared-auth';
 import { deleteStorageFileByUrl } from '@dabzzo/shared-lib/storage';
 import { Offer, CreateOfferInput, UpdateOfferInput } from '@dabzzo/shared-types';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const COLLECTION_NAME = 'offers';
 
@@ -31,9 +32,9 @@ export async function getActiveOffers(): Promise<Offer[]> {
     );
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Offer));
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Graceful fallback if composite index is building: query by isActive and sort in-memory
-    console.warn('[Offers] Query with index warning, falling back to local sort:', error?.message);
+    console.warn('[Offers] Query with index warning, falling back to local sort:', getErrorMessage(error));
     const fallbackQuery = query(
       collection(db, COLLECTION_NAME),
       where('isActive', '==', true)

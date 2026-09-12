@@ -4,6 +4,7 @@
   "private": true,
   "exports": {
     "./boxTag": "./src/boxTag.ts",
+    "./errors": "./src/errors.ts",
     "./geo": "./src/geo.ts",
     "./haptics": "./src/haptics.ts",
     "./hooks/useDeliveryNavigation": "./src/hooks/useDeliveryNavigation.ts",

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Clock, Send, X, AlertOctagon, CheckCircle2 } from 'lucide-react';
 import { sendDelayNotification } from '@dabzzo/shared-queries/delivery';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface DelayBroadcastProps {
   /** The unique identifier of the vendor kitchen */
@@ -40,9 +41,9 @@ export function DelayBroadcast({ vendorId }: DelayBroadcastProps) {
       // Reset form
       setMessage('');
       setNewETA('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || 'Failed to send broadcast');
+      toast.error(getErrorMessage(err) || 'Failed to send broadcast');
     } finally {
       setIsSubmitting(false);
     }

@@ -64,6 +64,7 @@ import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { triggerHapticImpact, triggerHapticSelection, ImpactStyle } from '@/lib/haptics';
 import { formatDate } from '@/lib/utils';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface MealPricingConfigProps {
   onSaved?: (type: PlanPricingType, updated: MealPricingConfigData) => void;
@@ -190,9 +191,9 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       setAuthoritativeRules(updated);
       setInitialAuthoritativeRules(updated);
       addToast('Authoritative Central Pricing Rules saved successfully! 🚀', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[MealPricingConfig] Error saving pricing rules:', err);
-      addToast(err?.message || 'Failed to save pricing rules', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save pricing rules', 'error');
     } finally {
       setSavingRules(false);
     }
@@ -371,9 +372,9 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       await saveMealComponentsCatalog(components, updatedBy);
       setInitialComponents([...components]);
       addToast('Meal components catalog saved successfully! 🍱', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[MealPricingConfig] Error saving catalog:', err);
-      addToast(err?.message || 'Failed to save component catalog', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save component catalog', 'error');
     } finally {
       setSavingComponents(false);
     }
@@ -430,9 +431,9 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       setWeeklyConfig(updated);
       addToast(`Weekly pricing saved: ₹${updated.pricePerMeal}/meal (Margin: ₹${updated.margin})`, 'success');
       onSaved?.('weekly', updated);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[MealPricingConfig] Error saving weekly pricing:', err);
-      addToast(err?.message || 'Failed to save weekly pricing', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save weekly pricing', 'error');
     } finally {
       setSavingWeekly(false);
     }
@@ -456,9 +457,9 @@ export function MealPricingConfig({ onSaved, className = '' }: MealPricingConfig
       setMonthlyConfig(updated);
       addToast(`Monthly pricing saved: ₹${updated.pricePerMeal}/meal (Margin: ₹${updated.margin})`, 'success');
       onSaved?.('monthly', updated);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[MealPricingConfig] Error saving monthly pricing:', err);
-      addToast(err?.message || 'Failed to save monthly pricing', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save monthly pricing', 'error');
     } finally {
       setSavingMonthly(false);
     }

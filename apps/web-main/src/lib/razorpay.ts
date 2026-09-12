@@ -28,6 +28,7 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 import { functions } from '@/lib/firebase';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 /**
  * Load Razorpay checkout script dynamically
@@ -167,12 +168,12 @@ export async function verifyPaymentSignature(
       return true;
     }
     throw new Error(res?.data?.error || 'Payment signature verification failed');
-  } catch (callableErr: any) {
-    if (callableErr?.code === 'permission-denied' || callableErr?.code === 'invalid-argument') {
-      console.error('[Razorpay] Verification rejected by server:', callableErr.message);
+  } catch (callableErr: unknown) {
+    if (getErrorCode(callableErr) === 'permission-denied' || getErrorCode(callableErr) === 'invalid-argument') {
+      console.error('[Razorpay] Verification rejected by server:', getErrorMessage(callableErr));
       throw callableErr;
     }
-    console.warn('[Razorpay] Callable verification fallback to REST:', callableErr?.message || callableErr);
+    console.warn('[Razorpay] Callable verification fallback to REST:', getErrorMessage(callableErr) || callableErr);
   }
 
   // 2. Fallback to REST endpoint
@@ -235,8 +236,8 @@ export async function createRazorpayOrder(
     if (res?.data?.order_id) {
       return res.data;
     }
-  } catch (callableErr: any) {
-    console.warn('[Razorpay] Callable createRazorpayOrder fallback to REST:', callableErr?.message || callableErr);
+  } catch (callableErr: unknown) {
+    console.warn('[Razorpay] Callable createRazorpayOrder fallback to REST:', getErrorMessage(callableErr) || callableErr);
   }
 
   // 2. Fallback to REST endpoint

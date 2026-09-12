@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@dabzzo/shared-auth';
 import { DeliveryStatus } from '@dabzzo/shared-types/delivery';
 import toast from 'react-hot-toast';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 const QUEUE_KEY = 'dabzzo_delivery_action_queue';
 
@@ -57,12 +58,12 @@ export const processQueue = async () => {
       });
       console.log(`[Offline Queue] Successfully synced action ${action.id}`);
       processedCount++;
-    } catch (err: any) {
-      const errorMsg = err.message || '';
+    } catch (err: unknown) {
+      const errorMsg = getErrorMessage(err) || '';
       
       // If it's a stale local document issue (failed-precondition), it means 
       // the status is already updated or invalid. We discard it safely.
-      if (errorMsg.includes('failed-precondition') || err.code === 'failed-precondition') {
+      if (errorMsg.includes('failed-precondition') || getErrorCode(err) === 'failed-precondition') {
         console.warn(`[Offline Queue] Discarding action ${action.id} due to stale state:`, errorMsg);
         // Do not add to remainingQueue, it's discarded
       } 

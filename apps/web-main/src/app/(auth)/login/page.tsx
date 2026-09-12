@@ -11,6 +11,7 @@ import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
 import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type AuthStep = 'social' | 'phone-capture';
 
@@ -65,8 +66,8 @@ export default function LoginPage() {
       setPrefillEmail(firebaseUser.email || null);
       setPrefillPhoto(firebaseUser.photoURL || null);
       setStep('phone-capture');
-    } catch (err: any) {
-      addToast(err.message || 'Sign-in failed. Please try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Sign-in failed. Please try again.', 'error');
     }
   }, [setUser, addToast, router]);
 
@@ -97,8 +98,8 @@ export default function LoginPage() {
       setUser(user);
       addToast(`Welcome to Dabzzo, ${user.name || 'Foodie'}! 🎉`, 'success');
       router.replace('/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Setup failed. Try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Setup failed. Try again.', 'error');
     } finally {
       setSavingPhone(false);
     }

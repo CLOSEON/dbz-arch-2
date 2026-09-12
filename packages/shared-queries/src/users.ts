@@ -12,6 +12,7 @@ import {
 import { db, auth } from '@dabzzo/shared-auth';
 import { isSuperadminEmail, SUPERADMIN_EMAIL } from '@dabzzo/shared-auth';
 import type { AppUser, UserRole, Vendor } from '@dabzzo/shared-types';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 // ─── Module-level TTL cache ──────────────────────────────────────────────────
 // Prevents hammering Firestore with repeated full-collection reads on every
@@ -56,9 +57,9 @@ export async function resolveUserProfile(
     try {
       userDoc = await getDoc(userRef);
       break;
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (
-        (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) &&
+        (getErrorCode(error) === 'permission-denied' || getErrorMessage(error)?.includes('Missing or insufficient permissions')) &&
         retries > 1
       ) {
         console.warn(`[resolveUserProfile] Permission denied, retrying in 1s... (${retries - 1} left)`);

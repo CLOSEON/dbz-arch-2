@@ -12,6 +12,7 @@ import { FirebaseCrashlytics } from '@capacitor-firebase/crashlytics';
 import { useAuthStore } from '@dabzzo/shared-lib/stores/authStore';
 import { useNetworkStore } from '@dabzzo/shared-lib/stores/networkStore';
 import { pushToQueue } from '@dabzzo/shared-lib/offline/actionQueue';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface Props {
   orderId: string;
@@ -49,8 +50,8 @@ export function DeliveryActionBar({ orderId, status }: Props) {
         setIsFailedSheetOpen(false);
         setReason('');
       }
-    } catch (err: any) {
-      const errorMsg = err.message || '';
+    } catch (err: unknown) {
+      const errorMsg = getErrorMessage(err) || '';
       
       // Handle known offline or network error by queuing
       if (errorMsg === 'network-offline' || errorMsg.includes('network') || errorMsg.includes('internal')) {

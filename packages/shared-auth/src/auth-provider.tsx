@@ -19,6 +19,7 @@ import { Capacitor } from '@capacitor/core';
 import type { AppUser } from '@dabzzo/shared-types';
 import { SUPERADMIN_EMAIL } from './auth-service';
 import Image from 'next/image';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 /**
  * Per-portal provisioning for the superadmin account.
@@ -166,8 +167,8 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
             try {
               userDoc = await getDoc(doc(db, 'users', activeUser.uid));
               break;
-            } catch (error: any) {
-              if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+            } catch (error: unknown) {
+              if (getErrorCode(error) === 'permission-denied' || getErrorMessage(error)?.includes('Missing or insufficient permissions')) {
                 if (retries > 1) {
                   console.warn(`[AuthProvider] Permission denied, retrying in 1s... (${retries - 1} left)`);
                   await new Promise(r => setTimeout(r, 1000));
