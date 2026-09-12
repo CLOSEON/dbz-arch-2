@@ -23,8 +23,19 @@ import { getStorage, type FirebaseStorage } from 'firebase/storage';
 // This is the SINGLE SOURCE OF TRUTH for Firebase client init. Each app's
 // src/lib/firebase.ts re-exports from here so there is exactly one Firebase
 // app/Firestore instance per build — see IMPLEMENTATION_PLAN.md Phase 1.
-function requireEnv(name: string): string {
-  const value = process.env[name];
+// IMPORTANT: each NEXT_PUBLIC_* var must be referenced as a STATIC literal
+// (`process.env.NEXT_PUBLIC_FOO`), never `process.env[someVariable]`.
+//
+// Next.js inlines these for the browser by textually substituting the literal
+// expression at build time. A dynamic key gives the bundler nothing to find, so
+// the value survives only on the server — where `process.env` is real — and is
+// `undefined` in the browser, where `process.env` is an empty object.
+//
+// This was originally written with `process.env[name]` and looked completely
+// fine: typecheck, lint and `next build` all passed, because prerendering runs
+// server-side. It failed only once a page was actually opened in a browser.
+// Hence: read statically here, and let requireEnv do nothing but validate.
+function requireEnv(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(
       `Missing required env var ${name}. Run "node scripts/sync-env.mjs" from the repo root, or set it directly.`
@@ -34,12 +45,12 @@ function requireEnv(name: string): string {
 }
 
 const firebaseConfig = {
-  apiKey: requireEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
-  authDomain: requireEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-  projectId: requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
-  storageBucket: requireEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: requireEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: requireEnv('NEXT_PUBLIC_FIREBASE_APP_ID'),
+  apiKey: requireEnv('NEXT_PUBLIC_FIREBASE_API_KEY', process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
+  authDomain: requireEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  projectId: requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: requireEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET', process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: requireEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+  appId: requireEnv('NEXT_PUBLIC_FIREBASE_APP_ID', process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || '',
 };
 
