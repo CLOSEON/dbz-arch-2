@@ -381,7 +381,7 @@ export function SubscriptionOnboardingModal({
       setPaymentStatus('awaiting_payment');
 
       const paymentResponse = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
-        const RazorpayConstructor = (window as any).Razorpay;
+        const RazorpayConstructor = window.Razorpay;
         if (!RazorpayConstructor) {
           reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
           return;

@@ -56,7 +56,7 @@ function getTimestampMs(timestamp: any): number {
 
 export default function AdminDeliveryOversightPage() {
   const { user, isHydrated } = useAuthStore();
-  const isAdmin = user?.role === 'admin' || (user as any)?.is_superadmin === true || user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com';
+  const isAdmin = user?.role === 'admin' || user?.is_superadmin === true || user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com';
 
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -91,7 +91,7 @@ export default function AdminDeliveryOversightPage() {
     const unsub = onSnapshot(q, snap => {
       const rawRiders = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as AppUser))
-        .filter(u => u.role === 'delivery' || (u as any).roles?.delivery || u.phone === '+919900990044' || u.phone === '+919930577000');
+        .filter(u => u.role === 'delivery' || u.roles?.delivery || u.phone === '+919900990044' || u.phone === '+919930577000');
       
       // Deduplicate by unique phone number or email (keeping active primary account)
       const seen = new Set<string>();

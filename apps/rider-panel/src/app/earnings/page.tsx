@@ -153,7 +153,7 @@ export default function RiderShiftsAndPayPage() {
 
   // Real Monthly Salary Configuration
   // If not configured in DB, shows 0 (no static fake 18000)
-  const monthlySalary: number = Number(driverProfile?.monthlySalary || driverProfile?.salary || (user as any)?.monthly_salary || (user as any)?.salary || 0);
+  const monthlySalary: number = Number(driverProfile?.monthlySalary || driverProfile?.salary || user?.monthly_salary || user?.salary || 0);
   const workingDaysInMonth = 26;
   const dailyRate = monthlySalary > 0 ? Math.round(monthlySalary / workingDaysInMonth) : 0;
   const currentMonthEarned = daysWorked * dailyRate;
@@ -165,7 +165,7 @@ export default function RiderShiftsAndPayPage() {
     : 0;
 
   // Real Customer Rating
-  const realRating = driverProfile?.rating || (user as any)?.rating || null;
+  const realRating = driverProfile?.rating || user?.rating || null;
 
   // Real On-Time Rate
   const onTimePercentage = useMemo(() => {

@@ -97,7 +97,7 @@ export default function AdminOffersPage() {
         const allSnap = await getDocs(collection(db, 'users'));
         list = allSnap.docs
           .map((d) => ({ id: d.id, ...d.data() } as AppUser))
-          .filter((u) => u.role === 'vendor' || (u as any).roles?.vendor || Boolean(u.kitchen_name));
+          .filter((u) => u.role === 'vendor' || u.roles?.vendor || Boolean(u.kitchen_name));
       }
 
       // 3. Fallback: getApprovedVendors helper
@@ -143,7 +143,7 @@ export default function AdminOffersPage() {
       (v) =>
         (v.kitchen_name && v.kitchen_name.toLowerCase().includes(q)) ||
         (v.name && v.name.toLowerCase().includes(q)) ||
-        (Boolean((v as any).business_name) && String((v as any).business_name).toLowerCase().includes(q)) ||
+        (Boolean(v.business_name) && String(v.business_name).toLowerCase().includes(q)) ||
         (v.address && v.address.toLowerCase().includes(q))
     );
   }, [vendors, kitchenSearchQuery]);
@@ -347,7 +347,7 @@ export default function AdminOffersPage() {
   const getKitchenName = (kitchenId?: string | null) => {
     if (!kitchenId) return 'No Kitchen';
     const found = vendors.find((v) => v.id === kitchenId);
-    return found?.kitchen_name || found?.name || (found as any)?.business_name || found?.id || 'Selected Kitchen';
+    return found?.kitchen_name || found?.name || found?.business_name || found?.id || 'Selected Kitchen';
   };
 
   const activeCount = offers.filter((o) => o.isActive).length;
@@ -818,7 +818,7 @@ export default function AdminOffersPage() {
                             ) : (
                               filteredVendors.map((v) => {
                                 const isSelected = formKitchenId === v.id;
-                                const displayName = v.kitchen_name || v.name || (v as any).business_name || 'Kitchen';
+                                const displayName = v.kitchen_name || v.name || v.business_name || 'Kitchen';
                                 return (
                                   <div
                                     key={v.id}

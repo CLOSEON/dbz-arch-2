@@ -40,7 +40,7 @@ export function loadRazorpayCheckoutScript(): Promise<void> {
 
   _checkoutScriptPromise = new Promise((resolve, reject) => {
     // Check if already loaded
-    if (typeof window !== 'undefined' && (window as any).Razorpay) {
+    if (typeof window !== 'undefined' && window.Razorpay) {
       resolve();
       return;
     }
@@ -87,7 +87,7 @@ export async function openRazorpayCheckout(options: {
 }): Promise<void> {
   await loadRazorpayCheckoutScript();
 
-  const Razorpay = (window as any).Razorpay;
+  const Razorpay = window.Razorpay;
   if (!Razorpay) {
     throw new Error('Razorpay SDK could not be initialized.');
   }

@@ -40,9 +40,9 @@ export default function RiderDashboard() {
   const activeTrip = useDeliveryStore((s) => s.activeTrip);
   const agentOrders = useDeliveryStore((s) => s.agentOrders);
 
-  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
-  const isRiderRole = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || (user as any)?.roles?.delivery || user?.role === 'admin' || isSuper;
-  const isVerifiedRider = isSuper || ((user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested');
+  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || user?.is_superadmin === true;
+  const isRiderRole = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || user?.roles?.delivery || user?.role === 'admin' || isSuper;
+  const isVerifiedRider = isSuper || ((user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && user?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested');
 
   const [isMounting, setIsMounting] = useState(true);
   const [loadingImage, setLoadingImage] = useState(false);

@@ -221,10 +221,10 @@ export default function VendorDetailClient(props: PageProps) {
         image: vendorData.image || '',
         vendor_margin_percent: typeof vendorData.vendor_margin_percent === 'number'
           ? String(vendorData.vendor_margin_percent)
-          : (typeof (vendorData as any).vendor_margin_override === 'number' ? String((vendorData as any).vendor_margin_override) : ''),
+          : (typeof vendorData.vendor_margin_override === 'number' ? String(vendorData.vendor_margin_override) : ''),
         standard_meal_payout: typeof vendorData.standard_meal_payout === 'number'
           ? String(vendorData.standard_meal_payout)
-          : (typeof (vendorData as any).vendor_base_payout === 'number' ? String((vendorData as any).vendor_base_payout) : ''),
+          : (typeof vendorData.vendor_base_payout === 'number' ? String(vendorData.vendor_base_payout) : ''),
         custom_component_rates: (() => {
           const initialCustomRates: Record<string, string> = {};
           if (vendorData.custom_component_rates && typeof vendorData.custom_component_rates === 'object') {
@@ -622,7 +622,7 @@ export default function VendorDetailClient(props: PageProps) {
     );
   }
 
-  const isSuspended = (vendor as any).is_suspended === true;
+  const isSuspended = vendor.is_suspended === true;
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Overview', icon: BarChart3 },

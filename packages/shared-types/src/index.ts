@@ -43,7 +43,7 @@ export interface AppUser {
   is_superadmin?: boolean; // Only closeon.st@gmail.com
   // Multi-role membership map, used by AuthGuard's extended-role-membership
   // checks (packages/shared-auth/src/auth-guard.tsx) — previously accessed
-  // everywhere via `(user as any)?.roles?.x` because this field was never
+  // everywhere via `user?.roles?.x` because this field was never
   // actually declared. `vendor` can be a plain boolean or carry a
   // verification status; `admin`/`delivery` are booleans in current usage.
   roles?: {
@@ -117,6 +117,15 @@ export interface AppUser {
     beneficiary_name: string;
   };
   platform_fee_pct?: number;
+  // Suspension flag, set by the admin console's suspend/unsuspend action.
+  is_suspended?: boolean;
+  // Trading name, where it differs from `name` (used on vendor records).
+  business_name?: string;
+  // Rider compensation, where a fixed arrangement replaces per-trip payout.
+  salary?: number;
+  monthly_salary?: number;
+  // Flat per-meal payout agreed with this kitchen, before margin.
+  vendor_base_payout?: number;
   // Fluctuation margin override for this specific kitchen (e.g. 40%)
   vendor_margin_percent?: number;
   vendor_margin_override?: number;
@@ -176,6 +185,17 @@ export interface Subscription {
   promo_code?: string;
   custom_meal_config?: CustomMealConfig;
   meal_components?: string[];
+  // Denormalised vendor name copied onto the subscription doc.
+  vendor_name?: string;
+  // Custom-plan builder output. These were read through `as any` casts in the
+  // UI; declared here so the reads are checked.
+  subscriptionType?: 'custom_weekly' | 'custom_monthly' | string;
+  deliveryPattern?: Record<string, number>;
+  customPlan?: {
+    totalPrice?: number;
+    pattern?: Record<string, number>;
+    [key: string]: unknown;
+  };
   created_at: FirestoreTimestamp;
   next_billing_date?: FirestoreTimestamp;
   cancelled_at?: FirestoreTimestamp;
@@ -676,3 +696,54 @@ export const DEFAULT_MEAL_COMPONENTS: MealComponent[] = [
   },
 ];
 
+
+// ─── Ambient globals for third-party scripts on `window` ─────────────────────
+//
+// Previously reached via `(window as any).X` at each call site. Declared once
+// here so those reads are type-checked. Deliberately loose: these are external
+// SDKs whose full surface we do not model, only the parts actually used.
+//
+// NOTE: this lives in index.ts, not a separate .d.ts, because a .d.ts sitting
+// inside a package is not part of each app's tsconfig `include` — the
+// declarations would simply never load. `declare global` inside a module that
+// every app already imports does load.
+
+export interface RazorpayCheckoutOptions {
+  key: string;
+  amount?: number;
+  currency?: string;
+  name?: string;
+  description?: string;
+  image?: string;
+  order_id?: string;
+  subscription_id?: string;
+  handler?: (response: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) => void;
+  prefill?: { name?: string; email?: string; contact?: string };
+  notes?: Record<string, string | undefined>;
+  theme?: { color?: string };
+  modal?: { ondismiss?: () => void };
+  [key: string]: unknown;
+}
+
+export interface RazorpayInstance {
+  open(): void;
+  on(event: string, handler: (...args: never[]) => void): void;
+  close?(): void;
+}
+
+export interface RazorpayConstructor {
+  new (options: RazorpayCheckoutOptions): RazorpayInstance;
+}
+
+declare global {
+  interface Window {
+    /** Injected by https://checkout.razorpay.com/v1/checkout.js */
+    Razorpay?: RazorpayConstructor;
+    /** Google Maps JS SDK `&callback=` target — see the admin delivery page. */
+    initGoogleMap?: () => void;
+  }
+}

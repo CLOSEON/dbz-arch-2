@@ -189,7 +189,7 @@ export default function ProfilePage() {
 
       // 2. Open Razorpay Checkout modal
       const paymentResponse = await new Promise<any>((resolve, reject) => {
-        const RazorpayConstructor = (window as any).Razorpay;
+        const RazorpayConstructor = window.Razorpay;
         if (!RazorpayConstructor) {
           reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
           return;

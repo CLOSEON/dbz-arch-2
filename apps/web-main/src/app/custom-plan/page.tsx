@@ -231,7 +231,7 @@ function CustomPlanContent() {
             const isWeekly =
               (sub as any).billingCycle === 'weekly' ||
               sub.frequency === 'weekly' ||
-              (sub as any).subscriptionType === 'custom_weekly';
+              sub.subscriptionType === 'custom_weekly';
             setActiveTab(isWeekly ? 'weekly' : 'monthly');
           }}
         />

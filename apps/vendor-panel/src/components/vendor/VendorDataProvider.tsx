@@ -47,7 +47,7 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
 
     const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
                     user?.is_superadmin === true || 
-                    (user as any)?.roles?.admin === true ||
+                    user?.roles?.admin === true ||
                     user?.role === 'admin';
 
     if (isSuper) {
@@ -56,7 +56,7 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // Ensure user's own kitchen is always available in the switcher
-        if (user && (user.kitchen_name || (user as any).roles?.vendor)) {
+        if (user && (user.kitchen_name || user.roles?.vendor)) {
           if (!list.some(v => v.id === user.id)) {
             list.unshift({ ...user, id: user.id });
           }
@@ -84,7 +84,7 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       setActiveVendorIdState(user.id);
       setManagedVendor(user);
     }
-  }, [user?.id, user?.email, user?.is_superadmin, (user as any)?.roles]);
+  }, [user?.id, user?.email, user?.is_superadmin, user?.roles]);
 
   const setActiveVendorId = (id: string) => {
     setActiveVendorIdState(id);
@@ -100,7 +100,7 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
     if (!targetVendorId) return;
     const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
                     user?.is_superadmin === true || 
-                    (user as any)?.roles?.admin === true ||
+                    user?.roles?.admin === true ||
                     user?.role === 'admin';
 
     if (targetVendorId === user?.id && !isSuper) {

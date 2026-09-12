@@ -78,11 +78,11 @@ export default function VendorDashboard() {
 
   const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
                   user?.is_superadmin === true || 
-                  (user as any)?.roles?.admin === true || 
+                  user?.roles?.admin === true || 
                   user?.role === 'admin';
   const isVendorRole = user?.role === 'vendor' || isSuper;
   const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified' || isSuper) &&
-    user?.is_rejected !== true && (user as any)?.is_suspended !== true &&
+    user?.is_rejected !== true && user?.is_suspended !== true &&
     user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
 
   // Custom confirmation dialog state
