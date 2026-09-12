@@ -14,12 +14,23 @@ This document is the single source of truth for the work. Every phase lists exac
 | 0 — Safety net | ✅ Complete |
 | 1 — Canonicalize shared code | ✅ Complete (~46,000 lines removed) |
 | 2 — Security & rules | ✅ Complete |
-| 3 — Lint & correctness | 🟡 In progress — 1,000 problems left (was 1,772 across apps alone) |
-| 4 — Test coverage | ⬜ Not started |
+| 3 — Lint & correctness | 🟡 Partial — correctness rules (`purity`, `immutability`) **cleared**; `no-explicit-any`/`no-unused-vars` bulk remains |
+| 4 — Test coverage | ✅ Complete — 47 → **99 tests**, 3 → 7 suites |
 | 5 — Documentation | ✅ Complete |
 | 6 — Deployment readiness | ✅ [DEPLOYMENT.md](DEPLOYMENT.md) written; blockers listed there |
 
-**`npm run verify` right now:** typecheck ✅ (apps + packages), functions typecheck ✅, lint ❌ (known), functions tests ✅ 47/47. All 5 apps build.
+**`npm run verify` right now:** typecheck ✅ (apps + packages), functions typecheck ✅, lint ❌ (known), functions tests ✅ **99/99**. All 5 apps build.
+
+### Phase 4 — what the tests found
+
+Coverage went 47 → 99 tests across `utils/geo` (the 2 km dispatch math), `authTriggers.setUserRole`, `adminManagementTriggers` and `swapFunctions`. Two of the security guards were **mutation-checked** — deleting the guard, confirming exactly one test goes red, restoring it — because a mocked `firebase-admin` is easy to get subtly wrong in a way that leaves assertions vacuous.
+
+They earned their keep twice by contradicting an assumption rather than confirming one:
+
+1. **`verifyRider` writes `roles.rider.status` but sets `role: 'delivery'`.** Vendors are symmetric (`roles.vendor` + role `vendor`); riders are not. Nothing anywhere writes `roles.delivery` — which is precisely what the consolidated AuthGuard's delivery branch was checking, making that branch dead. Fixed the guard to check `roles.rider`, so the rider multi-role path actually works.
+2. The plan had listed `matchingTriggers`, `payoutTriggers` and `riderPaymentTriggers` as untested. They are covered by `deliveryRedesign.test.ts`. The real gaps were elsewhere.
+
+Still untested: `notificationTriggers`, and `functions/src/__tests__/integration.test.ts` remains the orphaned file described in Phase 0 (it imports the *client* Firestore SDK and paths that don't exist under `functions/`).
 
 ### Remaining lint, by rule
 
