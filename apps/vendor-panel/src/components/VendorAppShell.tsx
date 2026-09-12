@@ -20,7 +20,7 @@ export function VendorAppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard allowedRoles={['vendor', 'admin']}>
       <VendorDataProvider>
-        <div className="min-h-screen flex flex-col md:flex-row bg-ivory">
+        <div className="min-h-dvh flex flex-col md:flex-row bg-ivory">
           {/* Desktop Sidebar */}
           <aside className="hidden md:block w-64 h-screen sticky top-0 bg-white/90 backdrop-blur-xl border-r border-slate-200/70 z-50 shadow-[12px_0_40px_rgba(15,23,42,0.04)]">
             <div className="p-6 flex items-center border-b border-slate-100">

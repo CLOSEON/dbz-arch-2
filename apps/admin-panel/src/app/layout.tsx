@@ -12,6 +12,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
+  // Required for env(safe-area-inset-*) to report anything but 0 on notched
+  // iPhones. globals.css already uses those insets in ~50 places; without
+  // viewport-fit=cover they all silently collapse to the fallback and content
+  // sits under the notch and the home indicator. This app ships via Capacitor,
+  // so that is a real device, not a hypothetical.
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {

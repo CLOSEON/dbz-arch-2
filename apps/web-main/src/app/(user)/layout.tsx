@@ -5,7 +5,7 @@ import { Toaster } from '@/components/shared/Toaster';
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard allowedRoles={['user']}>
-      <div className="min-h-screen bg-[#FEFCE8]">
+      <div className="min-h-dvh bg-[#FEFCE8]">
         {/*
           No px-* here — each child page manages its own horizontal padding.
           The dashboard hero goes full-bleed; other pages use px-4/px-5 on their root div.

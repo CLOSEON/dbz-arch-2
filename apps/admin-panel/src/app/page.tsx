@@ -21,7 +21,7 @@ export default function AdminRootRedirect() {
   }, [user, isHydrated, router]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-950">
+    <div className="flex items-center justify-center min-h-dvh bg-slate-950">
       <div className="flex flex-col items-center gap-3">
         <div className="w-10 h-10 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
         <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Loading Admin Console…</p>

@@ -30,7 +30,7 @@ function SubscriptionActiveContent() {
   const isWeekly = planType === 'weekly';
 
   return (
-    <div className="min-h-screen bg-[#FEFCE8] py-10 px-4 sm:px-6 flex items-center justify-center">
+    <div className="min-h-dvh bg-[#FEFCE8] py-10 px-4 sm:px-6 flex items-center justify-center">
       <motion.div
         initial={{ scale: 0.93, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -135,7 +135,7 @@ export default function SubscriptionActivePage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#FEFCE8] flex items-center justify-center">
+        <div className="min-h-dvh bg-[#FEFCE8] flex items-center justify-center">
           <div className="text-sm font-bold text-amber-800 animate-pulse">
             Loading subscription confirmation...
           </div>

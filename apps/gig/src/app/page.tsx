@@ -103,7 +103,7 @@ export default function GigHomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFCE8] text-slate-900 selection:bg-amber-200">
+    <div className="min-h-dvh bg-[#FEFCE8] text-slate-900 selection:bg-amber-200">
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">

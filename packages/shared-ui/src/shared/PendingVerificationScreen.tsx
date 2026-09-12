@@ -57,7 +57,7 @@ export function PendingVerificationScreen({ role }: PendingVerificationProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between p-4 md:p-8">
+    <div className="min-h-dvh bg-slate-50 text-slate-900 flex flex-col justify-between p-4 md:p-8">
       {/* Top Header */}
       <div className="flex justify-between items-center max-w-lg mx-auto w-full pt-2">
         <div className="flex items-center gap-3">

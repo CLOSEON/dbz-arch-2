@@ -121,6 +121,13 @@
     letter-spacing: -0.015em;
     overscroll-behavior: none;
     min-height: 100vh;
+    /* 100dvh tracks the *visible* viewport as the mobile URL bar collapses.
+       Plain 100vh includes the area behind that bar, so the page is taller
+       than the screen and content gets pushed out of view / scroll jumps.
+       The 100vh line above stays as the fallback for older browsers. */
+    min-height: 100dvh;
+    /* Nothing should ever scroll the page sideways on a phone. */
+    overflow-x: hidden;
   }
   
   h1, h2, h3, h4, h5, h6 {

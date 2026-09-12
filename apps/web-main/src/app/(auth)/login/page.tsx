@@ -106,7 +106,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center px-6 py-10 font-sans">
+    <div className="min-h-dvh bg-[#F8FAFC] flex flex-col justify-center px-6 py-10 font-sans">
       <div className="w-full max-w-md mx-auto flex flex-col">
 
         <div className="flex justify-center mb-10">

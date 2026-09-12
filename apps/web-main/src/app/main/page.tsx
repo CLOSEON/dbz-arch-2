@@ -15,7 +15,7 @@ import { MainFooter } from '@/components/main/MainFooter';
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-ivory text-slate-950 selection:bg-brand/20 selection:text-brand-700">
+    <main className="min-h-dvh overflow-hidden bg-ivory text-slate-950 selection:bg-brand/20 selection:text-brand-700">
       <MainNavbar />
       
       {/* Sections */}

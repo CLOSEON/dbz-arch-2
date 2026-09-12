@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-5 py-12">
+    <div className="min-h-dvh bg-slate-950 flex flex-col items-center justify-center px-5 py-12">
       <div className="text-center mb-10">
         <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto mb-4 border border-slate-700">
           <span className="text-2xl">👑</span>

@@ -204,7 +204,7 @@ export default function UserDashboard() {
 
   /* ─── Render ─────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-dvh bg-[#F8FAFC]">
       <div className="animate-fade-in">
         {/* ════════════════════════════════════════
             HERO — Solid Orange with Crisp 2D Graphics

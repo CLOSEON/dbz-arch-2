@@ -13,7 +13,7 @@ export default function RegisterRedirect() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-ivory flex items-center justify-center">
+    <div className="min-h-dvh bg-ivory flex items-center justify-center">
       <p className="text-slate-500 text-sm font-medium">Redirecting…</p>
     </div>
   );

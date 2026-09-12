@@ -109,7 +109,7 @@ export function AuthGuard({
 
   if (!isHydrated || !user || !isAllowed) {
     return (
-      <div className={`flex items-center justify-center min-h-screen ${bgClassName}`}>
+      <div className={`flex items-center justify-center min-h-dvh ${bgClassName}`}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-full border-2 border-brand border-t-transparent animate-spin" />
           <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">{loadingLabel}</p>

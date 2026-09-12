@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0E11] flex flex-col justify-center px-6 py-10 font-sans">
+    <div className="min-h-dvh bg-[#0B0E11] flex flex-col justify-center px-6 py-10 font-sans">
       <div className="w-full max-w-sm mx-auto flex flex-col">
 
         <div className="flex justify-center mb-10">
