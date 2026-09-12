@@ -243,7 +243,7 @@ function CustomerTrackContent() {
     const dayAfterStr = dayAfter.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     let fromOrders: any[] = [];
-    let fromDeliveryOrders: any[] = [];
+    const fromDeliveryOrders: any[] = [];
 
     const mapOrderDoc = (d: any) => {
       const data = d.data ? d.data() : d;

@@ -487,7 +487,7 @@ export function consumeUserCreditsTx(
   amountToConsume: number,
   creditDocs: any[]
 ): boolean {
-  let totalAvailable = creditDocs.reduce((sum, doc) => sum + (doc.data.credit_amount || 0), 0);
+  const totalAvailable = creditDocs.reduce((sum, doc) => sum + (doc.data.credit_amount || 0), 0);
   if (totalAvailable < amountToConsume) {
     return false; // Insufficient funds
   }

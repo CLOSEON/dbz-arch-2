@@ -424,7 +424,7 @@ export async function createCustomPlanSubscription(
   params: CreateCustomPlanParams
 ): Promise<CreateCustomPlanResponse> {
   const { httpsCallable } = await import('firebase/functions');
-  const { functions } = await import('@/lib/firebase');
+  const { functions } = await import('@dabzzo/shared-auth');
 
   const fn = httpsCallable<CreateCustomPlanParams, CreateCustomPlanResponse>(
     functions,
@@ -492,7 +492,7 @@ export async function activateExternalSubscription(
   // Attempt 1: Call Cloud Function (Admin SDK privileges, always bypasses client rule limits)
   try {
     const { httpsCallable } = await import('firebase/functions');
-    const { functions } = await import('@/lib/firebase');
+    const { functions } = await import('@dabzzo/shared-auth');
     const callable = httpsCallable<any, ActivateExternalSubscriptionResponse>(
       functions,
       'activateExternalSubscriptionAdmin'

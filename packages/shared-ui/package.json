@@ -60,5 +60,9 @@
     "./vendor/VendorOnboardingWalkthrough": "./src/vendor/VendorOnboardingWalkthrough.tsx",
     "./vendor/VendorProfileCard": "./src/vendor/VendorProfileCard.tsx",
     "./vendor/VendorReviews": "./src/vendor/VendorReviews.tsx"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   }
 }

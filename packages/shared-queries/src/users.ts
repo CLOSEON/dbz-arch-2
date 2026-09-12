@@ -255,7 +255,7 @@ export async function approveUserRole(
   invalidateUserCache();
 
   // Trigger Notification
-  const { sendNotificationAlert } = await import('@/lib/notifications');
+  const { sendNotificationAlert } = await import('@dabzzo/shared-lib/notifications');
   await sendNotificationAlert({
     userId: uid,
     phone,
@@ -282,7 +282,7 @@ export async function requestRoleDetails(
   invalidateUserCache();
 
   // Trigger Notification
-  const { sendNotificationAlert } = await import('@/lib/notifications');
+  const { sendNotificationAlert } = await import('@dabzzo/shared-lib/notifications');
   await sendNotificationAlert({
     userId: uid,
     phone,
@@ -308,7 +308,7 @@ export async function rejectUserRole(
   invalidateUserCache();
 
   // Trigger Notification
-  const { sendNotificationAlert } = await import('@/lib/notifications');
+  const { sendNotificationAlert } = await import('@dabzzo/shared-lib/notifications');
   await sendNotificationAlert({
     userId: uid,
     phone,

@@ -27,5 +27,9 @@
     "@dabzzo/shared-lib": "*",
     "@dabzzo/shared-types": "*",
     "firebase": "^12.13.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   }
 }

@@ -19,10 +19,16 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
+// `typecheck:apps` / `lint:apps` run `--workspaces`, which covers BOTH apps/*
+// and packages/* — the package scripts were added on 2026-09-12 after the
+// shared packages turned out never to have been typechecked or linted at all.
+// That gap was hiding real runtime bugs (e.g. `await import('@/lib/firebase')`
+// left behind in the query layer, which resolves in an app but not in a
+// package). Keep every workspace covered here.
 const steps = [
-  { name: 'typecheck:apps', cmd: 'npm', args: ['run', 'typecheck:apps'] },
+  { name: 'typecheck (apps + packages)', cmd: 'npm', args: ['run', 'typecheck:apps'] },
   { name: 'typecheck:functions', cmd: 'npm', args: ['run', 'typecheck:functions'] },
-  { name: 'lint:apps', cmd: 'npm', args: ['run', 'lint:apps'] },
+  { name: 'lint (apps + packages)', cmd: 'npm', args: ['run', 'lint:apps'] },
   { name: 'test:functions', cmd: 'npm', args: ['run', 'test:functions'] },
 ];
 

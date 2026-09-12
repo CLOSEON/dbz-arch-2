@@ -112,7 +112,7 @@ export async function fetchPricingConfigViaFunction(
   planType: PlanPricingType
 ): Promise<CloudPricingConfigResponse> {
   const { httpsCallable } = await import('firebase/functions');
-  const { functions } = await import('@/lib/firebase');
+  const { functions } = await import('@dabzzo/shared-auth');
 
   const getPricingFn = httpsCallable<{ planType: string }, CloudPricingConfigResponse>(
     functions,

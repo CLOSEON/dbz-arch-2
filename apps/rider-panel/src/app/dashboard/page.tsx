@@ -297,7 +297,7 @@ export default function RiderDashboard() {
   const pickupStopsList = activeTrip?.pickupStops || [];
   const pendingPickups = pickupStopsList.filter((s: any) => s.status !== 'completed');
 
-  let remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
+  const remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
   if (activeTrip?.dropStops) {
     remainingDrops.sort((a, b) => {
       const stopA = activeTrip!.dropStops!.find((s: any) => s.orderId === a.id);

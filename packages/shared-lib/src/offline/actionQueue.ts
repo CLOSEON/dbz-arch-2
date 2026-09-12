@@ -37,7 +37,7 @@ export const processQueue = async () => {
   const currentQueueStr = localStorage.getItem(QUEUE_KEY);
   if (!currentQueueStr) return;
 
-  let queue: QueuedAction[] = JSON.parse(currentQueueStr);
+  const queue: QueuedAction[] = JSON.parse(currentQueueStr);
   if (queue.length === 0) return;
 
   console.log(`[Offline Queue] Processing ${queue.length} items...`);

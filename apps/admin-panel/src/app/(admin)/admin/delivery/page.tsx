@@ -36,14 +36,14 @@ import type { Order, AppUser } from '@/types';
 import { MissedDeliveryModal } from '@/components/admin/MissedDeliveryModal';
 import { useAuthStore } from '@/store/authStore';
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
+ 
 declare global {
   interface Window {
     google?: typeof google;
     initGoogleMap?: () => void;
   }
 }
-/* eslint-enable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
+ 
 
 function getTimestampMs(timestamp: any): number {
   if (!timestamp) return 0;

@@ -40,5 +40,9 @@
     "next": "*",
     "react": "*",
     "react-dom": "*"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   }
 }

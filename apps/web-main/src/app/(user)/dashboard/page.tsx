@@ -91,7 +91,7 @@ export default function UserDashboard() {
 
     let unsubSubs = () => {};
     let unsubOrders = () => {};
-    let unsubDeliveries = () => {};
+    const unsubDeliveries = () => {};
 
     const timer = setTimeout(() => {
       // Listen to active subscriptions
