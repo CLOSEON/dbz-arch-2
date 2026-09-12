@@ -27,12 +27,27 @@ This document is the single source of truth for the work. Every phase lists exac
 |---|---|---|
 | `no-explicit-any` | 510 | Mostly untyped Firestore reads. Real fix is `withConverter<T>()` using the now-canonical shared types. |
 | `no-unused-vars` | 370 | Dead imports/params. Mechanical. |
-| `set-state-in-effect` | 34 | **React Compiler rule — flags real render-loop risk.** Needs individual triage. |
+| `set-state-in-effect` | 34 | Triaged — see breakdown below. Performance/idiom rule, not a correctness rule. |
 | `no-unescaped-entities` | 28 | Trivial JSX quoting. |
 | `exhaustive-deps` | 27 | Stale-closure risk; triage individually. |
 | `immutability` / `purity` / `preserve-manual-memoization` / `refs` | 30 | React Compiler correctness rules. Triage individually. |
 
-The ~64 React Compiler findings are the ones worth real attention — they flag actual correctness risk, unlike the `any`/unused-vars bulk.
+### React Compiler findings — status
+
+`purity` (8 → **0**) and `immutability` (13 → **0**) are **fixed**. Those were the correctness-bearing ones, and two were genuine bugs: a `Math.random()` React key forcing an unmount/remount every render, and a render-time clock read. See CHANGELOG.
+
+`set-state-in-effect` (34) is **triaged and deliberately deferred.** Its own message says it "causes cascading renders that can hurt performance, and is not recommended" — it is a performance/idiom rule, not a correctness one. The instances break down as:
+
+| Category | Count | Assessment |
+|---|---|---|
+| Fetch-on-mount (`loadData()`, `loadVendors()`, …) | ~14 | Legitimate. React's own guidance is to adopt Suspense or a data-fetching library — an architecture change, not a lint fix. |
+| Loading-flag teardown (`setLoading(false)`) | ~6 | Part of the same fetch pattern. |
+| Sync with external system (`new DirectionsService()`, `setPolyline`, `setMounted(true)`) | ~6 | Legitimate effect usage; `setMounted(true)` is the standard hydration guard. |
+| **Derive state from props** (`setNameInput(user.name)`, `setProfile({…})`, `setStep(1)`) | **~8** | **The genuine "you might not need an effect" cases.** Worth fixing. |
+
+Only that last group is worth changing, and each one alters UI behaviour subtly (e.g. `setNameInput(user.name)` is what resets a form field when the profile loads — deriving it during render instead can break editing). They need a browser to verify, so they are left for someone who can exercise the screens rather than refactored blind.
+
+The `no-explicit-any` bulk is best addressed with typed Firestore converters (`withConverter<T>()`) now that the shared types are canonical — that would collapse most of the 510 in one structural change rather than 510 edits.
 
 ### Open decisions
 
