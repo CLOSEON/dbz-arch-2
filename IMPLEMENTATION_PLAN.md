@@ -7,6 +7,39 @@ This document is the single source of truth for the work. Every phase lists exac
 
 ---
 
+## Status — 2026-09-12
+
+| Phase | State |
+|---|---|
+| 0 — Safety net | ✅ Complete |
+| 1 — Canonicalize shared code | ✅ Complete (~46,000 lines removed) |
+| 2 — Security & rules | ✅ Complete |
+| 3 — Lint & correctness | 🟡 In progress — 1,000 problems left (was 1,772 across apps alone) |
+| 4 — Test coverage | ⬜ Not started |
+| 5 — Documentation | ✅ Complete |
+| 6 — Deployment readiness | ✅ [DEPLOYMENT.md](DEPLOYMENT.md) written; blockers listed there |
+
+**`npm run verify` right now:** typecheck ✅ (apps + packages), functions typecheck ✅, lint ❌ (known), functions tests ✅ 47/47. All 5 apps build.
+
+### Remaining lint, by rule
+
+| Rule | Count | Nature |
+|---|---|---|
+| `no-explicit-any` | 510 | Mostly untyped Firestore reads. Real fix is `withConverter<T>()` using the now-canonical shared types. |
+| `no-unused-vars` | 370 | Dead imports/params. Mechanical. |
+| `set-state-in-effect` | 34 | **React Compiler rule — flags real render-loop risk.** Needs individual triage. |
+| `no-unescaped-entities` | 28 | Trivial JSX quoting. |
+| `exhaustive-deps` | 27 | Stale-closure risk; triage individually. |
+| `immutability` / `purity` / `preserve-manual-memoization` / `refs` | 30 | React Compiler correctness rules. Triage individually. |
+
+The ~64 React Compiler findings are the ones worth real attention — they flag actual correctness risk, unlike the `any`/unused-vars bulk.
+
+### Open decisions
+
+**D6** (superadmin test-seeding writes fabricated verification data to production Firestore), **D7** (admin UI ships in the public customer bundle), **D8** (bump `next` off 16.2.6 — 1 critical + 2 high advisories) — all detailed below, all still yours to call. Nothing was changed unilaterally on any of them.
+
+---
+
 ## 0. Baseline — what's actually true right now
 
 Verified directly (not assumed) on 2026-09-12:
