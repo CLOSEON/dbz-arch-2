@@ -15,8 +15,6 @@
     "./offline/actionQueue": "./src/offline/actionQueue.ts",
     "./pricing": "./src/pricing.ts",
     "./pricingEngine": "./src/pricingEngine.ts",
-    "./server/rate-limit": "./src/server/rate-limit.ts",
-    "./server/validate": "./src/server/validate.ts",
     "./storage": "./src/storage.ts",
     "./stores/authStore": "./src/stores/authStore.ts",
     "./stores/deliveryStore": "./src/stores/deliveryStore.ts",
