@@ -384,20 +384,52 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
         pickupStops[stopIndex].status = 'completed';
         pickupStops[stopIndex].confirmedCount = actualCount;
         pickupStops[stopIndex].discrepancy = countDiscrepancy;
-        pickupStops[stopIndex].verifiedAt = admin.firestore.FieldValue.serverTimestamp();
+        pickupStops[stopIndex].verifiedAt = admin.firestore.Timestamp.now();
         const allDone = pickupStops.every((s) => s.status === 'completed');
-        t.update(tripRef, {
-            pickupStops,
-            status: allDone ? 'pickup_complete' : 'picking_up',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        const targetOrderStatus = allDone ? 'out_for_delivery' : 'picked_up';
         const ordersQuery = db.collection('orders')
             .where('rider_trip_id', '==', tripId)
             .where('vendor_id', '==', vendorId)
             .where('status', 'in', ['rider_assigned', 'vendor_ready', 'created', 'preparing', 'pending', 'notified']);
         const ordersSnap = await t.get(ordersQuery);
-        const targetOrderStatus = allDone ? 'out_for_delivery' : 'picked_up';
+        const otherSnap = allDone
+            ? await t.get(db.collection('orders')
+                .where('rider_trip_id', '==', tripId)
+                .where('status', '==', 'picked_up'))
+            : null;
         const batchIds = new Set();
+        ordersSnap.forEach((doc) => {
+            const order = doc.data();
+            if (order.batch_id)
+                batchIds.add(order.batch_id);
+        });
+        const tripBatchIds = tripData?.batch_ids || [];
+        const fallbackBatchDocs = [];
+        const fallbackOrderDocs = [];
+        if (batchIds.size === 0 && tripBatchIds.length > 0) {
+            for (const bId of tripBatchIds) {
+                const batchDoc = await t.get(db.collection('batches').doc(bId));
+                if (batchDoc.exists) {
+                    const bData = batchDoc.data();
+                    if (bData?.vendor_id === vendorId || bData?.vendorId === vendorId) {
+                        batchIds.add(bId);
+                        fallbackBatchDocs.push(batchDoc);
+                        const bOrderIds = bData?.order_ids || [];
+                        for (const oId of bOrderIds) {
+                            const oDoc = await t.get(db.collection('orders').doc(oId));
+                            if (oDoc.exists) {
+                                fallbackOrderDocs.push(oDoc);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        t.update(tripRef, {
+            pickupStops,
+            status: allDone ? 'pickup_complete' : 'picking_up',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
         ordersSnap.forEach((doc) => {
             const order = doc.data();
             t.update(doc.ref, {
@@ -405,8 +437,6 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
                 picked_up_at: admin.firestore.FieldValue.serverTimestamp(),
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
-            if (order.batch_id)
-                batchIds.add(order.batch_id);
             const logRef = db.collection('order_status_logs').doc();
             t.set(logRef, {
                 id: logRef.id,
@@ -417,11 +447,7 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
             });
         });
-        if (allDone) {
-            const otherPickedUpQuery = db.collection('orders')
-                .where('rider_trip_id', '==', tripId)
-                .where('status', '==', 'picked_up');
-            const otherSnap = await t.get(otherPickedUpQuery);
+        if (otherSnap) {
             otherSnap.forEach((doc) => {
                 t.update(doc.ref, {
                     status: 'out_for_delivery',
@@ -429,38 +455,22 @@ exports.verifyPickupOTP = functions.https.onCall(async (data, context) => {
                 });
             });
         }
-        const tripBatchIds = tripData?.batch_ids || [];
-        if (batchIds.size === 0 && tripBatchIds.length > 0) {
-            for (const bId of tripBatchIds) {
-                const batchDoc = await t.get(db.collection('batches').doc(bId));
-                if (batchDoc.exists) {
-                    const bData = batchDoc.data();
-                    if (bData?.vendor_id === vendorId || bData?.vendorId === vendorId) {
-                        batchIds.add(bId);
-                        const bOrderIds = bData?.order_ids || [];
-                        for (const oId of bOrderIds) {
-                            const oDoc = await t.get(db.collection('orders').doc(oId));
-                            if (oDoc.exists) {
-                                t.update(oDoc.ref, {
-                                    status: targetOrderStatus,
-                                    picked_up_at: admin.firestore.FieldValue.serverTimestamp(),
-                                    updated_at: admin.firestore.FieldValue.serverTimestamp()
-                                });
-                                const logRef = db.collection('order_status_logs').doc();
-                                t.set(logRef, {
-                                    id: logRef.id,
-                                    order_id: oId,
-                                    from_status: oDoc.data()?.status || 'vendor_ready',
-                                    to_status: targetOrderStatus,
-                                    actor: tripData?.riderId || 'rider',
-                                    timestamp: admin.firestore.FieldValue.serverTimestamp()
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        fallbackOrderDocs.forEach((oDoc) => {
+            t.update(oDoc.ref, {
+                status: targetOrderStatus,
+                picked_up_at: admin.firestore.FieldValue.serverTimestamp(),
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
+            });
+            const logRef = db.collection('order_status_logs').doc();
+            t.set(logRef, {
+                id: logRef.id,
+                order_id: oDoc.id,
+                from_status: oDoc.data()?.status || 'vendor_ready',
+                to_status: targetOrderStatus,
+                actor: tripData?.riderId || 'rider',
+                timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
         batchIds.forEach(batchId => {
             const batchRef = db.collection('batches').doc(batchId);
             const batchPayload = {

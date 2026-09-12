@@ -9,6 +9,7 @@ import {
   MapPin, Loader2, Store, Users, CheckCircle, Flame
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isAdminUser } from '@/lib/auth';
 import { Batch, AppUser } from '@/types';
 
 export default function AdminVendorOpsPage() {
@@ -19,7 +20,7 @@ export default function AdminVendorOpsPage() {
   const [slotFilter, setSlotFilter] = useState('all');
 
   useEffect(() => {
-    if (!isHydrated || !user || user.role !== 'admin') return;
+    if (!isHydrated || !user || !isAdminUser(user)) return;
 
     // Load vendors once
     const loadVendors = async () => {

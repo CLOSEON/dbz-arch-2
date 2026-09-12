@@ -312,6 +312,7 @@ export function SubscriptionOnboardingModal({
       meal_type: planId as MealType,
       category: dietaryCategory,
       frequency: selectedFrequency,
+      total_meals: mealsCount,
       selected_addons: structuredAddons,
       base_price: basePrice,
       addons_price: totalAddonsPrice,

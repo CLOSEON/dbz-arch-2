@@ -12,6 +12,7 @@ export {
   cleanupAuth,
   SUPERADMIN_EMAIL,
   isSuperadminEmail,
+  isAdminUser,
   normalizeEmail,
   extractUserEmail,
 } from './auth-service';

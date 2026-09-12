@@ -113,6 +113,7 @@ export async function createSubscription(data: {
   meal_type: MealType;
   category?: DietaryCategory;
   frequency?: SubscriptionFrequency;
+  total_meals?: number;
   selected_addons?: SelectedAddon[];
   base_price?: number;
   addons_price?: number;
@@ -152,6 +153,15 @@ export async function createSubscription(data: {
   const nextBilling = new Date();
   nextBilling.setDate(nextBilling.getDate() + daysToAdd);
   payload.next_billing_date = Timestamp.fromDate(nextBilling);
+
+  const computedTotalMeals = data.total_meals != null 
+    ? data.total_meals 
+    : data.frequency === 'one-time'
+      ? (data.meal_type === 'both' ? 2 : 1)
+      : data.frequency === 'weekly'
+        ? (data.meal_type === 'both' ? 14 : 7)
+        : (data.meal_type === 'both' ? 60 : 30);
+  payload.total_meals = computedTotalMeals;
 
   if (data.category) payload.category = data.category;
   if (data.frequency) payload.frequency = data.frequency;

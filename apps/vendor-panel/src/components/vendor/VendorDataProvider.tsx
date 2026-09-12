@@ -53,15 +53,24 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       const qVendors = query(collection(db, 'users'), where('role', 'in', ['vendor', 'kitchen']));
       const unsub = onSnapshot(qVendors, (snap) => {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Ensure user's own kitchen is always available in the switcher
+        if (user && (user.kitchen_name || (user as any).roles?.vendor)) {
+          if (!list.some(v => v.id === user.id)) {
+            list.unshift({ ...user, id: user.id });
+          }
+        }
+
         setAllVendors(list);
 
         const savedId = typeof window !== 'undefined' ? localStorage.getItem('dabzzo_active_vendor_id') : null;
         if (savedId && list.some(v => v.id === savedId)) {
           setActiveVendorIdState(savedId);
         } else {
-          // Default to Priya's Kitchen if available, otherwise first verified vendor, otherwise user.id
+          // If the logged-in superadmin has their own kitchen, default to it; otherwise Priya's Kitchen or first
+          const myKitchen = list.find(v => v.id === user.id);
           const priya = list.find(v => v.id === 'kb4yMdXRFBR2AhZWnY2GloUbHxR2');
-          const defaultVendor = priya || list[0];
+          const defaultVendor = myKitchen || priya || list[0];
           const chosenId = defaultVendor ? defaultVendor.id : user.id;
           setActiveVendorIdState(chosenId);
         }
@@ -121,7 +130,7 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
       const qBatches = query(
         collection(db, 'batches'),
         where('vendor_id', '==', targetVendorId),
-        where('status', 'in', ['pending', 'preparing', 'ready', 'notified'])
+        where('status', 'in', ['pending', 'preparing', 'ready', 'notified', 'pickup_in_progress', 'picked_up', 'completed'])
       );
       unsubBatches = onSnapshot(qBatches, (snap) => {
         setBatches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -130,11 +139,11 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         setError(err);
       });
 
-      // 2. Incoming Pickups (Rider Trips)
+      // 2. Incoming Pickups & Active Deliveries (Rider Trips)
       const qPickups = query(
         collection(db, 'rider_trips'),
         where('vendorIds', 'array-contains', targetVendorId),
-        where('status', 'in', ['assigned', 'accepted', 'at_vendor', 'pickup_pending', 'picking_up'])
+        where('status', 'in', ['assigned', 'accepted', 'at_vendor', 'pickup_pending', 'picking_up', 'pickup_complete', 'dropping', 'completed'])
       );
       unsubPickups = onSnapshot(qPickups, async (snap) => {
         const rawTrips = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
@@ -154,11 +163,11 @@ export function VendorDataProvider({ children }: { children: ReactNode }) {
         setPickups(enriched);
       }, (err) => console.error("Pickups listener error:", err));
 
-      // 3. Live Dispatched Orders
+      // 3. Live Dispatched & Delivered Orders
       const qDel = query(
         collection(db, 'orders'),
         where('vendor_id', '==', targetVendorId),
-        where('status', 'in', ['out_for_delivery', 'picked_up'])
+        where('status', 'in', ['out_for_delivery', 'picked_up', 'delivered'])
       );
       unsubDeliveries = onSnapshot(qDel, (snap) => {
         setDeliveries(snap.docs.map(d => ({ id: d.id, ...d.data() })));

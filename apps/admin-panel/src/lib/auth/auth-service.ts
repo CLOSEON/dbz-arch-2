@@ -25,6 +25,15 @@ export function isSuperadminEmail(email: string | null | undefined): boolean {
   return normalizeEmail(email) === normalizeEmail(SUPERADMIN_EMAIL);
 }
 
+export function isAdminUser(user: any): boolean {
+  if (!user) return false;
+  const email = user.email || user.providerData?.[0]?.email || '';
+  if (isSuperadminEmail(email) || user.is_superadmin === true) return true;
+  if (user.role === 'admin' || user.role === 'superadmin') return true;
+  if (user.roles?.admin === true) return true;
+  return false;
+}
+
 export function extractUserEmail(user: User | null | undefined): string {
   if (!user) return '';
   return (
