@@ -121,8 +121,10 @@ export function UserManagementHub() {
   const [extPaymentNotes, setExtPaymentNotes] = useState<string>('');
   const [extVendorId, setExtVendorId] = useState<string>('');
   const [extVendorCostPerMeal, setExtVendorCostPerMeal] = useState<number>(35);
+  // Lazy initializer: without the arrow this recomputes on every render and
+  // throws the result away, and reads the clock during render (impure).
   const [extStartDate, setExtStartDate] = useState<string>(
-    new Date(Date.now() + 86400000).toISOString().split('T')[0] // tomorrow
+    () => new Date(Date.now() + 86400000).toISOString().split('T')[0] // tomorrow
   );
   const [extDeliverySlot, setExtDeliverySlot] = useState<string>('lunch');
 

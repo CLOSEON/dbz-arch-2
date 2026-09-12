@@ -1844,7 +1844,7 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => {
+              {history.map((order, orderIdx) => {
                 // Safely extract address — can be string or Firestore map object
                 const rawAddr = (order as any).delivery_address ?? (order as any).address ?? '';
                 const addrStr = typeof rawAddr === 'string'
@@ -1866,7 +1866,7 @@ export default function VendorDetailClient(props: PageProps) {
                 const orderId = order.id ?? '';
 
                 return (
-                  <div key={orderId || Math.random()} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div key={orderId || `order-${orderIdx}`} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-900 font-mono">

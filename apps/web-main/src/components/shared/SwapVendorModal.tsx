@@ -128,6 +128,9 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
         // 1. Create payment order (Callable Cloud Function + REST fallback)
         const order = await createRazorpayOrder(
           5000, // ₹50.00 in paise
+          // Runs inside the handleSwap click handler, not during render; a
+          // unique receipt id per attempt is the intent.
+          // eslint-disable-next-line react-hooks/purity
           `swap_${delivery.id}_${Date.now()}`.slice(0, 40),
           {
             user_id: userId,

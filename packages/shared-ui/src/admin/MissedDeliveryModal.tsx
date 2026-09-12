@@ -49,17 +49,20 @@ export function MissedDeliveryModal({
   const [failReason, setFailReason] = useState('Customer unavailable at door');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Time elapsed calculation (since creation or pick-up)
-  const calculateMinutesElapsed = () => {
+  // Time elapsed since creation / pick-up.
+  //
+  // Snapshotted once when the modal opens rather than recomputed on every
+  // render. Reading the clock during render is impure: the number would shift
+  // whenever the component happened to re-render for an unrelated reason, and
+  // would sit stale otherwise. A snapshot is both deterministic and what this
+  // ops modal actually wants — "how long had this been stuck when I opened it".
+  const [minutesElapsed] = useState(() => {
     if (!order.createdAt) return 0;
     const startMs = order.createdAt.seconds
       ? order.createdAt.seconds * 1000
       : new Date(order.createdAt as any).getTime();
-    const diffMs = Date.now() - startMs;
-    return Math.floor(diffMs / 60000);
-  };
-
-  const minutesElapsed = calculateMinutesElapsed();
+    return Math.floor((Date.now() - startMs) / 60000);
+  });
 
   async function handleResolve(e: React.FormEvent) {
     e.preventDefault();

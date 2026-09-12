@@ -348,11 +348,15 @@ export function SubscriptionOnboardingModal({
     try {
       if (finalPrice === 0) {
         setPaymentStatus('activating');
+        /* eslint-disable react-hooks/purity -- runs inside the handleConfirmPay
+           click handler, not during render; these are one-off synthetic ids for
+           a zero-value (free) upgrade that never reaches Razorpay. */
         const mockResponse = {
           razorpay_payment_id: 'upg_free_' + Math.random().toString(36).slice(2, 9),
           razorpay_order_id: 'upg_free_' + Math.random().toString(36).slice(2, 9),
           razorpay_signature: 'free'
         };
+        /* eslint-enable react-hooks/purity */
         await activateVerifiedSubscription(mockResponse);
         return;
       }

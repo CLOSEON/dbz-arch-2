@@ -62,7 +62,8 @@ export default function RiderDashboard() {
 
   // Customer unavailability timer state
   const [unavailabilityStartTimes, setUnavailabilityStartTimes] = useState<Record<string, number>>({});
-  const [nowTick, setNowTick] = useState(Date.now());
+  // Lazy initializer: reading the clock directly during render is impure.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Current rider coordinates from active GPS
