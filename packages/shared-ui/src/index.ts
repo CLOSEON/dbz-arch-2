@@ -3,3 +3,4 @@ export * from './ui/loading';
 export * from './ui/PageTransition';
 export * from './ui/SwipeToConfirm';
 export * from './ErrorBoundary';
+export * from './Logo';
