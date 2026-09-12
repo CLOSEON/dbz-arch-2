@@ -6,6 +6,31 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
+## 2026-09-12 — Correction: the delivery_address impact claim was overstated
+
+The previous entry said the `delivery_address` type mismatch meant the 2 km swap-candidate search "silently matches nobody". **That overstated it, and the correction matters before anyone migrates data.**
+
+Tracing every writer:
+
+| Writer | Collection | Shape |
+|---|---|---|
+| `functions/src/deliveryTriggers.ts:397, :1217` | **`orders`** | object `{ line1, lat, lng }` ✅ |
+| `packages/shared-queries/src/subscriptions.ts:575` | `subscriptions` | bare string |
+| `functions/src/pricingFunctionsLegacy.ts:260` | `subscriptions` | bare string (and not exported from `functions/src/index.ts`, so not even deployed) |
+
+Both string-form writes target **`subscriptions`**, not `orders`. Every path that writes an *order* uses the object form. The swap search reads `orders`. So through current code there is no order with a string `delivery_address`, and the failure I described does not occur.
+
+What stands from that commit: `delivery_address` really is polymorphic *across the database* (string on subscriptions, object on orders), so typing it as a union and routing reads through `addressCoords()` is still correct and still the defensive thing to do. Only the impact claim was wrong.
+
+**What this does not rule out:** orders predating the canonical schema. Static analysis describes code, not the documents actually sitting in Firestore. Hence two new scripts rather than a blind migration:
+
+- `scripts/audit-delivery-address.mjs` — **read-only**. Reports the distribution of `delivery_address` shapes across `orders`, and for anything lacking coordinates, whether they could be recovered from the order's own `address` field or the customer's saved `location`.
+- `scripts/fix-delivery-address.mjs` — **dry run unless `--apply`**. Backfills coordinates from those two sources, preserves the previous value in `delivery_address_original` so it is reversible, and refuses to invent a location for orders where none can be found, reporting them instead.
+
+Run the audit first. If it reports zero, there is nothing to fix and the fix script should not be run at all.
+
+---
+
 ## 2026-09-12 — Phase 1 complete: shared packages, −46,000 lines
 
 Five shared packages now hold everything that must stay consistent across the five apps. Net effect across parts 1–7: **~46,000 lines removed**, with every step verified by typecheck on all 5 apps plus a real static-export build of all 5.

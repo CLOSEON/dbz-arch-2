@@ -23,6 +23,8 @@ bypass security rules entirely. Read one before running it.
 | `approve-rider.mjs`, `switch-rider.mjs` | Mutates rider state/assignment. |
 | `generate-trip-for-rider.js` | Writes a trip — test data in a live collection. |
 | `check-riders.mjs`, `check_vendors.mjs`, `audit-mock-data.js` | Read-only audits. |
+| `audit-delivery-address.mjs` | **Read-only.** Reports the shape of `orders.delivery_address` and whether missing coordinates could be recovered. Run this before the fix below. |
+| `fix-delivery-address.mjs` | Backfills coordinates onto orders that lack them. **Dry run unless `--apply`.** Preserves the original in `delivery_address_original`. |
 | `test-geo.mjs`, `test-clean-address.mjs` | Local logic checks, no Firestore writes. |
 
 Point these at the Firestore emulator before running against production.
