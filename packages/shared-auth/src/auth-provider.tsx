@@ -50,6 +50,31 @@ export interface SuperadminProvisioning {
   newProfileExtras?: (authUser: User) => Record<string, unknown>;
 }
 
+/**
+ * Whether superadmin auto-provisioning should run in the current environment.
+ *
+ * This matters because provisioning WRITES to Firestore: vendor-panel seeds a
+ * "Test Vendor" profile carrying verification_status 'verified', a sample FSSAI
+ * licence number, sample rates and a 4.5-star/14-review history; rider-panel
+ * seeds a verified rider. Those rows are indistinguishable from real ones once
+ * written, and a self-verifying account also can't exercise the *unverified*
+ * onboarding path.
+ *
+ * Currently returns true unconditionally, which preserves the behaviour this
+ * code had before it was consolidated — deliberately, so the refactor changed
+ * nothing. Whether to gate it is decision D6 in IMPLEMENTATION_PLAN.md and is
+ * still open. Two obvious gates when you want one:
+ *
+ *   return process.env.NODE_ENV !== 'production';
+ *   return process.env.NEXT_PUBLIC_ENABLE_SUPERADMIN_SEED === 'true';
+ *
+ * Note these are static-export builds, so either check is inlined at build
+ * time and the seeding is dropped from bundles where it evaluates false.
+ */
+function shouldProvisionSuperadmin(): boolean {
+  return true;
+}
+
 interface AuthProviderProps {
   children: React.ReactNode;
   /** Omit to disable superadmin auto-provisioning for this app. */
@@ -116,7 +141,8 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
 
         if (activeUser) {
           const userEmail = (activeUser.email || '').toLowerCase().trim();
-          const isSuper = userEmail === SUPERADMIN_EMAIL.toLowerCase();
+          const isSuper =
+            userEmail === SUPERADMIN_EMAIL.toLowerCase() && shouldProvisionSuperadmin();
 
           // 1. Initial hydration from Zustand (fast)
           const existingUser = useAuthStore.getState().user;
