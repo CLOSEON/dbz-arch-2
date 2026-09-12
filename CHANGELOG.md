@@ -6,6 +6,44 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
+## 2026-09-12 — Phase 1 complete: shared packages, −46,000 lines
+
+Five shared packages now hold everything that must stay consistent across the five apps. Net effect across parts 1–7: **~46,000 lines removed**, with every step verified by typecheck on all 5 apps plus a real static-export build of all 5.
+
+| Package | Holds |
+|---|---|
+| `@dabzzo/shared-types` | `AppUser`, `Subscription`, `Order`, `Batch`, delivery + payout types |
+| `@dabzzo/shared-auth` | Firebase client init, auth-service, AuthGuard, AuthProvider |
+| `@dabzzo/shared-lib` | pricing, geo, storage, haptics, notifications, offline queue, all 5 Zustand stores |
+| `@dabzzo/shared-queries` | the 18-module Firestore data-access layer |
+| `@dabzzo/shared-ui` | 37 shared components incl. a parameterized `Logo` |
+
+### Real bugs found by reconciling the forks
+
+These were not cleanliness problems — each was a live inconsistency between apps:
+
+1. **Weekly pricing mismatch.** `admin-panel`'s `pricing.ts` lacked the weekly-plan formula that `web-main` *and* the server-side `functions/src/pricingEngine.ts` implement. Verified against the server (the actual charging authority): admin computed weekly prices ~₹0.40/meal below what customers are charged.
+2. **Cross-portal access gap.** Each app's `auth-guard` applied only its *own* extended-role rule. `vendor-panel` and `rider-panel` both gate with `allowedRoles={[…, 'admin']}`, but neither understood `role === 'superadmin'` — so such a user could reach admin-panel and nowhere else. Now every rule applies to every role named in `allowedRoles`.
+3. **`BatchStatus` missing a state.** `vendor-panel`'s copy uniquely had `'picked_up'`, which its own dashboard keys a `Record<BatchStatus, …>` on. The other four copies lacked it.
+4. **Unhardened image URLs.** `vendor-panel`'s `getImageUrl` lacked the null-safety and the guard stopping localhost/emulator URLs rendering on production domains.
+5. **Build script reported success on failure.** `scripts/build-web.mjs` printed "🎉 completed successfully" even when an app's build failed (it set `exitCode` but printed the banner unconditionally). An intermediate build during this work failed for rider-panel and still ended green. Also fixed: an unknown app name exited 0.
+6. **`export *` drops default exports.** Four components are loaded via `next/dynamic()`, which needs the default. Caught by typecheck before shipping.
+
+### Judgement calls, made explicitly
+
+- **Which copy is canonical** was usually decided by *which one actually runs*, not which looked newer. `getVendorStats` and `forceFormBatches` are called only by admin-panel; three apps carried different, never-executed versions. Adopting the more elaborate `getVendorStats` because it "looked better" would have silently changed live vendor financial reporting.
+- **Cache TTLs in `users.ts`** were a genuine conflict with no right answer: 5 minutes in three apps, 20 seconds in rider-panel (riders read this mid-delivery). Rather than pick, TTLs are configurable with the 5-minute default; rider-panel opts in via `configureUserCacheTTLs()` in `RiderAppShell.tsx`.
+
+### 11,671 lines of dead code removed
+
+A reachability scan showed nearly every remaining "drifted duplicate" was simply dead: when four apps were bootstrapped by copying one into three, every app got every component, but each is imported by exactly one. `AdminNav` only by admin-panel, `PaymentModal` only by web-main, `TodayMenuCard` only by vendor-panel, and so on.
+
+Two false-positive classes were corrected before anything was deleted: a static-import-only scan wrongly marked `RiderTrackingCard` dead (it is loaded via `next/dynamic()` in web-main), and substring matching flagged `DeliveryNav` because of `useDeliveryNavigation`.
+
+Source files per app afterwards: web-main 99, admin-panel 76, vendor-panel 60, rider-panel 47, gig 2.
+
+---
+
 ## 2026-09-12 — Phase 1 (continued): shared AuthGuard
 
 Consolidated the 4 drifted `auth-guard.tsx` copies (web-main, admin-panel, vendor-panel, rider-panel — `gig` never had one) into `packages/shared-auth/src/auth-guard.tsx`, replacing what was actually a dead no-op stub there before (the pre-existing `AuthGuard` in `shared-auth` rendered `children` unconditionally with no role check at all — never wired up to any app, but would have been a real security bug if it had been).
