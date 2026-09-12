@@ -4,7 +4,7 @@ import path from "path";
 const nextConfig: NextConfig = {
   output: 'export',
   compress: true,
-  transpilePackages: ["@dabzzo/shared-auth", "@dabzzo/shared-ui"],
+  transpilePackages: ["@dabzzo/shared-auth", "@dabzzo/shared-ui", "@dabzzo/shared-types"],
   images: {
     unoptimized: true,
     remotePatterns: [

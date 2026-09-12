@@ -6,6 +6,29 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
+## 2026-09-12 — Phase 1 (started): shared types + dead-code removal
+
+**`@dabzzo/shared-types` created** — the first of the shared packages the plan calls for. Reconciled the 4 drifted copies of `types/index.ts` into one canonical file at `packages/shared-types/src/index.ts`.
+
+Did this rigorously, not by picking one app's file and hoping: extracted every union type and every interface's field set from all 5 apps' copies and diffed them structurally (script-assisted, not eyeballed) rather than relying on whole-file diffs, which had already misled the earlier planning pass once (see below). Findings:
+- All divergences were additive (a narrower app missing fields a wider app had) with **one real conflict**: `vendor-panel`'s `BatchStatus` uniquely included `'picked_up'` — actual code in `apps/vendor-panel/src/app/dashboard/page.tsx` keys a `Record<BatchStatus, ...>` on it. Every other app's copy was missing this value. This is the exact class of bug flagged as a risk in `IMPLEMENTATION_PLAN.md` §2.1 — confirmed real, not hypothetical, and merged in rather than dropped.
+- `web-main`'s copy (652 lines) turned out to be the most complete base, not a strict superset as first assumed from a shallower diff — `vendor-panel`'s `picked_up` was the exception. Corrected before merging, not after.
+- Every app's `src/types/index.ts` is now a 6-line re-export of `@dabzzo/shared-types` — import call sites (`import { AppUser } from '@/types'`) are unchanged across the whole codebase, only what `@/types` resolves to changed.
+- **Verified:** all 5 apps typecheck clean; full builds of `web-main`, `admin-panel`, and `vendor-panel` (the one with the real dependency on `picked_up`) succeed.
+- Side effect: web-main's lint errors dropped 369 → 365 (the 4 `no-explicit-any` hits that lived in the old per-app `types/index.ts` no longer exist there).
+
+**Dead code removed (D3, D5 from the plan, both re-confirmed zero call sites immediately before deleting):**
+- `RazorpayButton.tsx` + `useRazorpay.ts` — 8 files across all 4 client apps. Confirmed dead everywhere, including web-main, where the real checkout path is `PaymentModal.tsx` → `lib/razorpay.ts` directly.
+- `lib/firebaseAdmin.ts` — 4 files, zero imports anywhere.
+- `firebase-admin` + `razorpay` npm dependencies removed from all 4 client apps' `package.json`. Root `package.json` keeps `firebase-admin` (genuinely used by 7 scripts under `scripts/` that run at the repo root, e.g. `bootstrap-admin.mjs`) but drops `razorpay` (unused anywhere at root).
+- **Verified:** typecheck clean, full builds of `web-main` and `admin-panel` succeed post-removal.
+
+**Root workspace `npm audit`:** 30 → 11 vulnerabilities via non-breaking `npm audit fix`. Remaining 11 (1 critical, 2 high, 8 moderate) all trace back to the pinned `next@16.2.6` (and its `postcss`/`sharp` build-tooling chain) — deliberately **not** force-upgraded mid-refactor, since `next` is exact-pinned across every app and a version bump needs its own isolated testing pass, not to be folded into a types/dead-code cleanup. Tracked as a dedicated near-term task, not silently deferred.
+
+**Files:** `packages/shared-types/` (new — `package.json`, `tsconfig.json`, `src/index.ts`, `README.md`); all 5 apps' `src/types/index.ts`, `package.json`, `next.config.ts` (modified); `RazorpayButton.tsx` × 4, `useRazorpay.ts` × 4, `firebaseAdmin.ts` × 4 (deleted); root `package.json` (modified).
+
+---
+
 ## 2026-09-12 — Phase 0: Safety net
 
 **Baseline established:**

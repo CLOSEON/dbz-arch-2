@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@dabzzo/shared-auth": "*",
+    "@dabzzo/shared-types": "*",
     "@dabzzo/shared-ui": "*",
     "lucide-react": "^1.14.0",
     "next": "16.2.6",

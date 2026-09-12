@@ -138,18 +138,19 @@ First version chained steps with `&&`; since `lint:apps` currently always fails 
 ✅ test:functions (47/47)
 ```
 
-### Phase 1 — Canonicalize shared code (2–3 days, highest leverage)
+### Phase 1 — Canonicalize shared code (2–3 days, highest leverage) — 🟡 IN PROGRESS
 Create/extend shared packages so there is exactly **one** definition of anything that must stay consistent across apps, while preserving each app's real behavioral differences as configuration, not forks.
 
-- [ ] New package `packages/shared-types` (or extend `shared-auth`) — merge the 4 `types/index.ts` variants into one superset type file. Every app imports from `@dabzzo/shared-types` instead of a local copy.
+- [x] New package `packages/shared-types` — merged the 4 `types/index.ts` variants into one canonical file. **Not** a naive "use the biggest file" merge: structurally diffed every union type and interface field set across all 5 apps and found `vendor-panel`'s `BatchStatus` had a real, load-bearing `'picked_up'` value none of the other 4 copies had (actual code keys a `Record<BatchStatus,...>` on it). Merged in, not dropped. All 5 apps now re-export from `@dabzzo/shared-types`; verified via typecheck (all 5 clean) and real builds (web-main, admin-panel, vendor-panel). See CHANGELOG.md for the full divergence analysis.
 - [ ] `packages/shared-auth`: make `auth-guard.tsx` accept the role-check behavior each app needs today (superadmin bypass, multi-role vendor check, legacy `delivery_agent` alias) via an `allowedRoles` + `roleResolver` pattern, so app-specific nuance survives as an explicit parameter instead of a silent fork. Wire all 4 apps to import it (they already declare the dependency and `transpilePackages` — just not using it, per the earlier grep).
-- [ ] Consolidate `lib/queries/{subscriptions,users,admin,delivery,vendorAdmin,pricing}.ts` into `packages/shared-firestore` (new) or into `shared-auth` alongside the Firestore client init — reconcile the 2–3 drifted versions of each into one, diffed line-by-line, keeping the newest/most-fixed logic per §2.1.
+- [ ] Consolidate `lib/queries/{subscriptions,users,admin,delivery,vendorAdmin,pricing}.ts` into `packages/shared-firestore` (new) or into `shared-auth` alongside the Firestore client init — reconcile the 2–3 drifted versions of each into one, diffed line-by-line (structurally, the way `shared-types` was done — a shallow whole-file diff already proved misleading once), keeping the newest/most-fixed logic per §2.1.
 - [ ] Move the 78 byte-identical duplicated files (Nav components, `Logo.tsx`, `VendorCard.tsx`, `MainNavbar.tsx`, etc.) into `packages/shared-ui`, replacing per-app copies with imports. Zero behavior change since they're already identical — pure dedup.
-- [ ] **D3:** Delete `RazorpayButton.tsx` + `useRazorpay.ts` from all 4 apps.
-- [ ] **D5:** Remove `lib/firebaseAdmin.ts` + `firebase-admin`/`razorpay` from all 4 client `package.json`s.
+- [x] **D3:** Delete `RazorpayButton.tsx` + `useRazorpay.ts` from all 4 apps. Re-confirmed zero call sites immediately before deleting; verified via typecheck + build.
+- [x] **D5:** Remove `lib/firebaseAdmin.ts` + `firebase-admin`/`razorpay` from all 4 client `package.json`s. Root `package.json` keeps `firebase-admin` (7 root-level ops scripts under `scripts/` genuinely need it) but drops `razorpay` (unused at root). Root workspace `npm audit`: 30 → 11 vulnerabilities via non-breaking fix; remaining 11 all trace to the pinned `next@16.2.6` — tracked as a dedicated task below, not force-upgraded mid-refactor.
 - [ ] Delete the root `app/` stub (§2.2) after confirming with you it's not a deploy target (it isn't referenced anywhere).
+- [ ] **New, found during Phase 1:** bump `next` off `16.2.6` — 1 critical + 2 high `npm audit` findings (middleware/proxy bypass, DoS via Server Actions, SSRF via rewrites/Server Actions, cache confusion) all trace to the pinned Next.js version, vulnerable range extends to 16.3.2. Needs its own isolated test pass across all 5 apps (build + smoke test each) before landing — exact-pinned everywhere, not a drop-in bump.
 
-**Done when:** `types/index.ts`, `auth-guard.tsx`, and the query layer exist in exactly one place each; `tsc --noEmit` still passes on all 5 apps; app-specific behavior (rider legacy role, vendor multi-role, admin superadmin) still works, now as explicit config.
+**Done when:** `types/index.ts` ✅, `auth-guard.tsx`, and the query layer exist in exactly one place each; `tsc --noEmit` still passes on all 5 apps; app-specific behavior (rider legacy role, vendor multi-role, admin superadmin) still works, now as explicit config.
 
 ### Phase 2 — Security & rules consolidation (1 day)
 - [ ] **D4:** Make `packages/firestore-rules/{firestore.rules,storage.rules}` the source of truth; regenerate the root copies from it (script or symlink) so `firebase.json`'s deploy target and the package can never diverge again.
