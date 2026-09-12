@@ -1,0 +1,20 @@
+{
+  "name": "@dabzzo/shared-lib",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./geo": "./src/geo.ts",
+    "./boxTag": "./src/boxTag.ts",
+    "./pricing": "./src/pricing.ts",
+    "./pricingEngine": "./src/pricingEngine.ts",
+    "./storage": "./src/storage.ts",
+    "./utils": "./src/utils.ts"
+  },
+  "dependencies": {
+    "@dabzzo/shared-auth": "*",
+    "@dabzzo/shared-types": "*",
+    "clsx": "^2.1.1",
+    "firebase": "^12.13.0",
+    "tailwind-merge": "^3.6.0"
+  }
+}

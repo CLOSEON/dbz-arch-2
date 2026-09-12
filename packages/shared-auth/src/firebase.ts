@@ -13,14 +13,34 @@ import { getStorage, type FirebaseStorage } from 'firebase/storage';
 // ─── Firebase Configuration ─────────────────────────────────────────────────
 // authDomain MUST be dabzofb.firebaseapp.com for OAuth popup/redirect handlers
 // to work seamlessly with Google Sign-In across custom domains without mismatch errors.
+//
+// SECURITY: no hardcoded project fallback. A missing env var must fail the
+// build loudly, not silently point a dev/staging build at production Firestore.
+// Values come from the repo-root .env/.env.local, copied into each app's
+// directory by scripts/sync-env.mjs (see predev/prebuild in each app's
+// package.json).
+//
+// This is the SINGLE SOURCE OF TRUTH for Firebase client init. Each app's
+// src/lib/firebase.ts re-exports from here so there is exactly one Firebase
+// app/Firestore instance per build — see IMPLEMENTATION_PLAN.md Phase 1.
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `Missing required env var ${name}. Run "node scripts/sync-env.mjs" from the repo root, or set it directly.`
+    );
+  }
+  return value;
+}
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDDuCCfdoGZUv92B_tgK3ibzOU8io5bee0',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'dabzofb.firebaseapp.com',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'dabzofb',
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'dabzofb.firebasestorage.app',
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '651368129597',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:651368129597:web:31bd85f34d84e7e23b3654',
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || 'G-GMWRJ1BK1E',
+  apiKey: requireEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: requireEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: requireEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: requireEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: requireEnv('NEXT_PUBLIC_FIREBASE_APP_ID'),
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || '',
 };
 
 // ─── Singleton App ───────────────────────────────────────────────────────────

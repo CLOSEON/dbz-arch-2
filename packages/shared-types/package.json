@@ -6,6 +6,11 @@
   "module": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./delivery": "./src/delivery.ts",
+    "./payout": "./src/payout.ts"
+  },
+  "dependencies": {
+    "firebase": "^12.13.0"
   }
 }

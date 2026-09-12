@@ -24,6 +24,7 @@
     "@capacitor/ios": "^8.4.1",
     "@capacitor/push-notifications": "^8.0.4",
     "@dabzzo/shared-auth": "*",
+    "@dabzzo/shared-lib": "*",
     "@dabzzo/shared-types": "*",
     "@dabzzo/shared-ui": "*",
     "@vis.gl/react-google-maps": "^1.9.0",
