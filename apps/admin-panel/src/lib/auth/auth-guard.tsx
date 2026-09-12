@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { isAdminUser } from './auth-service';
 import type { UserRole } from '@/types';
 
 interface AuthGuardProps {
@@ -15,10 +16,9 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
-  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
+  const isAdminRole = isAdminUser(user);
   const userRole = (user?.role as string) || '';
-  const isAdminRole = userRole === 'admin' || (user as any)?.roles?.admin === true || isSuper;
-  const isAllowed = !allowedRoles || allowedRoles.length === 0 || isSuper || (allowedRoles.includes('admin') && isAdminRole) || allowedRoles.includes(userRole as any);
+  const isAllowed = !allowedRoles || allowedRoles.length === 0 || (allowedRoles.includes('admin') && isAdminRole) || allowedRoles.includes(userRole as any);
 
   useEffect(() => {
     if (!isHydrated) return;

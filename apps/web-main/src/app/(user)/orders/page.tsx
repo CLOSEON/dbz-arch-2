@@ -29,6 +29,42 @@ const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), {
   )
 });
 
+// ─── Robust Date Extractor Helper ──────────────────────────────────────────
+function parseDeliveryDate(delivery: any): { dateObj: Date; dateStr: string } {
+  if (delivery?.date) {
+    if (typeof delivery.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery.date)) {
+      const [y, m, day] = delivery.date.split('-').map(Number);
+      return { dateObj: new Date(y, m - 1, day), dateStr: delivery.date };
+    }
+    if (delivery.date.toDate) {
+      const d = delivery.date.toDate();
+      return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+    }
+    const parsed = new Date(delivery.date);
+    if (!isNaN(parsed.getTime())) {
+      return { dateObj: parsed, dateStr: parsed.toLocaleDateString('en-CA') };
+    }
+  }
+  if (delivery?.createdAt?.toDate) {
+    const d = delivery.createdAt.toDate();
+    return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+  }
+  if (delivery?.createdAt?.seconds) {
+    const d = new Date(delivery.createdAt.seconds * 1000);
+    return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+  }
+  if (delivery?.created_at?.toDate) {
+    const d = delivery.created_at.toDate();
+    return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+  }
+  if (delivery?.created_at?.seconds) {
+    const d = new Date(delivery.created_at.seconds * 1000);
+    return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+  }
+  const d = new Date();
+  return { dateObj: d, dateStr: d.toLocaleDateString('en-CA') };
+}
+
 // ─── Memoized Countdown Timer Component ────────────────────────────────────
 const CountdownTimer = React.memo(function CountdownTimer({ 
   delivery, 
@@ -42,25 +78,8 @@ const CountdownTimer = React.memo(function CountdownTimer({
 
   // Memoize cutoff calculation to prevent recalculations on every render
   const cutoffMoment = useMemo(() => {
-    let d: Date;
-    if (delivery.date) {
-      if (typeof delivery.date === 'string' && delivery.date.length === 10) {
-        const [y, m, day] = delivery.date.split('-').map(Number);
-        d = new Date(y, m - 1, day);
-      } else if (delivery.date.toDate) {
-        d = delivery.date.toDate();
-      } else {
-        d = new Date(delivery.date);
-      }
-    } else if (delivery.createdAt?.toDate) {
-      d = delivery.createdAt.toDate();
-    } else if (delivery.createdAt?.seconds) {
-      d = new Date(delivery.createdAt.seconds * 1000);
-    } else {
-      d = new Date();
-    }
-    
-    const deliveryMoment = new Date(d);
+    const { dateObj } = parseDeliveryDate(delivery);
+    const deliveryMoment = new Date(dateObj);
     const slot = delivery.scheduledSlot || delivery.delivery_slot || (delivery.meal?.type === 'lunch' ? '11am' : '8pm');
     
     if (slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
@@ -197,7 +216,10 @@ export default function OrdersPage() {
               let price = s.paid_amount ?? s.price ?? 0;
               let title = 'Subscription';
 
-              if (mealType === 'lunch') {
+              if (s.frequency === 'one-time') {
+                price = s.paid_amount ?? s.total_price ?? (mealType === 'dinner' ? (vendor.rate_dinner || 0) : (vendor.rate_lunch || 0));
+                title = `${mealType === 'both' ? 'Lunch + Dinner' : mealType === 'dinner' ? 'Dinner' : 'Lunch'} Single Meal`;
+              } else if (mealType === 'lunch') {
                 price = price || vendor.rate_lunch_weekly || vendor.rate_lunch || 0;
                 title = 'Lunch Plan';
               } else if (mealType === 'dinner') {
@@ -301,16 +323,9 @@ export default function OrdersPage() {
     // Deduplicate real orders: keep only the most recent per slot
     const slotMap = new Map<string, any>();
     for (const o of realOrders) {
-      // Skipped projected docs have a `date` string ("2026-07-11"); real docs use createdAt timestamp.
-      let dateKey: string;
-      if (o.date && typeof o.date === 'string' && o.date.length === 10) {
-        dateKey = o.date; // already "en-CA" format (YYYY-MM-DD)
-      } else {
-        const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt ? new Date(o.createdAt) : new Date());
-        dateKey = d.toLocaleDateString('en-CA');
-      }
+      const { dateStr } = parseDeliveryDate(o);
       const mealType = o.meal?.type || o.meal_type || 'lunch';
-      const slotKey = `${dateKey}_${mealType}`;
+      const slotKey = `${dateStr}_${mealType}`;
       const existing = slotMap.get(slotKey);
       // Keep the newest one (highest updatedAt or createdAt seconds)
       const oMs = o.updatedAt?.seconds ?? o.createdAt?.seconds ?? 0;
@@ -327,14 +342,15 @@ export default function OrdersPage() {
     // Also exclude manually skipped slots so they don't re-appear as "Generating..."
     skippedSlots.forEach(k => coveredKeys.add(k));
 
-    // Only project future slots if there are active subscriptions
-    if (activeSubs.length > 0) {
+    // Only project future slots if there are active recurring subscriptions (never for one-time orders)
+    const activeRecurringSubs = activeSubs.filter((s: any) => s.frequency !== 'one-time');
+    if (activeRecurringSubs.length > 0) {
       const now = new Date();
       for (let dayOffset = 0; dayOffset <= 5; dayOffset++) {
         const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
         const dateKey = targetDate.toLocaleDateString('en-CA');
 
-        activeSubs.forEach((sub: any) => {
+        activeRecurringSubs.forEach((sub: any) => {
           const mealTypes = sub.meal_type === 'both' ? ['lunch', 'dinner'] : [sub.meal_type];
           mealTypes.forEach((mealType: string) => {
             const key = `${dateKey}_${mealType}`;
@@ -360,6 +376,7 @@ export default function OrdersPage() {
               vendorName,
               status: 'pending',
               isProjected: true,
+              date: dateKey,
               meal: { type: mealType, name: `${vendorName}'s ${mealType === 'lunch' ? 'Lunch' : 'Dinner'}` },
               scheduledSlot,
               createdAt: { toDate: () => targetDate, seconds: targetDate.getTime() / 1000 },
@@ -381,8 +398,8 @@ export default function OrdersPage() {
     const filtered = merged.filter(o => {
       if (o.isProjected) return true;
 
-      const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date());
-      const slotTime = new Date(d);
+      const { dateObj } = parseDeliveryDate(o);
+      const slotTime = new Date(dateObj);
       if (o.scheduledSlot === '8am') slotTime.setHours(8, 0, 0, 0);
       else if (o.scheduledSlot === '11am') slotTime.setHours(11, 0, 0, 0);
       else if (o.scheduledSlot === '8pm') slotTime.setHours(20, 0, 0, 0);
@@ -390,7 +407,7 @@ export default function OrdersPage() {
       else slotTime.setHours(20, 0, 0, 0);
 
       // 1. Filter out orders from past days
-      if (d.getTime() < todayStart.getTime()) return false;
+      if (dateObj.getTime() < todayStart.getTime()) return false;
 
       // 2. Filter out active/completed orders from the Upcoming Schedule list (they are tracked via Track button)
       if (['picked_up', 'out_for_delivery', 'delivered'].includes(o.status)) return false;
@@ -408,8 +425,8 @@ export default function OrdersPage() {
 
     filtered.sort((a, b) => {
       const getExactTime = (o: any) => {
-        const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date());
-        const moment = new Date(d);
+        const { dateObj } = parseDeliveryDate(o);
+        const moment = new Date(dateObj);
         if (o.scheduledSlot === '8am') moment.setHours(8, 0, 0, 0);
         else if (o.scheduledSlot === '11am') moment.setHours(11, 0, 0, 0);
         else if (o.scheduledSlot === '8pm') moment.setHours(20, 0, 0, 0);
@@ -420,7 +437,7 @@ export default function OrdersPage() {
       return getExactTime(a) - getExactTime(b);
     });
     
-    setUpcomingDeliveries(filtered.slice(0, 5));
+    setUpcomingDeliveries(filtered);
   }, [realOrders, activeSubs, user, skippedSlots, vendorsList]);
 
   async function loadOrders() {
@@ -440,17 +457,20 @@ export default function OrdersPage() {
       const enriched: EnrichedSubscription[] = subs.map((s) => {
         const vendor = vendorMap[s.vendor_id] ?? {};
         const mealType = s.meal_type;
-        let price = 0;
+        let price = s.paid_amount ?? s.total_price ?? 0;
         let title = 'Subscription';
 
-        if (mealType === 'lunch') {
-          price = vendor.rate_lunch_weekly ?? vendor.rate_lunch ?? 0;
+        if (s.frequency === 'one-time') {
+          price = price || (mealType === 'dinner' ? (vendor.rate_dinner || 0) : (vendor.rate_lunch || 0));
+          title = `${mealType === 'both' ? 'Lunch + Dinner' : mealType === 'dinner' ? 'Dinner' : 'Lunch'} Single Meal`;
+        } else if (mealType === 'lunch') {
+          price = price || vendor.rate_lunch_weekly || vendor.rate_lunch || 0;
           title = 'Lunch Plan';
         } else if (mealType === 'dinner') {
-          price = vendor.rate_dinner_weekly ?? vendor.rate_dinner ?? 0;
+          price = price || vendor.rate_dinner_weekly || vendor.rate_dinner || 0;
           title = 'Dinner Plan';
         } else if (mealType === 'both') {
-          price = vendor.rate_both_weekly ?? vendor.rate_both ?? 0;
+          price = price || vendor.rate_both_weekly || vendor.rate_both || 0;
           title = 'Lunch + Dinner';
         }
 
@@ -460,7 +480,7 @@ export default function OrdersPage() {
           vendorImage: vendor.image ?? '',
           planTitle: title,
           planPrice: price,
-          planFrequency: 'day',
+          planFrequency: s.frequency || 'weekly',
           createdMs: toMillis(s.created_at),
         };
       });
@@ -593,27 +613,20 @@ export default function OrdersPage() {
   }
 
   function formatDeliveryDate(delivery: any): string {
-    if (!delivery.createdAt?.toDate) return 'Today';
-    const d = delivery.createdAt.toDate();
-    const today = new Date();
-    const tomorrow = new Date(today);
+    const { dateObj, dateStr } = parseDeliveryDate(delivery);
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    if (d.toDateString() === today.toDateString()) return 'Today';
-    if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
-    return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
+
+    if (dateStr === todayStr) return 'Today';
+    if (dateStr === tomorrowStr) return 'Tomorrow';
+    return dateObj.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
   function isActionWindowOpen(delivery: any): boolean {
-    let d: Date;
-    if (delivery.createdAt?.toDate) {
-      d = delivery.createdAt.toDate();
-    } else if (delivery.createdAt?.seconds) {
-      d = new Date(delivery.createdAt.seconds * 1000);
-    } else {
-      d = new Date();
-    }
-    
-    const deliveryMoment = new Date(d);
+    const { dateObj } = parseDeliveryDate(delivery);
+    const deliveryMoment = new Date(dateObj);
     if (delivery.scheduledSlot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
     else if (delivery.scheduledSlot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
     else if (delivery.scheduledSlot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
@@ -631,8 +644,7 @@ export default function OrdersPage() {
   const uniqueDays = useMemo(() => {
     const daysMap = new Map<string, { date: Date; dateStr: string; label: string; weekday: string; dayNum: string; deliveries: any[] }>();
     upcomingDeliveries.forEach(d => {
-      const dateObj = d.createdAt?.toDate ? d.createdAt.toDate() : new Date();
-      const dateStr = dateObj.toLocaleDateString('en-CA');
+      const { dateObj, dateStr } = parseDeliveryDate(d);
       const todayStr = new Date().toLocaleDateString('en-CA');
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -666,13 +678,14 @@ export default function OrdersPage() {
     activeTab === 'active' ? o.status !== 'cancelled' : o.status === 'cancelled'
   );
 
+  const hasRecurring = activeSubs.some((s: any) => s.frequency !== 'one-time');
+
   // Determine if there's a real order today to show the track button
-  // Fix 9: include activeTestOrder so Track button shows for new-style orders too
+  // Include 'created' and 'pending' so single-meal orders show Track banner immediately
   const todayStr = new Date().toLocaleDateString('en-CA');
   const hasTodayOrder = !!activeTestOrder || realOrders.some(o => {
-    const d = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : null);
-    if (!d) return false;
-    return d.toLocaleDateString('en-CA') === todayStr && ['pending', 'preparing', 'ready', 'picked_up', 'out_for_delivery', 'delivered'].includes(o.status);
+    const { dateStr } = parseDeliveryDate(o);
+    return dateStr === todayStr && ['created', 'pending', 'preparing', 'vendor_ready', 'ready', 'picked_up', 'out_for_delivery', 'delivered'].includes(o.status);
   });
 
   return (
@@ -747,51 +760,53 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Upcoming Weekly Schedule Planner */}
+      {/* Upcoming Schedule Planner */}
       {uniqueDays.length > 0 && (
         <div className="mb-10 animate-fade-in">
           <div className="flex items-center justify-between mb-4 px-1">
             <h3 className="font-bold text-slate-900 flex items-center gap-2">
               <Clock className="w-4 h-4 text-brand" />
-              Weekly Planner
+              {(!hasRecurring && uniqueDays.length <= 1) ? (activeDay?.label === 'Today' ? "Today's Scheduled Meal" : "Scheduled Delivery") : "Weekly Planner"}
             </h3>
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Select day to manage
+              {(!hasRecurring && uniqueDays.length <= 1) ? activeDay?.label : "Select day to manage"}
             </span>
           </div>
 
-          {/* Horizontal Calendar Stripe */}
-          <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none">
-            {uniqueDays.map((day, idx) => {
-              const isSelected = (activeDay?.dateStr === day.dateStr) || (idx === 0 && !activeDay);
-              const hasLunch = day.deliveries.some(d => d.meal?.type === 'lunch' || d.scheduledSlot !== '8pm');
-              const hasDinner = day.deliveries.some(d => d.meal?.type === 'dinner' || d.scheduledSlot === '8pm');
-              
-              return (
-                <button
-                  key={day.dateStr}
-                  onClick={() => setSelectedDayIndex(idx)}
-                  className={`flex flex-col items-center justify-center shrink-0 rounded-2xl w-14 py-3 border transition-all duration-200 active:scale-95 ${
-                    isSelected
-                      ? 'bg-brand text-white border-transparent shadow-[0_8px_20px_rgba(230, 138, 0, 0.25)]'
-                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
-                  }`}
-                >
-                  <span className={`text-[9px] font-black uppercase tracking-wider ${isSelected ? 'text-white/60' : 'text-slate-400'}`}>
-                    {day.weekday}
-                  </span>
-                  <span className="text-base font-black mt-0.5">
-                    {day.dayNum}
-                  </span>
-                  {/* Indicators for meal types scheduled */}
-                  <div className="flex gap-1 mt-1.5">
-                    {hasLunch && <Sun className={`w-2.5 h-2.5 ${isSelected ? 'text-amber-300' : 'text-amber-500'}`} />}
-                    {hasDinner && <Moon className={`w-2.5 h-2.5 ${isSelected ? 'text-indigo-200' : 'text-indigo-500'}`} />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {/* Horizontal Calendar Stripe — only shown if there are multiple days or recurring subscription */}
+          {(hasRecurring || uniqueDays.length > 1) && (
+            <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none">
+              {uniqueDays.map((day, idx) => {
+                const isSelected = (activeDay?.dateStr === day.dateStr) || (idx === 0 && !activeDay);
+                const hasLunch = day.deliveries.some(d => d.meal?.type === 'lunch' || d.scheduledSlot !== '8pm');
+                const hasDinner = day.deliveries.some(d => d.meal?.type === 'dinner' || d.scheduledSlot === '8pm');
+                
+                return (
+                  <button
+                    key={day.dateStr}
+                    onClick={() => setSelectedDayIndex(idx)}
+                    className={`flex flex-col items-center justify-center shrink-0 rounded-2xl w-14 py-3 border transition-all duration-200 active:scale-95 ${
+                      isSelected
+                        ? 'bg-brand text-white border-transparent shadow-[0_8px_20px_rgba(230, 138, 0, 0.25)]'
+                        : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                    }`}
+                  >
+                    <span className={`text-[9px] font-black uppercase tracking-wider ${isSelected ? 'text-white/60' : 'text-slate-400'}`}>
+                      {day.weekday}
+                    </span>
+                    <span className="text-base font-black mt-0.5">
+                      {day.dayNum}
+                    </span>
+                    {/* Indicators for meal types scheduled */}
+                    <div className="flex gap-1 mt-1.5">
+                      {hasLunch && <Sun className={`w-2.5 h-2.5 ${isSelected ? 'text-amber-300' : 'text-amber-500'}`} />}
+                      {hasDinner && <Moon className={`w-2.5 h-2.5 ${isSelected ? 'text-indigo-200' : 'text-indigo-500'}`} />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Active Day Detail Card */}
           {activeDay && (
@@ -814,13 +829,13 @@ export default function OrdersPage() {
                   const skipOk = canSkip(delivery);
                   const isSkipping = skipping === delivery.id;
                   const isSwapping = swapping === delivery.id;
+                  const isOneTimeDelivery = delivery.subscriptionId 
+                    ? (activeSubs.find(s => s.id === delivery.subscriptionId)?.frequency === 'one-time') 
+                    : !hasRecurring;
 
                   const now = new Date();
-                  let baseDate = delivery.date ? new Date(delivery.date) : now;
-                  if (delivery.createdAt?.toDate && !delivery.date) {
-                    baseDate = delivery.createdAt.toDate();
-                  }
-                  const deliveryMoment = new Date(baseDate);
+                  const { dateObj } = parseDeliveryDate(delivery);
+                  const deliveryMoment = new Date(dateObj);
                   if (delivery.delivery_slot === '8am') deliveryMoment.setHours(8, 0, 0, 0);
                   else if (delivery.delivery_slot === '11am') deliveryMoment.setHours(11, 0, 0, 0);
                   else if (delivery.delivery_slot === '8pm') deliveryMoment.setHours(20, 0, 0, 0);
@@ -863,59 +878,95 @@ export default function OrdersPage() {
                         </span>
                       </div>
 
+                      {/* Manifest summary if available */}
+                      {(delivery.custom_meal_config?.manifestSummary || delivery.meal_components?.[0]) && (
+                        <div className="text-[11px] font-medium text-slate-600 bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                          🍱 {delivery.custom_meal_config?.manifestSummary || delivery.meal_components?.[0]}
+                        </div>
+                      )}
+
+                      {/* Delivery Verification OTP banner for single/active orders */}
+                      {(delivery.otp || delivery.delivery_otp) && (
+                        <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200/70 rounded-xl px-3 py-2">
+                          <span className="font-bold text-amber-900 text-[11px] uppercase tracking-wider">Delivery OTP</span>
+                          <span className="font-mono font-black text-amber-950 tracking-widest text-sm">{delivery.otp || delivery.delivery_otp}</span>
+                        </div>
+                      )}
+
                       {/* Divider */}
                       <div className="h-px bg-slate-100" />
 
                       {/* Action buttons */}
                       <div>
-                        <div className="flex gap-2">
-                          {isSwapRequested ? (
-                            <button
-                              disabled={isSwapping}
-                              onClick={() => handleCancelSwap(delivery)}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-red-50 text-red-600 hover:bg-red-100 active:scale-95"
+                        {isOneTimeDelivery ? (
+                          <div className="flex gap-2">
+                            <Link 
+                              href="/track"
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-brand text-white hover:bg-amber-600 active:scale-95 shadow-sm shadow-brand/20"
                             >
-                              <XCircle className="w-3.5 h-3.5" />
-                              {isSwapping ? 'Cancelling...' : 'Cancel Swap'}
-                            </button>
-                          ) : delivery.status === 'skipped' ? (
-                            <button
-                              disabled={isSkipping}
-                              onClick={() => handleUndoSkip(delivery)}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              {isSkipping ? 'Cancelling...' : 'Cancel Skip'}
-                            </button>
-                          ) : (
-                            <>
+                              <Navigation className="w-3.5 h-3.5" /> Track Live
+                            </Link>
+                            {swapOk && (
                               <button
-                                disabled={!swapOk || isSwapping || isSkipping}
+                                disabled={isSwapping}
                                 onClick={() => handleSwap(delivery)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
-                                  swapOk && !isSwapping && !isSkipping
-                                    ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 active:scale-95'
-                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
-                                }`}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-blue-50 text-blue-600 hover:bg-blue-100 active:scale-95"
                               >
                                 <ArrowLeftRight className="w-3.5 h-3.5" />
-                                {isSwapping ? 'Swapping...' : 'Swap'}
+                                {isSwapping ? 'Swapping...' : 'Swap Kitchen'}
                               </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {isSwapRequested ? (
                               <button
-                                disabled={!skipOk || isSkipping || isSwapping}
-                                onClick={() => handleSkip(delivery)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
-                                  skipOk && !isSkipping && !isSwapping
-                                    ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 active:scale-95'
-                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
-                                }`}
+                                disabled={isSwapping}
+                                onClick={() => handleCancelSwap(delivery)}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-red-50 text-red-600 hover:bg-red-100 active:scale-95"
                               >
-                                <SkipForward className="w-3.5 h-3.5" />
-                                {isSkipping ? 'Processing...' : `Skip +${expectedCredits}CR`}
+                                <XCircle className="w-3.5 h-3.5" />
+                                {isSwapping ? 'Cancelling...' : 'Cancel Swap'}
                               </button>
-                            </>
-                          )}
-                        </div>
+                            ) : delivery.status === 'skipped' ? (
+                              <button
+                                disabled={isSkipping}
+                                onClick={() => handleUndoSkip(delivery)}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                {isSkipping ? 'Cancelling...' : 'Cancel Skip'}
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  disabled={!swapOk || isSwapping || isSkipping}
+                                  onClick={() => handleSwap(delivery)}
+                                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                                    swapOk && !isSwapping && !isSkipping
+                                      ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 active:scale-95'
+                                      : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                                  {isSwapping ? 'Swapping...' : 'Swap'}
+                                </button>
+                                <button
+                                  disabled={!skipOk || isSkipping || isSwapping}
+                                  onClick={() => handleSkip(delivery)}
+                                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                                    skipOk && !isSkipping && !isSwapping
+                                      ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 active:scale-95'
+                                      : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <SkipForward className="w-3.5 h-3.5" />
+                                  {isSkipping ? 'Processing...' : `Skip +${expectedCredits}CR`}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
 
                         {/* Countdown Timer below active day's buttons */}
                         <CountdownTimer 
@@ -992,9 +1043,13 @@ export default function OrdersPage() {
                       </div>
                     </div>
                     <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest ${
-                      isActive ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400'
+                      order.planFrequency === 'one-time'
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : isActive 
+                          ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                          : 'bg-slate-100 text-slate-400'
                     }`}>
-                      {isActive ? 'Active' : 'Cancelled'}
+                      {order.planFrequency === 'one-time' ? 'One-Time Meal' : isActive ? 'Active' : 'Cancelled'}
                     </span>
                   </div>
 
@@ -1040,7 +1095,7 @@ export default function OrdersPage() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> Started
+                        <Calendar className="w-3 h-3" /> {order.planFrequency === 'one-time' ? 'Ordered' : 'Started'}
                       </p>
                       <p className="text-sm font-black text-slate-900">{formatDate(order.created_at)}</p>
                     </div>
@@ -1048,12 +1103,21 @@ export default function OrdersPage() {
 
                   {isActive && (
                     <div className="flex gap-3">
-                      <button 
-                        className="flex-1 bg-rose-50 text-rose-500 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-100 transition-colors" 
-                        onClick={() => handleCancel(order.id)}
-                      >
-                        Cancel Plan
-                      </button>
+                      {order.planFrequency === 'one-time' ? (
+                        <Link 
+                          href="/track"
+                          className="flex-1 bg-brand text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm shadow-brand/20 hover:bg-amber-600 transition-colors active:scale-95"
+                        >
+                          <Navigation className="w-3.5 h-3.5" /> Track Meal
+                        </Link>
+                      ) : (
+                        <button 
+                          className="flex-1 bg-rose-50 text-rose-500 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-100 transition-colors" 
+                          onClick={() => handleCancel(order.id)}
+                        >
+                          Cancel Plan
+                        </button>
+                      )}
                       <Link 
                         href={`/vendor/detail?id=${order.vendor_id}`} 
                         className="flex-1 bg-slate-900 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"

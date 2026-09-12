@@ -9,6 +9,7 @@ import {
   MapPin, Loader2, User, UserCheck, Calendar, Activity, CheckCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isAdminUser } from '@/lib/auth';
 import { Order, OrderStatusLog, Batch } from '@/types';
 import type { RiderTrip } from '@/types/delivery';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -44,26 +45,38 @@ export default function AdminOrdersTrackingPage() {
   });
 
   useEffect(() => {
-    if (!user || user.role !== 'admin') return;
+    if (!isHydrated) return;
+
+    if (!user || !isAdminUser(user)) {
+      setIsLoadingActive(false);
+      return;
+    }
     
     const fetchActiveOrders = async () => {
       setIsLoadingActive(true);
       try {
         const todayStr = new Date().toLocaleDateString('en-CA');
         const q = query(collection(db, 'orders'), where('date', '==', todayStr));
-        const [snap, vendorSnap] = await Promise.all([
+        const [ordersSnap, vendorsSnap] = await Promise.allSettled([
           getDocs(q),
           getDocs(query(collection(db, 'users'), where('role', '==', 'vendor')))
         ]);
+
         const vMap: Record<string, any> = {};
-        vendorSnap.docs.forEach(d => { vMap[d.id] = d.data(); });
+        if (vendorsSnap.status === 'fulfilled') {
+          vendorsSnap.value.docs.forEach(d => { vMap[d.id] = d.data(); });
+        }
         setVendorsMap(vMap);
 
-        const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Order);
-        
-        // Filter out completed/cancelled to show only "ongoing"
-        const ongoing = allOrders.filter(o => !['delivered', 'failed', 'cancelled', 'skipped'].includes(o.status));
-        setActiveOrders(ongoing.sort((a, b) => (b.id || '').localeCompare(a.id || '')));
+        if (ordersSnap.status === 'fulfilled') {
+          const allOrders = ordersSnap.value.docs.map(d => ({ id: d.id, ...d.data() }) as Order);
+          
+          // Filter out completed/cancelled to show only "ongoing"
+          const ongoing = allOrders.filter(o => !['delivered', 'failed', 'cancelled', 'skipped'].includes(o.status));
+          setActiveOrders(ongoing.sort((a, b) => (b.id || '').localeCompare(a.id || '')));
+        } else {
+          console.error('Failed to load active orders', ordersSnap.reason);
+        }
       } catch (err) {
         console.error('Failed to load active orders', err);
       } finally {
@@ -72,7 +85,7 @@ export default function AdminOrdersTrackingPage() {
     };
     
     fetchActiveOrders();
-  }, [user]);
+  }, [user, isHydrated]);
 
   const forceStatusUpdate = async (newStatus: string) => {
     if (!order) return;
@@ -114,16 +127,18 @@ export default function AdminOrdersTrackingPage() {
     });
   };
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = async (e?: React.FormEvent, targetId?: string) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const idToSearch = (targetId || searchQuery).trim();
+    if (!idToSearch) return;
+    if (targetId) setSearchQuery(targetId);
     
     setIsSearching(true);
     const toastId = toast.loading('Searching order...');
     
     try {
       // 1. Fetch Order
-      const orderRef = doc(db, 'orders', searchQuery.trim());
+      const orderRef = doc(db, 'orders', idToSearch);
       const orderSnap = await getDoc(orderRef);
       
       if (!orderSnap.exists()) {
@@ -244,7 +259,7 @@ export default function AdminOrdersTrackingPage() {
             ) : (
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {activeOrders.map(o => (
-                  <div key={o.id} onClick={() => { setSearchQuery(o.id); setTimeout(() => document.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })), 100); }} className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl cursor-pointer transition-colors">
+                  <div key={o.id} onClick={() => handleSearch(undefined, o.id)} className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl cursor-pointer transition-colors">
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-sm font-black text-slate-800">{o.id}</p>
                       <span className="text-[9px] font-black uppercase tracking-widest text-brand">{o.status.replace(/_/g, ' ')}</span>

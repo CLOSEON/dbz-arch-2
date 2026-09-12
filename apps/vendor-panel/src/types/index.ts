@@ -298,7 +298,7 @@ export interface OrderStatusLog {
 
 // ─── Batches (Order Grouping) ────────────────────────────────────────────────
 
-export type BatchStatus = 'pending' | 'notified' | 'preparing' | 'ready' | 'pickup_in_progress' | 'completed';
+export type BatchStatus = 'pending' | 'notified' | 'preparing' | 'ready' | 'pickup_in_progress' | 'picked_up' | 'completed';
 
 export interface Batch {
   id: string;                   // Format: BATCH-{vendor_id}-{date}-{slot}

@@ -579,7 +579,7 @@ exports.verifyDeliveryOTP = (0, https_1.onCall)(async (request) => {
                         return {
                             ...s,
                             status: 'completed',
-                            deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+                            deliveredAt: admin.firestore.Timestamp.now()
                         };
                     }
                     return s;
@@ -603,6 +603,30 @@ exports.verifyDeliveryOTP = (0, https_1.onCall)(async (request) => {
         }
         catch (tripSyncErr) {
             console.warn('[verifyDeliveryOTP] Trip sync check failed:', tripSyncErr);
+        }
+    }
+    const batchId = orderData?.batch_id || orderData?.batchId;
+    if (batchId) {
+        try {
+            const batchRef = db.collection('batches').doc(batchId);
+            const batchSnap = await batchRef.get();
+            if (batchSnap.exists) {
+                const remainingBatchOrders = await db.collection('orders')
+                    .where('batch_id', '==', batchId)
+                    .where('status', 'in', ['picked_up', 'out_for_delivery', 'rider_assigned', 'vendor_ready', 'preparing', 'created', 'pending'])
+                    .get();
+                const activeBatchOrders = remainingBatchOrders.docs.filter(d => d.id !== orderId);
+                if (activeBatchOrders.length === 0) {
+                    await batchRef.update({
+                        status: 'completed',
+                        delivered_at: admin.firestore.FieldValue.serverTimestamp(),
+                        updated_at: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+        }
+        catch (batchSyncErr) {
+            console.warn('[verifyDeliveryOTP] Batch sync check failed:', batchSyncErr);
         }
     }
     return { success: true, message: 'OTP verified successfully. Order delivered.' };
@@ -808,16 +832,24 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
     }
     const isCustom = sub.isCustomPlan || sub.is_custom_plan || sub.plan_id === 'custom_weekly' || sub.plan_id === 'custom_monthly';
     const customPattern = sub.deliveryPattern || sub.delivery_pattern || sub.customPlan?.pattern || sub.custom_schedule || null;
-    const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || (isCustom ? 9 : 14));
-    const userLat = user.location?.lat ?? vendor.location?.lat ?? 21.1458;
-    const userLng = user.location?.lng ?? vendor.location?.lng ?? 79.0882;
-    const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMealsTotal) : 91));
+    const isOneTime = sub.frequency === 'one-time' || sub.plan_duration === 'one-time' || sub.plan_id === 'one-time';
+    const isWeekly = sub.frequency === 'weekly' || sub.plan_duration === 'weekly';
     const isMonthly = sub.plan_duration === 'monthly' ||
         sub.frequency === 'monthly' ||
         sub.plan_id === 'custom_monthly' ||
         (typeof sub.plan_id === 'string' && sub.plan_id.includes('month')) ||
-        maxMealsTotal > 14 ||
-        (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 7);
+        (!isOneTime && Array.isArray(sub.selected_dates) && sub.selected_dates.length > 7);
+    const defaultMealsForPlan = isOneTime
+        ? (sub.meal_type === 'both' ? 2 : 1)
+        : isWeekly
+            ? (sub.meal_type === 'both' ? 14 : 7)
+            : isMonthly
+                ? (sub.meal_type === 'both' ? 60 : 30)
+                : (isCustom ? 9 : (sub.meal_type === 'both' ? 14 : 7));
+    const maxMealsTotal = Number(sub.total_meals || sub.totalMeals || defaultMealsForPlan);
+    const userLat = user.location?.lat ?? vendor.location?.lat ?? 21.1458;
+    const userLng = user.location?.lng ?? vendor.location?.lng ?? 79.0882;
+    const pricePerMeal = Number(sub.customPlan?.pricePerMeal || (sub.total_price ? Math.round(sub.total_price / maxMealsTotal) : 91));
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istNow = new Date(now.getTime() + istOffset);
@@ -825,7 +857,11 @@ exports.onSubscriptionCreated = (0, firestore_1.onDocumentWritten)('subscription
     const istYear = istNow.getUTCFullYear();
     const istMonth = istNow.getUTCMonth();
     const istDate = istNow.getUTCDate();
-    let maxDays = isMonthly ? Math.max(60, Math.ceil(maxMealsTotal * 2.5)) : Math.max(14, maxMealsTotal * 2);
+    let maxDays = isOneTime
+        ? 2
+        : isMonthly
+            ? Math.max(60, Math.ceil(maxMealsTotal * 2.5))
+            : Math.max(14, maxMealsTotal * 2);
     if (Array.isArray(sub.selected_dates) && sub.selected_dates.length > 0) {
         const validDates = sub.selected_dates
             .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))

@@ -32,7 +32,8 @@ const BATCH_STATUS_DISPLAY: Record<BatchStatus, { label: string; color: string; 
   preparing:          { label: 'In Kitchen Oven',   color: 'text-blue-700',   bg: 'bg-blue-50',     border: 'border-blue-200' },
   ready:              { label: 'Ready for Dispatch',color: 'text-emerald-700',bg: 'bg-emerald-50', border: 'border-emerald-200' },
   pickup_in_progress: { label: 'Rider Handover',    color: 'text-purple-700', bg: 'bg-purple-50',  border: 'border-purple-200' },
-  completed:          { label: 'Dispatched',        color: 'text-slate-500',  bg: 'bg-slate-100',   border: 'border-slate-200' },
+  picked_up:          { label: 'Out for Delivery',  color: 'text-blue-700',   bg: 'bg-blue-50',     border: 'border-blue-200' },
+  completed:          { label: 'Delivered',         color: 'text-emerald-700',bg: 'bg-emerald-50',  border: 'border-emerald-200' },
 };
 
 function formatBatchTitle(slot: string) {
@@ -68,7 +69,7 @@ function formatBatchTitle(slot: string) {
 export default function VendorDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { batches, pickups, subscriptions, loading, managedVendor, allVendors, activeVendorId, setActiveVendorId } = useVendorData();
+  const { batches, pickups, deliveries, subscriptions, loading, managedVendor, allVendors, activeVendorId, setActiveVendorId } = useVendorData();
   const vendorProfile = managedVendor || user;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -266,6 +267,25 @@ export default function VendorDashboard() {
     return hour < 15 ? 'lunch' : 'dinner';
   });
   const [showAllPackedModal, setShowAllPackedModal] = useState(false);
+
+  // Auto-align tagFilterSlot to slot with actual subscriptions/batches
+  useEffect(() => {
+    if (subscriptions.length > 0) {
+      const hasLunch = subscriptions.some((s: any) => {
+        const eff = s.delivery_slot || s.deliverySlot || s.meal_type;
+        return eff === 'lunch' || eff === 'both';
+      });
+      const hasDinner = subscriptions.some((s: any) => {
+        const eff = s.delivery_slot || s.deliverySlot || s.meal_type;
+        return eff === 'dinner' || eff === 'both';
+      });
+      if (!hasLunch && hasDinner) {
+        setTagFilterSlot('dinner');
+      } else if (hasLunch && !hasDinner) {
+        setTagFilterSlot('lunch');
+      }
+    }
+  }, [subscriptions]);
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Operations & Dispatch', icon: Activity },
@@ -536,8 +556,35 @@ export default function VendorDashboard() {
               ) : (
                 <div className="space-y-4">
                   {todayBatches.map((batch) => {
-                    const disp = BATCH_STATUS_DISPLAY[batch.status as BatchStatus] ?? BATCH_STATUS_DISPLAY.pending;
-                    const canMarkReady = !['ready', 'pickup_in_progress', 'completed'].includes(batch.status);
+                    const matchingTrip = pickups.find(p =>
+                      p.batch_ids?.includes(batch.id) ||
+                      p.id === batch.trip_id ||
+                      p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
+                    );
+                    const myStop = matchingTrip?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
+
+                    const isHandoverDone = 
+                      batch.status === 'picked_up' || 
+                      batch.status === 'completed' || 
+                      myStop?.status === 'completed' || 
+                      ['pickup_complete', 'dropping', 'completed'].includes(matchingTrip?.status);
+
+                    const isDeliveryDone = 
+                      batch.status === 'completed' || 
+                      matchingTrip?.status === 'completed' || 
+                      (matchingTrip?.dropStops && matchingTrip.dropStops.length > 0 && matchingTrip.dropStops.every((d: any) => d.status === 'completed')) ||
+                      (batch.order_ids && batch.order_ids.length > 0 && batch.order_ids.every((oid: string) => deliveries.find(d => d.id === oid)?.status === 'delivered'));
+
+                    const riderName = matchingTrip?.riderName || batch.rider_name || 'Salary Fleet Rider';
+                    const riderPhone = matchingTrip?.riderPhone;
+
+                    const effectiveStatusKey: BatchStatus = isDeliveryDone
+                      ? 'completed'
+                      : isHandoverDone
+                      ? 'picked_up'
+                      : (batch.status as BatchStatus);
+                    const disp = BATCH_STATUS_DISPLAY[effectiveStatusKey] ?? BATCH_STATUS_DISPLAY.pending;
+                    const canMarkReady = !['ready', 'pickup_in_progress', 'picked_up', 'completed'].includes(batch.status) && !isHandoverDone && !isDeliveryDone;
 
                     return (
                       <div key={batch.id} className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
@@ -580,7 +627,57 @@ export default function VendorDashboard() {
                           </button>
                         )}
 
-                        {batch.status === 'ready' && (
+                        {isDeliveryDone ? (
+                          <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-200 text-center space-y-2 animate-scale-up">
+                            <div className="flex items-center justify-center gap-2 text-emerald-800 font-black text-sm">
+                              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                <CheckCircle className="w-4 h-4" />
+                              </div>
+                              <span>🎉 Delivery Completed!</span>
+                            </div>
+                            <p className="text-xs text-emerald-700 font-medium max-w-xs mx-auto">
+                              All tiffins delivered fresh to customer by <strong>{riderName}</strong>. Handover & dispatch cycle finished.
+                            </p>
+                            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
+                                Handover Verified ✓
+                              </span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white px-3 py-1 rounded-full shadow-xs">
+                                Delivered to Customer ✓
+                              </span>
+                            </div>
+                          </div>
+                        ) : isHandoverDone ? (
+                          <div className="p-4 bg-blue-50/90 rounded-2xl border-2 border-blue-200 text-center space-y-2 animate-scale-up">
+                            <div className="flex items-center justify-center gap-2 text-blue-900 font-black text-sm">
+                              <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                                <Truck className="w-4 h-4" />
+                              </div>
+                              <span>🛵 Tiffin Handover Done — Out for Delivery</span>
+                            </div>
+                            <p className="text-xs text-blue-700 font-medium max-w-xs mx-auto">
+                              Handover OTP verified with <strong>{riderName}</strong>. Meals are currently on their way to customer doorstep.
+                            </p>
+                            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 px-3 py-1 rounded-full border border-blue-200">
+                                Handover Done ✓
+                              </span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-blue-600 text-white px-3 py-1 rounded-full shadow-xs animate-pulse">
+                                Rider Delivering…
+                              </span>
+                            </div>
+                            {riderPhone && (
+                              <div className="pt-1">
+                                <a
+                                  href={`tel:${riderPhone}`}
+                                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-white px-3 py-1.5 rounded-xl border border-blue-200 shadow-xs hover:bg-blue-50 cursor-pointer"
+                                >
+                                  <Phone className="w-3.5 h-3.5" /> Call Rider ({riderName})
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        ) : batch.status === 'ready' ? (
                           <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-center space-y-2">
                             <div className="flex items-center justify-center gap-1.5 text-emerald-700 font-bold text-xs">
                               <CheckCircle className="w-4 h-4 text-emerald-600" />
@@ -588,10 +685,7 @@ export default function VendorDashboard() {
                             </div>
 
                             {(() => {
-                              const tripOTP = pickups.find(p =>
-                                p.batch_ids?.includes(batch.id) ||
-                                p.assignedOrderIds?.some((oid: string) => batch.order_ids?.includes(oid))
-                              )?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id))?.pickupOTP;
+                              const tripOTP = myStop?.pickupOTP;
                               const displayOTP = batch.pickup_otp || tripOTP || '----';
 
                               return (
@@ -601,44 +695,60 @@ export default function VendorDashboard() {
                                 </div>
                               );
                             })()}
+                            <p className="text-[11px] text-slate-500 font-medium">Read this 4-digit code to the rider when they arrive at the counter.</p>
                           </div>
-                        )}
-
-                        {(batch.status === 'picked_up' || batch.status === 'completed') && (
-                          <div className="p-4 bg-blue-50/80 rounded-2xl border border-blue-200 text-center space-y-1">
-                            <div className="flex items-center justify-center gap-1.5 text-blue-700 font-bold text-xs">
-                              <CheckCircle className="w-4 h-4 text-blue-600" />
-                              Rider Has Picked Up ✓
-                            </div>
-                            <p className="text-[10px] text-blue-600">Tiffins are on their way to the customer.</p>
-                          </div>
-                        )}
+                        ) : null}
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              {/* Incoming Riders En Route */}
+              {/* Assigned Riders Dispatch & Live Delivery Status */}
               {pickups.length > 0 && (
                 <div className="space-y-3 pt-2">
                   <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                    Assigned Riders En Route
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Assigned Riders & Delivery Tracking
                   </h4>
 
                   {pickups.map((trip) => {
                     const myStop = trip.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
-                    if (!myStop || myStop.status === 'completed') return null;
+                    const isTripDelivered = trip.status === 'completed' || (trip.dropStops && trip.dropStops.length > 0 && trip.dropStops.every((s: any) => s.status === 'completed'));
+                    const isPickedUp = myStop?.status === 'completed' || ['pickup_complete', 'dropping', 'completed'].includes(trip.status);
 
                     return (
-                      <div key={trip.id} className="bg-amber-50/80 rounded-3xl p-5 border border-amber-200 space-y-3">
+                      <div
+                        key={trip.id}
+                        className={`rounded-3xl p-5 border space-y-3 ${
+                          isTripDelivered
+                            ? 'bg-emerald-50/80 border-emerald-200'
+                            : isPickedUp
+                            ? 'bg-blue-50/80 border-blue-200'
+                            : 'bg-amber-50/80 border-amber-200'
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-widest bg-amber-200/60 text-amber-800 px-3 py-1 rounded-full">
-                            Rider Assigned
+                          <span
+                            className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                              isTripDelivered
+                                ? 'bg-emerald-200/80 text-emerald-900'
+                                : isPickedUp
+                                ? 'bg-blue-200/80 text-blue-900'
+                                : 'bg-amber-200/60 text-amber-800'
+                            }`}
+                          >
+                            {isTripDelivered
+                              ? 'Delivered to Customer'
+                              : isPickedUp
+                              ? 'Out for Delivery'
+                              : 'Rider En Route to Kitchen'}
                           </span>
                           {trip.riderPhone && (
-                            <a href={`tel:${trip.riderPhone}`} className="text-xs font-bold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-amber-200 flex items-center gap-1.5 shadow-xs hover:bg-slate-50">
+                            <a
+                              href={`tel:${trip.riderPhone}`}
+                              className="text-xs font-bold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-xs hover:bg-slate-50"
+                            >
                               <Phone className="w-3.5 h-3.5 text-brand" /> Call {trip.riderName || 'Rider'}
                             </a>
                           )}
@@ -646,10 +756,18 @@ export default function VendorDashboard() {
 
                         <div>
                           <h5 className="font-bold text-slate-900 text-base">
-                            {trip.riderName ? `${trip.riderName} is arriving for pickup` : 'Rider is arriving at your kitchen'}
+                            {isTripDelivered
+                              ? `${trip.riderName || 'Rider'} completed delivery!`
+                              : isPickedUp
+                              ? `${trip.riderName || 'Rider'} is delivering tiffins to customer`
+                              : `${trip.riderName || 'Rider'} is arriving at your kitchen`}
                           </h5>
                           <p className="text-xs text-slate-600 mt-0.5">
-                            Hand over the prepared lunch/dinner packs when they arrive.
+                            {isTripDelivered
+                              ? 'Customer has received their fresh tiffins. Order fulfilled.'
+                              : isPickedUp
+                              ? 'Handover completed. Rider is en route to customer doorstep.'
+                              : 'Hand over the prepared lunch/dinner packs when rider arrives.'}
                           </p>
                         </div>
                       </div>
@@ -792,8 +910,15 @@ export default function VendorDashboard() {
             : (bSlot === 'dinner' || bSlot === '8pm' || bSlot === '7pm');
         });
 
-        // Match active pickup trip
+        // Match active pickup trip strictly for the active slot
         const activePickupTrip = pickups.find((p: any) => {
+          const tripSlot = (p.slot || '').toLowerCase();
+          const isMatchingSlot = tagFilterSlot === 'lunch'
+            ? (tripSlot === 'lunch' || tripSlot === '11am' || tripSlot === '1pm')
+            : (tripSlot === 'dinner' || tripSlot === '8pm' || tripSlot === '7pm');
+
+          if (!isMatchingSlot) return false;
+
           if (activeSlotBatch && (p.batch_ids?.includes(activeSlotBatch.id) || p.assignedOrderIds?.some((oid: string) => activeSlotBatch.order_ids?.includes(oid)))) {
             return true;
           }
@@ -803,6 +928,18 @@ export default function VendorDashboard() {
         const myStop = activePickupTrip?.pickupStops?.find((s: any) => s.vendorId === (vendorProfile?.id || user?.id));
         const handoverOTP = activeSlotBatch?.pickup_otp || myStop?.pickupOTP;
         const isBatchReady = activeSlotBatch?.status === 'ready' || activeSlotBatch?.status === 'notified';
+        const isHandoverDone = 
+          activeSlotBatch?.status === 'picked_up' || 
+          activeSlotBatch?.status === 'completed' || 
+          myStop?.status === 'completed' || 
+          (activePickupTrip && ['pickup_complete', 'dropping', 'completed'].includes(activePickupTrip.status));
+        const isTagDelivered = 
+          activeSlotBatch?.status === 'completed' || 
+          activePickupTrip?.status === 'completed' || 
+          (activePickupTrip?.dropStops && activePickupTrip.dropStops.length > 0 && activePickupTrip.dropStops.every((d: any) => d.status === 'completed'));
+
+        // Never show dispatch/delivery banner if this slot has 0 boxes to prepare or deliver
+        const hasTiffinsForSlot = boxItems.length > 0 || (activeSlotBatch && (activeSlotBatch.total_count || 0) > 0);
 
         return (
           <div className="space-y-6 animate-fade-in">
@@ -878,44 +1015,119 @@ export default function VendorDashboard() {
             </div>
 
             {/* Prominent Rider Handover PIN & Status Banner */}
-            {(isBatchReady || handoverOTP || activePickupTrip) && (
-              <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 rounded-3xl p-5 sm:p-6 border-2 border-emerald-300 shadow-sm space-y-4 animate-scale-up">
+            {hasTiffinsForSlot && (isBatchReady || handoverOTP || activePickupTrip || isHandoverDone || isTagDelivered) && (
+              <div
+                className={`rounded-3xl p-5 sm:p-6 border-2 shadow-sm space-y-4 animate-scale-up ${
+                  isTagDelivered
+                    ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-300'
+                    : isHandoverDone
+                    ? 'bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 border-blue-300'
+                    : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-300'
+                }`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-sm shrink-0">
-                      <CheckCircle className="w-6 h-6" />
+                    <div
+                      className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center font-black shadow-sm shrink-0 ${
+                        isTagDelivered
+                          ? 'bg-emerald-600'
+                          : isHandoverDone
+                          ? 'bg-blue-600'
+                          : 'bg-emerald-600'
+                      }`}
+                    >
+                      {isTagDelivered ? (
+                        <CheckCircle className="w-6 h-6" />
+                      ) : isHandoverDone ? (
+                        <Truck className="w-6 h-6" />
+                      ) : (
+                        <CheckCircle className="w-6 h-6" />
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-200/80 text-emerald-900 px-2.5 py-0.5 rounded-full">
-                          {tagFilterSlot.toUpperCase()} DISPATCH READY
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                            isTagDelivered
+                              ? 'bg-emerald-200/80 text-emerald-900'
+                              : isHandoverDone
+                              ? 'bg-blue-200/80 text-blue-900'
+                              : 'bg-emerald-200/80 text-emerald-900'
+                          }`}
+                        >
+                          {isTagDelivered
+                            ? `${tagFilterSlot.toUpperCase()} DELIVERED`
+                            : isHandoverDone
+                            ? `${tagFilterSlot.toUpperCase()} OUT FOR DELIVERY`
+                            : `${tagFilterSlot.toUpperCase()} DISPATCH READY`}
                         </span>
-                        <span className="text-[10px] font-bold text-emerald-700">All {boxItems.length} Tiffins Tagged</span>
+                        <span
+                          className={`text-[10px] font-bold ${
+                            isHandoverDone ? 'text-blue-700' : 'text-emerald-700'
+                          }`}
+                        >
+                          All {boxItems.length} Tiffins Tagged
+                        </span>
                       </div>
                       <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight mt-0.5">
-                        Handover Tiffins to Rider
+                        {isTagDelivered
+                          ? 'Tiffins Delivered to Customer 🎉'
+                          : isHandoverDone
+                          ? 'Tiffin Handover Done — Out for Delivery 🛵'
+                          : 'Handover Tiffins to Rider'}
                       </h3>
                     </div>
                   </div>
 
-                  {/* Giant Monospace 4-Digit Handover PIN */}
-                  <div className="bg-white rounded-2xl p-3 sm:px-6 sm:py-2.5 border border-emerald-200 shadow-sm flex items-center justify-between sm:justify-start gap-4">
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 block">
-                        Rider Handover PIN
-                      </span>
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        Read code to rider
-                      </span>
+                  {/* Status Indicator / PIN */}
+                  {isTagDelivered ? (
+                    <div className="bg-white rounded-2xl p-3 sm:px-6 sm:py-2.5 border border-emerald-200 shadow-sm flex items-center justify-between sm:justify-start gap-3">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 block">
+                          Delivery Status
+                        </span>
+                        <span className="text-xs font-black text-emerald-600">DELIVERED ✓</span>
+                      </div>
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                        <CheckCircle className="w-5 h-5" />
+                      </div>
                     </div>
-                    <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 tracking-[0.25em] bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-100">
-                      {handoverOTP || '6721'}
+                  ) : isHandoverDone ? (
+                    <div className="bg-white rounded-2xl p-3 sm:px-6 sm:py-2.5 border border-blue-200 shadow-sm flex items-center justify-between sm:justify-start gap-3">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-800 block">
+                          Handover Status
+                        </span>
+                        <span className="text-xs font-black text-blue-600">VERIFIED ✓</span>
+                      </div>
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black">
+                        <Truck className="w-5 h-5 animate-pulse" />
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* Giant Monospace 4-Digit Handover PIN - only shown BEFORE handover */
+                    <div className="bg-white rounded-2xl p-3 sm:px-6 sm:py-2.5 border border-emerald-200 shadow-sm flex items-center justify-between sm:justify-start gap-4">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 block">
+                          Rider Handover PIN
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          Read code to rider
+                        </span>
+                      </div>
+                      <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 tracking-[0.25em] bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-100">
+                        {handoverOTP || '----'}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Rider Details Bar */}
-                <div className="bg-white/90 backdrop-blur-xs rounded-2xl p-3.5 border border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div
+                  className={`bg-white/90 backdrop-blur-xs rounded-2xl p-3.5 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    isHandoverDone ? 'border-blue-200/70' : 'border-emerald-200/70'
+                  }`}
+                >
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-brand flex items-center justify-center font-black shrink-0">
                       <Truck className="w-4 h-4 text-brand" />
@@ -927,9 +1139,19 @@ export default function VendorDashboard() {
                           {activePickupTrip?.vehicleNumber || 'Motorcycle'}
                         </span>
                       </p>
-                      <p className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                        {myStop?.status === 'completed'
-                          ? '✅ Handover Complete — Rider en route to customers'
+                      <p
+                        className={`text-[11px] font-semibold mt-0.5 ${
+                          isTagDelivered
+                            ? 'text-emerald-700'
+                            : isHandoverDone
+                            ? 'text-blue-700'
+                            : 'text-emerald-700'
+                        }`}
+                      >
+                        {isTagDelivered
+                          ? '✅ Meal successfully delivered to customer!'
+                          : isHandoverDone
+                          ? '🛵 Handover Complete — Rider en route to customers'
                           : activePickupTrip?.status === 'picking_up'
                           ? '🛵 Rider arrived at kitchen counter!'
                           : '🛵 Assigned Rider En Route for Pickup'}

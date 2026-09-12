@@ -44,8 +44,8 @@ const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
 const razorpay_1 = __importDefault(require("razorpay"));
 function getRazorpayInstance() {
-    const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TCIxkFi3SRRU7E';
-    const key_secret = process.env.RAZORPAY_KEY_SECRET || 'NMgeawXrZfgjKJfwu06iGl1X';
+    const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ';
+    const key_secret = process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
     if (!key_id || !key_secret) {
         throw new https_1.HttpsError('failed-precondition', 'Razorpay credentials not configured.');
     }
@@ -55,7 +55,7 @@ function getRazorpayInstance() {
     });
 }
 function getKeySecret() {
-    return process.env.RAZORPAY_KEY_SECRET || 'NMgeawXrZfgjKJfwu06iGl1X';
+    return process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
 }
 const pricingEngine_1 = require("./pricingEngine");
 async function resolveAuthoritativeOrderAmount(data, db) {
