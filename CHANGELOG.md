@@ -6,6 +6,22 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
+## 2026-09-12 — Phase 1 (continued): shared AuthGuard
+
+Consolidated the 4 drifted `auth-guard.tsx` copies (web-main, admin-panel, vendor-panel, rider-panel — `gig` never had one) into `packages/shared-auth/src/auth-guard.tsx`, replacing what was actually a dead no-op stub there before (the pre-existing `AuthGuard` in `shared-auth` rendered `children` unconditionally with no role check at all — never wired up to any app, but would have been a real security bug if it had been).
+
+**Real gap found and fixed, not just deduplicated:** each app had grown its own "extended role membership" rule beyond a flat `role` string check — admin-panel treated `role === 'superadmin'` or `roles.admin === true` as admin; vendor-panel treated `roles.vendor.status === 'verified'` or `roles.vendor === true` as vendor; rider-panel treated `role === 'delivery_agent'` or `roles.delivery` as delivery. But each guard only applied *its own* app's rule. Concretely: `vendor-panel` and `rider-panel` both call `<AuthGuard allowedRoles={['vendor'|'delivery', 'admin']}>` — intending admins to reach every portal — but neither guard's `admin` check understood `role === 'superadmin'`, only admin-panel's did. **A user with `role: 'superadmin'` (as opposed to the hardcoded-email or `is_superadmin: true` paths, both of which every guard already handled) could reach admin-panel but not vendor-panel or rider-panel**, despite both explicitly listing `'admin'` in `allowedRoles`. Fixed by applying every extended-membership rule to every role named in `allowedRoles`, not just the app's "home" role — a deliberate widening of access to match what each call site already declared as intent, never a narrowing. Documented inline in the shared component; flagging here since it's a real behavior change, not silent.
+
+Also: `roles` (the multi-role membership map every guard read via `(user as any)?.roles?.x`) was never actually declared on the `AppUser` type — added it properly to `@dabzzo/shared-types` now that a real typed consumer (`AuthGuard`) exists, removing the need for those `any` casts at the type level.
+
+Each app keeps a ~25-line wrapper (`apps/<app>/src/lib/auth/auth-guard.tsx`) that reads its own Zustand store and forwards to the shared component with its own loading-screen copy/color (e.g. admin-panel's dark `bg-slate-950` vs. the others' `bg-ivory`) — the only thing that stayed a per-app fork is presentation, not the security logic. `rider-panel`'s guard also previously computed its `isAllowed` check twice (once in a `useEffect`, once again in the render bail-out) — two copies that happened to agree but could have silently drifted; the shared version computes it once.
+
+**Verified:** typecheck clean on all 5 apps (gig unaffected, has no guard); full builds of web-main, admin-panel, vendor-panel, and rider-panel all succeed.
+
+**Files:** `packages/shared-auth/src/auth-guard.tsx` (rewritten from dead stub), `packages/shared-types/src/index.ts` (`AppUser.roles` added), `apps/{web-main,admin-panel,vendor-panel,rider-panel}/src/lib/auth/auth-guard.tsx` (rewritten as thin wrappers).
+
+---
+
 ## 2026-09-12 — Phase 1 (started): shared types + dead-code removal
 
 **`@dabzzo/shared-types` created** — the first of the shared packages the plan calls for. Reconciled the 4 drifted copies of `types/index.ts` into one canonical file at `packages/shared-types/src/index.ts`.

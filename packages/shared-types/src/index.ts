@@ -41,6 +41,16 @@ export interface AppUser {
   email?: string;      // Provided from social auth (Google, Apple, Facebook)
   image?: string;      // Profile photo from social provider
   is_superadmin?: boolean; // Only closeon.st@gmail.com
+  // Multi-role membership map, used by AuthGuard's extended-role-membership
+  // checks (packages/shared-auth/src/auth-guard.tsx) — previously accessed
+  // everywhere via `(user as any)?.roles?.x` because this field was never
+  // actually declared. `vendor` can be a plain boolean or carry a
+  // verification status; `admin`/`delivery` are booleans in current usage.
+  roles?: {
+    admin?: boolean;
+    vendor?: boolean | { status?: string };
+    delivery?: boolean;
+  };
   is_approved?: boolean;
   is_rejected?: boolean;
   push_tokens?: string[];
