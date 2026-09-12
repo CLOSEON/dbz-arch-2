@@ -13,11 +13,11 @@
     }
   ],
   "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "rules": "packages/firestore-rules/firestore.rules",
+    "indexes": "packages/firestore-rules/firestore.indexes.json"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "packages/firestore-rules/storage.rules"
   },
   "hosting": [
     {

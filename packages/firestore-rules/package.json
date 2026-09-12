@@ -2,6 +2,6 @@
   "name": "@dabzzo/firestore-rules",
   "version": "1.0.0",
   "private": true,
-  "description": "Canonical Firestore and Storage security rules for Dabzzo monorepo",
+  "description": "Firestore/Storage security rules and indexes. Single source of truth: firebase.json deploys directly from this package.",
   "main": "firestore.rules"
 }
