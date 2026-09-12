@@ -7,6 +7,26 @@
  */
 
 import { httpsCallable } from 'firebase/functions';
+
+/**
+ * Bearer token for the REST fallback endpoints.
+ *
+ * The callable path carries Firebase auth automatically; the REST fallback does
+ * not, and the razorpayApi function now requires a verified ID token on every
+ * route that creates a Razorpay resource. Without this the fallback would 401.
+ * See IMPLEMENTATION_PLAN.md Phase 2.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch (e) {
+    console.warn('[Razorpay] Could not attach auth token to REST fallback:', e);
+  }
+  return headers;
+}
 import { functions } from '@/lib/firebase';
 
 /**
@@ -223,7 +243,7 @@ export async function createRazorpayOrder(
   try {
     const response = await fetch('/api/razorpay/create-order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(payload),
     });
 
@@ -261,7 +281,7 @@ export async function createRazorpaySubscription(
   try {
     const response = await fetch('/api/razorpay/create-subscription', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({
         user_id,
         vendor_id,
