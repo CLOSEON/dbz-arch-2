@@ -6,6 +6,13 @@ import { DeliveryNav } from '@/components/layout/DeliveryNav';
 import { RiderDataProvider } from '@/components/delivery/RiderDataProvider';
 import { NetworkBanner } from '@/components/shared/NetworkBanner';
 import { Logo } from '@/components/shared/Logo';
+import { configureUserCacheTTLs } from '@/lib/queries/users';
+
+// Riders need fresher vendor/profile data than the other portals do — they're
+// reading it mid-delivery. The shared query layer defaults to the conservative
+// 5-minute window the other apps use; this restores rider-panel's original
+// 20-second window. See packages/shared-queries/src/users.ts.
+configureUserCacheTTLs({ profileMs: 20_000, vendorsMs: 20_000 });
 
 export function RiderAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '';

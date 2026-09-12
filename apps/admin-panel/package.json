@@ -15,6 +15,7 @@
     "@base-ui/react": "^1.4.1",
     "@dabzzo/shared-auth": "*",
     "@dabzzo/shared-lib": "*",
+    "@dabzzo/shared-queries": "*",
     "@dabzzo/shared-types": "*",
     "@dabzzo/shared-ui": "*",
     "class-variance-authority": "^0.7.1",

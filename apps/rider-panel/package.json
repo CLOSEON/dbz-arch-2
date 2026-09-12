@@ -14,6 +14,7 @@
   "dependencies": {
     "@dabzzo/shared-auth": "*",
     "@dabzzo/shared-lib": "*",
+    "@dabzzo/shared-queries": "*",
     "@dabzzo/shared-types": "*",
     "@dabzzo/shared-ui": "*",
     "lucide-react": "^1.14.0",
