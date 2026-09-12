@@ -11,10 +11,6 @@ export function VendorReviews({ vendorId }: { vendorId: string }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (vendorId) loadReviews();
-  }, [vendorId]);
-
   async function loadReviews() {
     setLoading(true);
     try {
@@ -32,6 +28,10 @@ export function VendorReviews({ vendorId }: { vendorId: string }) {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (vendorId) loadReviews();
+  }, [vendorId]);
 
   const averageRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)

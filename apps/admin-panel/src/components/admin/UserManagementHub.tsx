@@ -129,10 +129,6 @@ export function UserManagementHub() {
   const [extDeliverySlot, setExtDeliverySlot] = useState<string>('lunch');
 
   // ── 1. Initial Load: Users & Vendors ─────────────────────────────────────────
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -151,6 +147,10 @@ export function UserManagementHub() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
   // ── 2. Select User & Fetch Subscriptions / Credits ───────────────────────────
   const selectUser = async (user: AppUser) => {

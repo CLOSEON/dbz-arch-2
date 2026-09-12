@@ -20,10 +20,6 @@ export default function VendorMenuPage() {
   const [subs, setSubs] = useState<EnrichedSubscription[]>([]);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    if (user?.id) loadSubscribers();
-  }, [user?.id]);
-
   async function loadSubscribers() {
     if (!user) return;
     setLoading(true);
@@ -48,6 +44,10 @@ export default function VendorMenuPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (user?.id) loadSubscribers();
+  }, [user?.id]);
 
   const filtered = useMemo(() => {
     let list = subs;

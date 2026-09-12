@@ -196,6 +196,10 @@ export default function AdminDeliveryOversightPage() {
     }
     if (window.google?.maps) initMap();
     else {
+      // The Maps SDK is loaded with &callback=initGoogleMap, so it invokes
+      // window.initGoogleMap once ready — assigning to window is the API's
+      // contract, not incidental mutation. Runs inside an effect, not render.
+      // eslint-disable-next-line react-hooks/immutability
       window.initGoogleMap = initMap;
       const key = process.env.NEXT_PUBLIC_GMAPS_KEY || '';
       if (!document.getElementById('google-maps-js-sdk') && key) {

@@ -161,28 +161,10 @@ export default function VendorDetailClient(props: PageProps) {
     custom_component_rates: {}
   });
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('edit') === 'true' || urlParams.get('tab') === 'pricing') {
-        setActiveTab('pricing');
-      } else if (urlParams.get('tab')) {
-        const tab = urlParams.get('tab') as ActiveTab;
-        if (['overview', 'menu', 'pricing', 'subscribers', 'orders', 'settings'].includes(tab)) {
-          setActiveTab(tab);
-        }
-      }
-    }
-    if (vendorId) {
-      loadVendorData();
-    }
-  }, [vendorId]);
-
-  useEffect(() => {
-    if (vendorId && menuDate) {
-      loadDailyMenuData(menuDate);
-    }
-  }, [vendorId, menuDate]);
+  const normalizeItems = (items?: (MenuItem | string)[]): string[] => {
+    if (!items || !Array.isArray(items)) return [];
+    return items.map(item => typeof item === 'string' ? item : (item.name || ''));
+  };
 
   async function loadVendorData() {
     if (!vendorId) return;
@@ -275,10 +257,22 @@ export default function VendorDetailClient(props: PageProps) {
     }
   }
 
-  const normalizeItems = (items?: (MenuItem | string)[]): string[] => {
-    if (!items || !Array.isArray(items)) return [];
-    return items.map(item => typeof item === 'string' ? item : (item.name || ''));
-  };
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') === 'true' || urlParams.get('tab') === 'pricing') {
+        setActiveTab('pricing');
+      } else if (urlParams.get('tab')) {
+        const tab = urlParams.get('tab') as ActiveTab;
+        if (['overview', 'menu', 'pricing', 'subscribers', 'orders', 'settings'].includes(tab)) {
+          setActiveTab(tab);
+        }
+      }
+    }
+    if (vendorId) {
+      loadVendorData();
+    }
+  }, [vendorId]);
 
   async function loadDailyMenuData(dateStr: string) {
     setMenuLoading(true);
@@ -301,6 +295,12 @@ export default function VendorDetailClient(props: PageProps) {
       setMenuLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (vendorId && menuDate) {
+      loadDailyMenuData(menuDate);
+    }
+  }, [vendorId, menuDate]);
 
   async function handleSaveMenu() {
     setSavingMenu(true);

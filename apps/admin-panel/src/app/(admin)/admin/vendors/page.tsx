@@ -26,10 +26,6 @@ export default function AdminVendors() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchActionLoading, setBatchActionLoading] = useState(false);
 
-  useEffect(() => {
-    loadVendors();
-  }, []);
-
   async function loadVendors() {
     setLoading(true);
     try {
@@ -60,6 +56,10 @@ export default function AdminVendors() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadVendors();
+  }, []);
 
   async function handleApproval(id: string, approved: boolean) {
     try {

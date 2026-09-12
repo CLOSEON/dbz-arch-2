@@ -20,10 +20,6 @@ export default function AdminSupport() {
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
 
-  useEffect(() => {
-    loadTickets();
-  }, []);
-
   async function loadTickets() {
     setLoading(true);
     try {
@@ -35,6 +31,10 @@ export default function AdminSupport() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadTickets();
+  }, []);
 
   async function handleSendReply() {
     if (!selectedTicket || !replyText.trim()) return;

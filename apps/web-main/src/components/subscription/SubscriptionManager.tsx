@@ -239,7 +239,10 @@ export function SubscriptionManager({
     if (onModifyPlan) {
       onModifyPlan(sub);
     } else {
-      // Default navigation to builder
+      // Default navigation to builder. Runs inside the handleModify click
+      // handler, not render. (Note: this is a full page load rather than a
+      // client-side router.push, which is a deliberate fallback here.)
+      // eslint-disable-next-line react-hooks/immutability
       window.location.href = `/custom-plan?modifySubId=${sub.id}`;
     }
   };

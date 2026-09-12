@@ -3,11 +3,6 @@
 import { useEffect } from 'react';
 
 export function PermissionGuard() {
-  useEffect(() => {
-    // Silently trigger native OS/browser permission prompts on app load
-    requestAllPermissions();
-  }, []);
-
   async function requestAllPermissions() {
     try {
       // Request Geolocation directly (triggers native popup)
@@ -41,6 +36,11 @@ export function PermissionGuard() {
       console.error('Failed to request permissions silently:', error);
     }
   }
+
+  useEffect(() => {
+    // Silently trigger native OS/browser permission prompts on app load
+    requestAllPermissions();
+  }, []);
 
   // No custom UI, rely entirely on the OS/Browser native dialogs
   return null;
