@@ -1,5 +1,6 @@
 'use client';
 
+import { EmailPasswordForm } from '@dabzzo/shared-ui/auth/EmailPasswordForm';
 import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -177,6 +178,23 @@ export default function VendorLoginPage() {
                 {loading ? <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin" /> : <GoogleIcon />}
                 <span className="flex-1 text-center">Continue with Google</span>
               </button>
+
+              <div className="flex items-center gap-3 w-full">
+                <span className="h-px flex-1 bg-slate-200" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">or</span>
+                <span className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              {/* No allowSignUp: kitchen accounts are created by an admin, so
+                  this portal offers sign-in and password reset only. */}
+              <div className="w-full">
+                <EmailPasswordForm
+                  signInLabel="Sign In to Kitchen"
+                  accentClassName="bg-rose-600 hover:bg-rose-700"
+                  onNotify={(m, k) => addToast(m, k)}
+                  onSuccess={(u) => { void handleAuthSuccess(u); }}
+                />
+              </div>
             </div>
           )}
 

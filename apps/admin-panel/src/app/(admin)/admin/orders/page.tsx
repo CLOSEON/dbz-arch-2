@@ -401,7 +401,7 @@ export default function AdminOrdersTrackingPage() {
                   {statusLogs.map((log, i) => (
                     <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
                       <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-white bg-slate-200 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2"></div>
-                      <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.25rem)] p-3 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm">
+                      <div className="w-[calc(100%_-_2.5rem)] md:w-[calc(50%_-_1.25rem)] p-3 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-black uppercase tracking-wider text-brand">{log.to_status.replace(/_/g, ' ')}</span>
                           <span className="text-[9px] text-slate-400 font-bold">{log.timestamp ? new Date((log.timestamp as any).seconds * 1000).toLocaleTimeString() : 'N/A'}</span>

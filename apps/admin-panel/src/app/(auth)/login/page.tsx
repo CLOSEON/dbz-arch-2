@@ -1,5 +1,6 @@
 'use client';
 
+import { EmailPasswordForm } from '@dabzzo/shared-ui/auth/EmailPasswordForm';
 import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -131,6 +132,23 @@ export default function AdminLoginPage() {
               </>
             )}
           </button>
+
+          <div className="flex items-center gap-3 w-full my-5">
+            <span className="h-px flex-1 bg-white/20" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">or</span>
+            <span className="h-px flex-1 bg-white/20" />
+          </div>
+
+          {/* No allowSignUp. Admin accounts are created by an existing admin;
+              self-registration on the ops console would be an obvious hole.
+              handleAuthSuccess still enforces the admin check, so a valid
+              password for a non-admin account is rejected there. */}
+          <EmailPasswordForm
+            signInLabel="Sign In to Console"
+            accentClassName="bg-rose-600 hover:bg-rose-700"
+            onNotify={(m, k) => addToast(m, k)}
+            onSuccess={(u) => { void handleAuthSuccess(u); }}
+          />
 
           <p className="text-center text-[11px] text-slate-600 mt-6">
             Only authorized admin accounts can access this panel.

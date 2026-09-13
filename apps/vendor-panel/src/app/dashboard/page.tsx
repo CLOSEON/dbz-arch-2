@@ -324,7 +324,11 @@ export default function VendorDashboard() {
               {vendorProfile?.kitchen_name?.[0]?.toUpperCase() || vendorProfile?.name?.[0]?.toUpperCase() || 'K'}
             </div>
 
-            <div>
+            {/* min-w-0 is required here. A flex child defaults to
+                min-width:auto, so it refuses to shrink below its content and
+                pushes the whole page wider than the viewport -- which is what
+                made the vendor dashboard scroll sideways on a phone. */}
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   {vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen Hub'}
@@ -364,14 +368,14 @@ export default function VendorDashboard() {
               {/* Superadmin Kitchen Switcher Toggle Under Location */}
               {isSuper && allVendors.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
-                  <div className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 px-2.5 py-1 rounded-xl transition-all shadow-2xs">
+                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 px-2.5 py-1 rounded-xl transition-all shadow-2xs">
                     <ChefHat className="w-3.5 h-3.5 text-brand shrink-0" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">Switch Kitchen:</span>
                     <select
                       id="kitchen-switch"
                       value={activeVendorId || vendorProfile?.id || ''}
                       onChange={(e) => setActiveVendorId(e.target.value)}
-                      className="bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer pr-1"
+                      className="min-w-0 max-w-[45vw] sm:max-w-none truncate bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer pr-1"
                     >
                       {allVendors.map((v) => (
                         <option key={v.id} value={v.id}>

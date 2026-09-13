@@ -59,7 +59,8 @@
     "./vendor/DelayBroadcast": "./src/vendor/DelayBroadcast.tsx",
     "./vendor/VendorOnboardingWalkthrough": "./src/vendor/VendorOnboardingWalkthrough.tsx",
     "./vendor/VendorProfileCard": "./src/vendor/VendorProfileCard.tsx",
-    "./vendor/VendorReviews": "./src/vendor/VendorReviews.tsx"
+    "./vendor/VendorReviews": "./src/vendor/VendorReviews.tsx",
+    "./auth/EmailPasswordForm": "./src/auth/EmailPasswordForm.tsx"
   },
   "scripts": {
     "lint": "eslint .",

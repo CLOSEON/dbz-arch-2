@@ -3,6 +3,10 @@ import {
   FacebookAuthProvider,
   OAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   type User,
 } from 'firebase/auth';
 import { auth, db } from './firebase';
@@ -84,6 +88,19 @@ function mapFirebaseError(err: any): AuthErrorResult {
     'auth/network-request-failed': 'Network error. Please check your connection.',
     'auth/too-many-requests':      'Too many attempts. Please wait a few minutes.',
     'auth/user-disabled':          'This account has been disabled.',
+
+    // Email + password. Firebase returns auth/invalid-credential for a wrong
+    // password AND for an unknown email, deliberately, so an attacker cannot
+    // use the error to discover which addresses are registered. The wording
+    // here keeps that property rather than leaking it back.
+    'auth/invalid-credential':     'Incorrect email or password.',
+    'auth/wrong-password':         'Incorrect email or password.',
+    'auth/user-not-found':         'Incorrect email or password.',
+    'auth/invalid-email':          'That does not look like a valid email address.',
+    'auth/email-already-in-use':   'An account already exists with this email. Try signing in instead.',
+    'auth/weak-password':          'Password is too weak. Use at least 6 characters.',
+    'auth/missing-password':       'Please enter your password.',
+    'auth/operation-not-allowed':  'Email sign-in is not enabled for this project yet.',
   };
 
   return {
@@ -194,6 +211,77 @@ export async function verifyOtp(_verificationId: string, _otpCode: string): Prom
     success: false,
     error: 'Phone OTP has been disabled. Please use social sign-in.',
   };
+}
+
+// ─── Email + Password ────────────────────────────────────────────────────────
+//
+// Requires the Email/Password provider to be enabled in the Firebase console
+// (Authentication -> Sign-in method). Without it every call returns
+// auth/operation-not-allowed.
+//
+// Sign-up is deliberately NOT exposed to the partner apps: vendor, rider and
+// admin accounts are created by an administrator, so those portals offer
+// sign-in and password reset only. See createPartnerAccount in Cloud Functions.
+
+export interface PasswordResetResult {
+  success: boolean;
+  error?: string;
+}
+
+/** Sign in an existing account. */
+export async function signInWithEmail(email: string, password: string): Promise<SignInResult> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+/**
+ * Create a new account. Customer app only — the partner portals do not call
+ * this, by design.
+ */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  displayName?: string
+): Promise<SignInResult> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
+    if (displayName?.trim()) {
+      // Best effort: a failure here must not sink an otherwise good sign-up.
+      try {
+        await updateProfile(cred.user, { displayName: displayName.trim() });
+      } catch {
+        /* ignore */
+      }
+    }
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+/**
+ * Send a password reset email.
+ *
+ * Reports success even when the address is not registered. Firebase itself
+ * does not reveal this, and neither should the UI — otherwise the form becomes
+ * a way to test which emails have accounts.
+ */
+export async function sendPasswordReset(email: string): Promise<PasswordResetResult> {
+  try {
+    await sendPasswordResetEmail(auth, normalizeEmail(email));
+    return { success: true };
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+      return { success: true };
+    }
+    const mapped = mapFirebaseError(err);
+    return { success: false, error: mapped.error };
+  }
 }
 
 export function cleanupAuth(): void {

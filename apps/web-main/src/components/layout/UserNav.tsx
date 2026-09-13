@@ -72,7 +72,7 @@ export function UserNav({ variant = 'bottom' }: UserNavProps) {
 
   return (
     <nav 
-      className="fixed left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm sm:max-w-md z-40 border border-slate-200/80 bg-white/95 px-4 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2.5rem] animate-fade-in"
+      className="fixed left-1/2 -translate-x-1/2 w-[calc(100%_-_2rem)] max-w-sm sm:max-w-md z-40 border border-slate-200/80 bg-white/95 px-4 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl rounded-[2.5rem] animate-fade-in"
       style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
     >
       <div className="flex items-center justify-around">

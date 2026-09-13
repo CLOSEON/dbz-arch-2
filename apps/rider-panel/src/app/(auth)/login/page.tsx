@@ -1,5 +1,6 @@
 'use client';
 
+import { EmailPasswordForm } from '@dabzzo/shared-ui/auth/EmailPasswordForm';
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -122,6 +123,22 @@ export default function RiderLoginPage() {
                 {loading ? <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin" /> : <GoogleIcon />}
                 <span className="flex-1 text-center">Continue with Google</span>
               </button>
+
+              {/* No allowSignUp: these accounts are created by an admin. */}
+              <div className="flex items-center gap-3 w-full">
+                <span className="h-px flex-1 bg-slate-200" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">or</span>
+                <span className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <div className="w-full">
+                <EmailPasswordForm
+                  signInLabel="Sign In to Rider"
+                  accentClassName="bg-emerald-600 hover:bg-emerald-700"
+                  onNotify={(m, k) => addToast(m, k)}
+                  onSuccess={(u) => { void handleAuthSuccess(u); }}
+                />
+              </div>
             </div>
           )}
 
