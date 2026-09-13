@@ -70,3 +70,7 @@ next-env.d.ts
 .env*.local
 .claude/
 .antigravitycli/
+
+# emulator logs
+firestore-debug.log
+ui-debug.log
