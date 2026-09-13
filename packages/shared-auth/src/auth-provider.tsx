@@ -126,9 +126,14 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
     };
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-      if (!mounted.current) return;
-
       try {
+        // This guard used to sit OUTSIDE the try, so returning here skipped the
+        // finally that clears `initializing` -- and the app sat on the loading
+        // screen forever with no error. StrictMode mounts, unmounts and
+        // remounts in dev, so if this callback fired during that window
+        // mounted.current was false and the early return stranded the app.
+        if (!mounted.current) return;
+
         let activeUser = firebaseUser;
 
         // If Web SDK says null, double check Native side on Capacitor
@@ -223,10 +228,12 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
       } catch (err) {
         console.error('[AuthProvider] Auth loop error:', err);
       } finally {
-        if (mounted.current) {
-          setInitializing(false);
-          setHydrated();
-        }
+        // Unconditional on purpose. A state update after unmount is a no-op in
+        // React 18+, whereas failing to clear `initializing` leaves the app
+        // stuck on the splash with nothing logged. Being stuck is far worse
+        // than a discarded update.
+        setInitializing(false);
+        setHydrated();
       }
     });
 
