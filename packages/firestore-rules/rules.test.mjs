@@ -19,7 +19,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -153,6 +153,57 @@ async function main() {
     await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'customer' }));
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, 'users', CUSTOMER)));
+  });
+
+  // ── Brand-new signup: no users/{uid} document exists yet ──────────────────
+  // This is the email/password path. With Google, returning users already have
+  // a document; a first-time signup has none until onUserCreate writes one.
+  await it('a brand-new user can READ their own not-yet-created doc', async () => {
+    await testEnv.clearFirestore();
+    const db = testEnv.authenticatedContext('brand_new_uid').firestore();
+    await assertSucceeds(getDoc(doc(db, 'users', 'brand_new_uid')));
+  });
+
+  await it('a brand-new user can CREATE their own profile document', async () => {
+    await testEnv.clearFirestore();
+    const db = testEnv.authenticatedContext('brand_new_uid').firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'brand_new_uid'), {
+        id: 'brand_new_uid',
+        email: 'new@example.com',
+        name: 'New Person',
+        role: 'user',
+        phone: '',
+      })
+    );
+  });
+
+  await it('a brand-new user creating a profile with undefined-ish fields', async () => {
+    // AuthProvider's optimistic write includes keys set to undefined; the SDK
+    // strips those, but the shape is worth pinning.
+    await testEnv.clearFirestore();
+    const db = testEnv.authenticatedContext('brand_new_uid').firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'brand_new_uid'), { role: 'user', name: 'X' }, { merge: true })
+    );
+  });
+
+  await it("AuthProvider's exact new-user profile write is permitted", async () => {
+    // Mirrors the object AuthProvider now writes on first sign-in, so a future
+    // change to that shape fails here rather than in production.
+    await testEnv.clearFirestore();
+    const db = testEnv.authenticatedContext('brand_new_uid').firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'brand_new_uid'), {
+        id: 'brand_new_uid',
+        email: 'new@example.com',
+        name: 'new',
+        phone: '',
+        role: 'user',
+        is_approved: true,
+        created_at: serverTimestamp(),
+      }, { merge: true })
+    );
   });
 
   await testEnv.cleanup();

@@ -221,6 +221,48 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
               console.warn('[AuthProvider] setDoc superProfile fallback:', e);
             }
             setUser(superProfile);
+          } else if (mounted.current) {
+            // A genuinely new account has no users/{uid} document yet.
+            //
+            // Previously nothing ran here: the branch above only covers the
+            // superadmin, so a normal new user got no profile at all and every
+            // downstream read behaved as if they did not exist. It stayed
+            // hidden while testing with Google, because those accounts already
+            // had documents from earlier sessions; the first email/password
+            // signup is the first truly new account.
+            //
+            // The onUserCreate Cloud Function also writes this document, but
+            // relying on it alone is a race the client always loses if the
+            // trigger is slow, errored, or not deployed. setDoc with merge is
+            // safe either way -- whichever lands second merges rather than
+            // clobbers.
+            const newProfile = {
+              id: activeUser.uid,
+              email: activeUser.email || '',
+              name: activeUser.displayName || activeUser.email?.split('@')[0] || 'Guest',
+              image: activeUser.photoURL || undefined,
+              phone: activeUser.phoneNumber || '',
+              role: 'user',
+              is_approved: true,
+              // created_at is a FirestoreTimestamp on AppUser, so let
+              // serverTimestamp() fill it on write rather than sending a
+              // string that does not match the declared type.
+            } as AppUser;
+
+            try {
+              const { setDoc: setFirestoreDoc, serverTimestamp } = await import('firebase/firestore');
+              await setFirestoreDoc(
+                doc(db, 'users', activeUser.uid),
+                { ...newProfile, created_at: serverTimestamp() },
+                { merge: true }
+              );
+              setUser(newProfile);
+            } catch (e) {
+              // Surface it rather than leaving the user on a screen that looks
+              // signed in but has no backing profile.
+              console.error('[AuthProvider] Could not create user profile:', e);
+              setUser(newProfile);
+            }
           }
         } else {
           logout();
