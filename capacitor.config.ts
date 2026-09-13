@@ -11,7 +11,11 @@ const config: CapacitorConfig = {
   plugins: {
     FirebaseAuthentication: {
       skipNativeAuth: false,
-      providers: ['phone']
+      // Every provider the app can actually invoke must be listed here, or the
+      // native plugin refuses with "provider is not enabled". auth-service.ts
+      // calls signInWithGoogle, signInWithApple and signInWithFacebook in
+      // addition to phone, so all four belong in this list.
+      providers: ['google.com', 'apple.com', 'facebook.com', 'phone']
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"]

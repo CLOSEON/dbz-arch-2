@@ -67,6 +67,23 @@ console.log('ANDROID_SDK : ' + ANDROID_SDK);
 
 const GRADLEW = isWin ? path.join(androidDir, 'gradlew.bat') : './gradlew';
 
+// Read plugin configuration from the source of truth. capacitor.config.ts is
+// TypeScript, so rather than transpiling it we read the JSON that `npx cap
+// sync` generates, falling back to parsing the .ts for its `plugins` block.
+function loadBaseCapacitorConfig() {
+  const generated = path.join(androidDir, 'app', 'src', 'main', 'assets', 'capacitor.config.json');
+  if (fs.existsSync(generated)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(generated, 'utf8'));
+      if (parsed && parsed.plugins) return parsed;
+    } catch { /* fall through */ }
+  }
+  console.warn('⚠️  No generated capacitor.config.json with plugins found.');
+  console.warn('   Run `npx cap sync android` first, or the APK ships without plugin config.');
+  return {};
+}
+const baseCapConfig = loadBaseCapacitorConfig();
+
 const APPS = [
   {
     key: 'customer',
@@ -146,13 +163,22 @@ for (const app of appsToBuild) {
 
   // Update capacitor config in assets
   const capConfigPath = path.join(androidDir, 'app', 'src', 'main', 'assets', 'capacitor.config.json');
+  // Start from the REAL Capacitor config and override only the per-app
+  // identity. This previously wrote a minimal object from scratch, which
+  // silently discarded the entire `plugins` block — so FirebaseAuthentication
+  // providers, PushNotifications and SplashScreen settings never reached any
+  // APK. The visible symptom was native Google sign-in failing with
+  // "provider is not enabled", because the providers list was simply absent.
   const capConfig = {
+    ...baseCapConfig,
     appId: app.appId,
     appName: app.name,
     webDir: 'public',
-    server: { androidScheme: 'https' },
+    server: { androidScheme: 'https', ...(baseCapConfig.server || {}) },
   };
   fs.writeFileSync(capConfigPath, JSON.stringify(capConfig, null, 2));
+  const pluginNames = Object.keys(capConfig.plugins || {});
+  console.log(`   plugins carried into APK: ${pluginNames.length ? pluginNames.join(', ') : 'NONE'}`);
 
   // Update strings.xml app_name
   const stringsPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'values', 'strings.xml');
