@@ -162,55 +162,106 @@ async function signInNativeFacebook(): Promise<SignInResult> {
 // ─── Web Social Auth (Popup) ─────────────────────────────────────────────────
 
 /**
- * How long to wait for a popup sign-in before giving up.
+ * Popup sign-in, with prompt cancellation detection.
  *
- * Firebase normally rejects with auth/popup-closed-by-user when the user
- * dismisses the window, which it detects by polling `authWindow.window.closed`
- * in pollUserCancellation(). That poll relies on the opener reference, and
- * accounts.google.com sets a Cross-Origin-Opener-Policy that severs it —
- * which is the source of Chrome's "Cross-Origin-Opener-Policy policy would
- * block the window.closed call" warning.
+ * WHY THIS EXISTS
  *
- * The credential itself still arrives by postMessage, so signing in works.
- * But when the poll is blind, closing the popup can leave the promise pending
- * forever, and any caller doing `finally { setLoading(false) }` spins
- * indefinitely. This bounds that wait.
+ * Firebase detects a dismissed popup in exactly one way (verified in
+ * @firebase/auth's PopupOperation.pollUserCancellation):
  *
- * Generous on purpose: a real sign-in involves typing an email, a password,
- * and possibly a 2FA challenge.
+ *     if (this.authWindow?.window?.closed) { ...reject popup-closed-by-user }
+ *     else reschedule poll every 2-10s
+ *
+ * There is no other timeout anywhere in the popup flow. accounts.google.com
+ * sets a Cross-Origin-Opener-Policy that severs the opener reference, so
+ * `?.window` short-circuits to undefined — falsy — and the loop simply
+ * reschedules forever. It never throws, so there is nothing to catch, and the
+ * promise never settles. That is Chrome's "would block the window.closed call"
+ * warning, and it is why a dismissed popup used to spin the button forever.
+ *
+ * The credential itself is unaffected: it arrives by postMessage, which COOP
+ * does not touch. Successful sign-in has always worked.
+ *
+ * HOW CANCELLATION IS DETECTED INSTEAD
+ *
+ * When the popup closes, focus returns to this window. That fires a `focus`
+ * event we can see without touching the popup at all. After focus returns we
+ * wait a short grace period for a genuine result to land, then treat it as
+ * cancelled.
+ *
+ * TRADE-OFF, stated plainly: focus also returns if the user simply switches
+ * back to this tab while the popup is still open, which would report a
+ * cancellation that did not happen. Two things keep that benign — we check
+ * auth.currentUser before concluding anything, and because AuthProvider
+ * listens to onAuthStateChanged, a sign-in completed afterwards still signs
+ * the user in regardless of what this function returned.
  */
-const POPUP_SIGN_IN_TIMEOUT_MS = 3 * 60 * 1000;
+
+/** Grace period after focus returns, for a real result to arrive. */
+const POPUP_FOCUS_GRACE_MS = 2500;
+
+/**
+ * Backstop only, for the case where focus never returns (popup on another
+ * monitor, window manager quirks). Deliberately generous: a real sign-in can
+ * involve an email, a password and a 2FA challenge, and this must never cut
+ * off someone who is simply taking their time.
+ */
+const POPUP_HARD_TIMEOUT_MS = 3 * 60 * 1000;
 
 async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider): Promise<SignInResult> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onFocus: (() => void) | undefined;
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  let hardTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const cleanup = () => {
+    if (onFocus && typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
+    if (graceTimer) clearTimeout(graceTimer);
+    if (hardTimer) clearTimeout(hardTimer);
+  };
+
   try {
-    const timeout = new Promise<SignInResult>((resolve) => {
-      timer = setTimeout(
+    const signIn = signInWithPopup(auth, provider).then(
+      (result): SignInResult => ({ success: true, user: result.user })
+    );
+
+    const cancelled = new Promise<SignInResult>((resolve) => {
+      if (typeof window === 'undefined') return;
+
+      onFocus = () => {
+        if (graceTimer) clearTimeout(graceTimer);
+        graceTimer = setTimeout(() => {
+          // If sign-in actually completed, say nothing — the real result wins.
+          if (auth.currentUser) return;
+          resolve({
+            success: false,
+            error: 'Sign-in was cancelled.',
+            code: 'auth/popup-closed-by-user',
+          });
+        }, POPUP_FOCUS_GRACE_MS);
+      };
+      window.addEventListener('focus', onFocus);
+
+      hardTimer = setTimeout(
         () => resolve({
           success: false,
           error: 'Sign-in was not completed. Please try again.',
           code: 'auth/popup-timeout',
         }),
-        POPUP_SIGN_IN_TIMEOUT_MS
+        POPUP_HARD_TIMEOUT_MS
       );
     });
 
-    const signIn = signInWithPopup(auth, provider).then(
-      (result): SignInResult => ({ success: true, user: result.user })
-    );
-
-    // Whichever settles first. If Firebase later resolves, the extra result is
-    // simply discarded — onAuthStateChanged still fires, so a sign-in that
-    // completes after the timeout is not lost.
-    return await Promise.race([signIn, timeout]);
+    // Whichever settles first. A real success or a real Firebase error always
+    // wins the race when it arrives, because those resolve immediately.
+    return await Promise.race([signIn, cancelled]);
   } catch (err: unknown) {
+    // Real Firebase failures (popup-blocked, network, invalid config) reject
+    // promptly and land here — they never wait on the timers above.
     return mapFirebaseError(err);
   } finally {
-    if (timer) clearTimeout(timer);
+    cleanup();
   }
 }
-
-// ─── Public Social Auth API ──────────────────────────────────────────────────
 
 export async function signInWithGoogle(): Promise<SignInResult> {
   if (Capacitor.isNativePlatform()) return signInNativeGoogle();
