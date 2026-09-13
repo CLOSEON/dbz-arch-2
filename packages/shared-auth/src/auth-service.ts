@@ -101,6 +101,7 @@ function mapFirebaseError(err: any): AuthErrorResult {
     'auth/weak-password':          'Password is too weak. Use at least 6 characters.',
     'auth/missing-password':       'Please enter your password.',
     'auth/operation-not-allowed':  'Email sign-in is not enabled for this project yet.',
+    'auth/popup-timeout':          'Sign-in was not completed. Please try again.',
   };
 
   return {
@@ -160,12 +161,52 @@ async function signInNativeFacebook(): Promise<SignInResult> {
 
 // ─── Web Social Auth (Popup) ─────────────────────────────────────────────────
 
+/**
+ * How long to wait for a popup sign-in before giving up.
+ *
+ * Firebase normally rejects with auth/popup-closed-by-user when the user
+ * dismisses the window, which it detects by polling `authWindow.window.closed`
+ * in pollUserCancellation(). That poll relies on the opener reference, and
+ * accounts.google.com sets a Cross-Origin-Opener-Policy that severs it —
+ * which is the source of Chrome's "Cross-Origin-Opener-Policy policy would
+ * block the window.closed call" warning.
+ *
+ * The credential itself still arrives by postMessage, so signing in works.
+ * But when the poll is blind, closing the popup can leave the promise pending
+ * forever, and any caller doing `finally { setLoading(false) }` spins
+ * indefinitely. This bounds that wait.
+ *
+ * Generous on purpose: a real sign-in involves typing an email, a password,
+ * and possibly a 2FA challenge.
+ */
+const POPUP_SIGN_IN_TIMEOUT_MS = 3 * 60 * 1000;
+
 async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider): Promise<SignInResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const result = await signInWithPopup(auth, provider);
-    return { success: true, user: result.user };
+    const timeout = new Promise<SignInResult>((resolve) => {
+      timer = setTimeout(
+        () => resolve({
+          success: false,
+          error: 'Sign-in was not completed. Please try again.',
+          code: 'auth/popup-timeout',
+        }),
+        POPUP_SIGN_IN_TIMEOUT_MS
+      );
+    });
+
+    const signIn = signInWithPopup(auth, provider).then(
+      (result): SignInResult => ({ success: true, user: result.user })
+    );
+
+    // Whichever settles first. If Firebase later resolves, the extra result is
+    // simply discarded — onAuthStateChanged still fires, so a sign-in that
+    // completes after the timeout is not lost.
+    return await Promise.race([signIn, timeout]);
   } catch (err: unknown) {
     return mapFirebaseError(err);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
