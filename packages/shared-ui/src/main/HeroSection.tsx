@@ -116,8 +116,20 @@ export function HeroSection() {
     router.push(`/login?category=${encodeURIComponent(category)}`);
   };
 
+  // Responsive type scale for the hero headline.
+  //
+  // Tailwind is mobile-first, so the UNPREFIXED size is what a phone gets.
+  // The current value starts at text-5xl (48px), which on a 375px screen
+  // leaves ~343px of usable width and forces "Discover local chefs." to break
+  // mid-phrase. The lg:/xl: steps only ever apply to large screens.
+  //
+  // Stepped, conservative: 30px phone -> 36px -> 48px -> 72px -> 88px.
+  // The phone step is what matters; the rest restore the original desktop size.
+  const HERO_HEADING_CLASS =
+    'text-3xl sm:text-4xl md:text-5xl lg:text-7xl xl:text-[5.5rem] font-black tracking-tight leading-[1.05] mb-6 drop-shadow-sm';
+
   return (
-    <section className="relative pt-36 pb-24 lg:pt-48 lg:pb-32 overflow-hidden text-white min-h-[90vh] flex items-center justify-center">
+    <section className="relative pt-28 pb-16 sm:pt-36 sm:pb-24 lg:pt-48 lg:pb-32 overflow-hidden text-white min-h-[90vh] flex items-start sm:items-center justify-center">
       {/* Background Image & Overlay */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
@@ -135,7 +147,7 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, type: 'spring' }}
         >
-          <h1 className="text-5xl lg:text-7xl xl:text-[5.5rem] font-black tracking-tight leading-[1.05] mb-6 drop-shadow-sm">
+          <h1 className={HERO_HEADING_CLASS}>
             Order daily meals.<br />
             Discover local chefs.<br />
             Dabzzo it!
