@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { signInWithGoogle } from '@/lib/auth';
-import { resolveUserProfile, completeOnboarding } from '@/lib/queries/users';
+import { resolveUserProfile, completeOnboarding, markPhonePromptShown } from '@/lib/queries/users';
 import { migrateSubscriptions } from '@/lib/queries/subscriptions';
 import type { UserRole } from '@/types';
 import type { User } from 'firebase/auth';
@@ -67,6 +67,12 @@ export default function LoginPage() {
       setPrefillEmail(firebaseUser.email || null);
       setPrefillPhoto(firebaseUser.photoURL || null);
       setStep('phone-capture');
+
+      // Record that we asked, as soon as the prompt appears rather than on
+      // submit. That makes it strictly one-time: abandoning the form does not
+      // earn another prompt on the next sign-in. Fire-and-forget so it never
+      // delays showing the screen.
+      void markPhonePromptShown(firebaseUser.uid);
     } catch (err: unknown) {
       addToast(getErrorMessage(err) || 'Sign-in failed. Please try again.', 'error');
     }

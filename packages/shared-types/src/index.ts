@@ -53,6 +53,16 @@ export interface AppUser {
   };
   is_approved?: boolean;
   is_rejected?: boolean;
+  /**
+   * Set once, the first time the phone-capture screen is shown.
+   *
+   * The prompt used to be driven purely by "is phone empty", which meant
+   * anyone whose number failed to save was asked again on every sign-in. This
+   * flag makes it strictly one-time: asked once, never again, whether or not
+   * a number was actually entered. A phone can still be added later from the
+   * profile screen.
+   */
+  phone_prompt_shown?: boolean;
   push_tokens?: string[];
   location?: { lat: number; lng: number; updated_at: number };
   address?: string;

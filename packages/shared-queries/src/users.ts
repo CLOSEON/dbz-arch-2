@@ -89,13 +89,21 @@ export async function resolveUserProfile(
       return { user: { id: uid, ...data, role: 'admin', is_approved: true, is_superadmin: true } as AppUser, isNewUser: false };
     }
 
-    // Onboarding is needed only while the profile genuinely lacks a phone or a
-    // role. Trim first: a stray whitespace-only value would otherwise be truthy
-    // here yet useless everywhere else, and the phone screen would look like it
-    // reappears at random.
+    // Onboarding is needed when the profile lacks a ROLE (always required), or
+    // when it lacks a phone AND we have never asked for one.
+    //
+    // The phone prompt is strictly one-time. Driving it purely off "phone is
+    // empty" meant anyone whose number failed to save was asked again on every
+    // single sign-in. phone_prompt_shown records that we asked; a phone can
+    // still be added later from the profile screen.
+    //
+    // Trim before deciding: a whitespace-only phone is truthy but useless, and
+    // would make the prompt look like it reappears at random.
     const hasPhone = typeof data.phone === 'string' && data.phone.trim().length > 0;
     const hasRole = typeof data.role === 'string' && data.role.trim().length > 0;
-    if (!hasPhone || !hasRole) {
+    const alreadyAsked = data.phone_prompt_shown === true;
+
+    if (!hasRole || (!hasPhone && !alreadyAsked)) {
       return { user: { id: uid, ...data, ...updates } as AppUser, isNewUser: true };
     }
 
@@ -133,6 +141,32 @@ export async function resolveUserProfile(
   };
 }
 
+/**
+ * Record that the phone-capture prompt has been shown to this user.
+ *
+ * Called when the prompt APPEARS, not when it is submitted. That is what makes
+ * it strictly one-time: if someone closes the tab mid-form, they still are not
+ * asked again on the next sign-in.
+ *
+ * The trade-off is deliberate — we may end up without a phone number for that
+ * user, and they add one from the profile screen instead. Asking on every
+ * sign-in until they comply is the worse outcome.
+ *
+ * Uses merge so it only ever adds this flag, and never disturbs other fields.
+ */
+export async function markPhonePromptShown(uid: string): Promise<void> {
+  try {
+    await setDoc(
+      doc(db, 'users', uid),
+      { phone_prompt_shown: true, updated_at: Timestamp.now() },
+      { merge: true }
+    );
+  } catch (err) {
+    // Non-fatal: worst case the prompt shows once more next time.
+    console.warn('[users] Could not record phone_prompt_shown:', err);
+  }
+}
+
 export async function completeOnboarding(
   uid: string,
   phone: string,
@@ -153,6 +187,9 @@ export async function completeOnboarding(
     is_approved: isPartnerRole ? false : true,
     verification_status: isPartnerRole ? 'pending' : 'verified',
     is_rejected: false,
+    // Record that the phone prompt has been shown, so it never appears again
+    // even if the number is later cleared.
+    phone_prompt_shown: true,
     created_at: Timestamp.now() as any,
   };
 

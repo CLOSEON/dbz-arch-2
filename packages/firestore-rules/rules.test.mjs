@@ -302,6 +302,28 @@ async function main() {
     );
   });
 
+  // ── phone_prompt_shown: the strictly-once flag ────────────────────────────
+  await it('a user can set their own phone_prompt_shown flag', async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'user', phone: '' }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', CUSTOMER), { phone_prompt_shown: true }, { merge: true })
+    );
+  });
+
+  await it('a user CANNOT set phone_prompt_shown on someone else', async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users', CUSTOMER), { role: 'user' });
+      await setDoc(doc(db, 'users', VENDOR), { role: 'vendor' });
+    });
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertFails(
+      setDoc(doc(db, 'users', VENDOR), { phone_prompt_shown: true }, { merge: true })
+    );
+  });
+
   await testEnv.cleanup();
 
   // ── Report ────────────────────────────────────────────────────────────────
