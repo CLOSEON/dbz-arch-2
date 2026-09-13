@@ -25,7 +25,8 @@
     "typecheck:functions": "npm --prefix functions run typecheck",
     "lint:apps": "npm run lint --workspaces --if-present",
     "test:functions": "npm --prefix functions run test",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "test:rules": "node scripts/test-rules.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
