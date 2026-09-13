@@ -28,11 +28,11 @@ export function MainFooter() {
           <div className="space-y-4">
             <h4 className="text-white font-bold tracking-wide">Quick Links</h4>
             <ul className="space-y-2.5 text-sm text-slate-400">
-              <li><Link href="#about" className="hover:text-brand transition-colors">About Us</Link></li>
-              <li><Link href="#how-it-works" className="hover:text-brand transition-colors">How it Works</Link></li>
-              <li><Link href="#meal-plans" className="hover:text-brand transition-colors">Meal Plans</Link></li>
-              <li><Link href="#pricing" className="hover:text-brand transition-colors">Pricing</Link></li>
-              <li><Link href="#faq" className="hover:text-brand transition-colors">FAQ</Link></li>
+              <li><Link href="#about" className="inline-block py-1.5 hover:text-brand transition-colors">About Us</Link></li>
+              <li><Link href="#how-it-works" className="inline-block py-1.5 hover:text-brand transition-colors">How it Works</Link></li>
+              <li><Link href="#meal-plans" className="inline-block py-1.5 hover:text-brand transition-colors">Meal Plans</Link></li>
+              <li><Link href="#pricing" className="inline-block py-1.5 hover:text-brand transition-colors">Pricing</Link></li>
+              <li><Link href="#faq" className="inline-block py-1.5 hover:text-brand transition-colors">FAQ</Link></li>
             </ul>
           </div>
 
@@ -40,9 +40,9 @@ export function MainFooter() {
           <div className="space-y-4">
             <h4 className="text-white font-bold tracking-wide">Partners</h4>
             <ul className="space-y-2.5 text-sm text-slate-400">
-              <li><Link href="#kitchen-partners" className="hover:text-brand transition-colors">Kitchen Partners</Link></li>
-              <li><Link href="#delivery-partners" className="hover:text-brand transition-colors">Delivery Partners</Link></li>
-              <li><Link href="/login" className="hover:text-brand transition-colors">Partner Login</Link></li>
+              <li><Link href="#kitchen-partners" className="inline-block py-1.5 hover:text-brand transition-colors">Kitchen Partners</Link></li>
+              <li><Link href="#delivery-partners" className="inline-block py-1.5 hover:text-brand transition-colors">Delivery Partners</Link></li>
+              <li><Link href="/login" className="inline-block py-1.5 hover:text-brand transition-colors">Partner Login</Link></li>
             </ul>
           </div>
 
