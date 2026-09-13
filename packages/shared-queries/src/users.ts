@@ -89,8 +89,13 @@ export async function resolveUserProfile(
       return { user: { id: uid, ...data, role: 'admin', is_approved: true, is_superadmin: true } as AppUser, isNewUser: false };
     }
 
-    // Needs onboarding if missing phone or role
-    if (!data.phone || !data.role) {
+    // Onboarding is needed only while the profile genuinely lacks a phone or a
+    // role. Trim first: a stray whitespace-only value would otherwise be truthy
+    // here yet useless everywhere else, and the phone screen would look like it
+    // reappears at random.
+    const hasPhone = typeof data.phone === 'string' && data.phone.trim().length > 0;
+    const hasRole = typeof data.role === 'string' && data.role.trim().length > 0;
+    if (!hasPhone || !hasRole) {
       return { user: { id: uid, ...data, ...updates } as AppUser, isNewUser: true };
     }
 

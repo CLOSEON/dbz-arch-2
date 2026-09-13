@@ -251,11 +251,19 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
 
             try {
               const { setDoc: setFirestoreDoc, serverTimestamp } = await import('firebase/firestore');
-              await setFirestoreDoc(
-                doc(db, 'users', activeUser.uid),
-                { ...newProfile, created_at: serverTimestamp() },
-                { merge: true }
-              );
+
+              // Never write an empty value over a real one. This fires on
+              // onAuthStateChanged, which happens the moment you sign in --
+              // while the phone-capture form may still be on screen. If this
+              // write landed after completeOnboarding, merge:true would put
+              // phone:'' straight over the number just saved, and the phone
+              // screen would reappear on every sign-in.
+              const seed: Record<string, unknown> = { created_at: serverTimestamp() };
+              for (const [k, v] of Object.entries(newProfile)) {
+                if (v !== undefined && v !== '') seed[k] = v;
+              }
+
+              await setFirestoreDoc(doc(db, 'users', activeUser.uid), seed, { merge: true });
               setUser(newProfile);
             } catch (e) {
               // Surface it rather than leaving the user on a screen that looks

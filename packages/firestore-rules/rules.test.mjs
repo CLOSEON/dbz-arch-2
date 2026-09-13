@@ -267,6 +267,41 @@ async function main() {
     );
   });
 
+  // ── completeOnboarding: saving the phone number ───────────────────────────
+  // The phone-capture screen reappears on every sign-in if this write does not
+  // land, because resolveUserProfile treats a missing phone as isNewUser.
+  await it("completeOnboarding's phone write lands for a customer", async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'user', phone: '' }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', CUSTOMER), {
+        name: 'srv',
+        phone: '+919119565436',
+        role: 'user',
+        is_approved: true,
+        verification_status: 'verified',
+        is_rejected: false,
+      }, { merge: true })
+    );
+  });
+
+  await it("completeOnboarding works when AuthProvider already made the profile", async () => {
+    // AuthProvider now creates {role:'user', phone:''} on first sign-in, so the
+    // onboarding write is an UPDATE over that, not a create.
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), {
+      id: CUSTOMER, email: 'a@b.c', name: 'srv', phone: '', role: 'user', is_approved: true,
+    }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'users', CUSTOMER), {
+        name: 'srv', phone: '+919119565436', role: 'user',
+        is_approved: true, verification_status: 'verified', is_rejected: false,
+      }, { merge: true })
+    );
+  });
+
   await testEnv.cleanup();
 
   // ── Report ────────────────────────────────────────────────────────────────
