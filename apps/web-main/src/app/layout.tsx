@@ -37,7 +37,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning applies to THIS element's attributes only,
+    // one level deep -- it does not hide real content mismatches. Browser
+    // extensions (QuillBot writes data-qb-installed, Grammarly and password
+    // managers do similar) mutate <html> before React hydrates, which React
+    // otherwise reports as a hydration error the app cannot fix.
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-[#FEFCE8] text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />

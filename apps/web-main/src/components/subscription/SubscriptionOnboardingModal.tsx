@@ -1,5 +1,6 @@
 'use client';
 
+import { getCurrentPosition, GeolocationError, geoErrorMessage } from '@dabzzo/shared-lib/geolocation';
 import { useState, useEffect } from 'react';
 import { Loader2, MapPin, Navigation, ArrowLeft, ShieldCheck, CreditCard, Plus, Check, Sparkles } from 'lucide-react';
 import { VegIcon, NonVegIcon } from '@/components/shared/DietaryIcon';
@@ -202,19 +203,15 @@ export function SubscriptionOnboardingModal({
     );
   };
 
-  const handleDetectLocation = () => {
+  const handleDetectLocation = async () => {
     setDetectingLoc(true);
-    if (!navigator.geolocation) {
-      addToast('Geolocation not supported on this browser', 'error');
-      setDetectingLoc(false);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setLocation({ lat, lng, updated_at: Date.now() });
+    try {
+      // Native-aware: requests the Android runtime permission through the
+      // Capacitor plugin, which the raw navigator.geolocation path skipped.
+      const { lat, lng } = await getCurrentPosition();
+      setLocation({ lat, lng, updated_at: Date.now() });
 
+      {
         try {
           const geo = await reverseGeocode(lat, lng);
           
@@ -251,13 +248,14 @@ export function SubscriptionOnboardingModal({
         } finally {
           setDetectingLoc(false);
         }
-      },
-      () => { 
-        setDetectingLoc(false); 
-        addToast('Please allow location access in your browser settings.', 'error'); 
-      },
-      { enableHighAccuracy: true, timeout: 12000 }
-    );
+      }
+    } catch (err: unknown) {
+      setDetectingLoc(false);
+      // Say WHICH failure it was; the old handler blamed permissions for
+      // timeouts and no-fix alike, sending people to the wrong setting.
+      const reason = err instanceof GeolocationError ? err.reason : 'unknown';
+      addToast(geoErrorMessage(reason), 'error');
+    }
   };
 
   const handleConfirmStep1 = () => {
@@ -847,7 +845,15 @@ export function SubscriptionOnboardingModal({
               </div>
 
               {/* Sticky Footer Action Bar */}
-              <div className="p-4 sm:px-6 sm:py-4 border-t border-slate-100 bg-white/95 backdrop-blur-xs shrink-0">
+              <div
+                className="p-4 sm:px-6 sm:py-4 border-t border-slate-100 bg-white/95 backdrop-blur-xs shrink-0"
+                // The sheet is bottom-anchored on phones, so this action row lands
+                // exactly where the gesture bar / home indicator sits. Pad by the
+                // safe-area inset so Next / Pay is actually tappable. Reads 0 on
+                // devices without an inset, and only reports a real value now that
+                // viewport-fit=cover is set.
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+              >
                 {step === 1 && (
                   <button 
                     type="button"

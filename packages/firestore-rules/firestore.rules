@@ -103,11 +103,29 @@ service cloud.firestore {
         reqApproved == false || 
         (resource != null && resource.data.get('is_approved', false) == true);
 
+      // A role may be set when there is no prior role, or left unchanged.
+      //
+      // Plus one legitimate transition: self-service partner onboarding.
+      // onUserCreate stamps role 'customer' on EVERY new sign-in, so a person
+      // applying to run a kitchen or ride is always changing customer ->
+      // vendor/delivery. Without this clause that write is denied and partner
+      // registration cannot succeed for anyone -- which is what "Missing or
+      // insufficient permissions" on the Register Kitchen screen was.
+      //
+      // This is not privilege escalation: partnerApprovalSafe above still
+      // forces is_approved == false on any partner-role write, so an applicant
+      // cannot approve themselves. An admin still has to.
+      let selfServicePartnerOnboarding =
+        resource != null &&
+        resource.data.get('role', '') in ['user', 'customer'] &&
+        reqRole in ['vendor', 'delivery', 'kitchen', 'delivery_agent', 'rider'];
+
       let roleChangeSafe = 
         resource == null || 
         resource.data.get('role', null) == null || 
         resource.data.get('role', '') == '' ||
-        resource.data.get('role', '') == reqRole;
+        resource.data.get('role', '') == reqRole ||
+        selfServicePartnerOnboarding;
 
       return isSuper || isAdmin() || (notAdminEscalation && partnerApprovalSafe && roleChangeSafe);
     }

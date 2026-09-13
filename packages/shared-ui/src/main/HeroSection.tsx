@@ -129,7 +129,7 @@ export function HeroSection() {
     'text-3xl sm:text-4xl md:text-5xl lg:text-7xl xl:text-[5.5rem] font-black tracking-tight leading-[1.05] mb-6 drop-shadow-sm';
 
   return (
-    <section className="relative pt-28 pb-16 sm:pt-36 sm:pb-24 lg:pt-48 lg:pb-32 overflow-hidden text-white min-h-[90vh] flex items-start sm:items-center justify-center">
+    <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 lg:pt-48 lg:pb-32 overflow-hidden text-white min-h-[90vh] flex items-start lg:items-center justify-center">
       {/* Background Image & Overlay */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
