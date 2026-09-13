@@ -11,7 +11,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: 'delivery',
         fallbackName: 'Delivery Partner',
         applyToExistingDoc: (data, authUser) => {
-          data.verification_status = 'verified';
+          // verification_status is deliberately NOT forced to 'verified'.
+          // Rider verification is a real-world check (licence, vehicle, KYC)
+          // and this overwrote it unconditionally on every sign-in, silently
+          // reverting any admin decision. Portal access does not depend on it:
+          // the dashboard gate short-circuits on isSuper.
           data.name = data.name || authUser.displayName || 'Delivery Partner';
           data.phone = data.phone || authUser.phoneNumber || '';
           data.vehicle_type = data.vehicle_type || 'Motorcycle';

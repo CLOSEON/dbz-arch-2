@@ -1,9 +1,15 @@
 'use client';
 // Per-app wrapper; the provider itself lives in @dabzzo/shared-auth.
-// This app provisions the superadmin account as a verified "Test Vendor" so
-// one account can exercise the kitchen portal. NOTE: this seeds placeholder
-// compliance/rating data into Firestore and is not gated to non-production —
-// see IMPLEMENTATION_PLAN.md, flagged for a decision.
+// This app provisions the superadmin account as a "Test Vendor" so one account
+// can exercise the kitchen portal.
+//
+// It writes OPERATIONAL defaults only (rates, capacity, cuisine). It must not
+// write compliance or reputation data: no FSSAI licence, no
+// verification_status 'verified', no ratings or review counts. Those are
+// claims about the real world, and this account has not earned any of them.
+//
+// Access does not depend on them either — the dashboard gate short-circuits on
+// `isSuper`, so the superadmin gets in regardless.
 import { AuthProvider as SharedAuthProvider } from '@dabzzo/shared-auth';
 
 const TEST_VENDOR_PHONE = '+919900990022';
@@ -17,15 +23,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fallbackPhone: TEST_VENDOR_PHONE,
         optimisticExtras: {
           kitchen_name: 'Test Vendor',
-          verification_status: 'verified',
         },
         applyToExistingDoc: (data) => {
           data.name = data.name || 'Test Vendor';
           data.kitchen_name = data.kitchen_name || 'Test Vendor';
           data.phone = data.phone || TEST_VENDOR_PHONE;
-          data.verification_status = 'verified';
+          // verification_status is deliberately NOT forced to 'verified' here.
+          // It was overwritten unconditionally, so even an admin marking this
+          // account pending or rejected was silently reverted on next sign-in.
           data.capacity = data.capacity || 10;
-          data.subscriberCount = data.subscriberCount || 2;
           data.rate_onetime = data.rate_onetime || 150;
           data.cuisine_type = data.cuisine_type || 'Home Style';
         },
@@ -34,9 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           kitchen_name: 'Test Vendor',
           phone: TEST_VENDOR_PHONE,
           capacity: 10,
-          subscriberCount: 2,
-          fssai_license: 'FSSAI-12345678901234',
-          address: 'Sector 62, Noida, Uttar Pradesh',
+          // No fssai_license, no address, no ratings: fabricated compliance and
+          // reputation data has no business in the production users collection.
           rate_onetime: 150,
           rate_lunch_weekly: 900,
           rate_lunch_monthly: 3600,
@@ -45,10 +50,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           rate_both_weekly: 1750,
           rate_both_monthly: 6800,
           cuisine_type: 'Home Style',
-          bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
-          rating: 4.5,
-          rating_avg: 4.5,
-          review_count: 14,
         }),
       }}
     >

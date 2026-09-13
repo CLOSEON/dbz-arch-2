@@ -361,7 +361,18 @@ export async function rejectUserRole(
   });
 }
 
-/** Seed the 4 primary test accounts into Firestore */
+/**
+ * Seed the 4 primary test accounts into Firestore.
+ *
+ * These carry NO fabricated real-world credentials. Earlier versions wrote an
+ * invented FSSAI licence, a driving licence number, a vehicle registration and
+ * street addresses, all marked verification_status 'verified' -- fabricated
+ * compliance and identity data in the production users collection.
+ *
+ * Partner accounts are now seeded as 'pending'. If a test needs a verified
+ * vendor or rider, verify it through the admin console like any other partner;
+ * that exercises the real approval path rather than bypassing it.
+ */
 export async function seedTestAccounts(): Promise<void> {
   const TEST_ACCOUNTS = [
     {
@@ -379,11 +390,11 @@ export async function seedTestAccounts(): Promise<void> {
       name: 'Chef Sharma Kitchen',
       role: 'vendor' as UserRole,
       kitchen_name: 'Sharma Gourmet Kitchen',
-      is_approved: true,
-      verification_status: 'verified',
+      // Pending, not verified: no FSSAI licence has been supplied, and one
+      // must not be invented. Approve via the admin console if a test needs it.
+      is_approved: false,
+      verification_status: 'pending',
       capacity: 50,
-      fssai_license: 'FSSAI-12345678901234',
-      address: 'Sector 62, Noida, UP',
       created_at: Timestamp.now(),
     },
     {
@@ -391,11 +402,11 @@ export async function seedTestAccounts(): Promise<void> {
       phone: '+919000000003',
       name: 'Rider Vikram',
       role: 'delivery' as UserRole,
-      is_approved: true,
-      verification_status: 'verified',
+      // Pending: rider verification depends on a real licence and vehicle
+      // registration. Neither is invented here.
+      is_approved: false,
+      verification_status: 'pending',
       vehicle_type: 'EV Scooter',
-      vehicle_number: 'UP16-AB-1234',
-      license_number: 'DL-987654321',
       created_at: Timestamp.now(),
     },
     {
@@ -403,9 +414,8 @@ export async function seedTestAccounts(): Promise<void> {
       phone: '+919000000004',
       name: 'Ananya Customer',
       role: 'user' as UserRole,
+      // Customers need no verification; no invented street address either.
       is_approved: true,
-      verification_status: 'verified',
-      address: 'Tower 4, Jaypee Greens, Noida',
       created_at: Timestamp.now(),
     },
   ];

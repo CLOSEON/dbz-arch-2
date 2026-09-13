@@ -66,11 +66,20 @@ export default function VendorLoginPage() {
           role: 'vendor' as UserRole,
           is_approved: true,
           is_superadmin: true,
-          verification_status: 'verified',
+          // No fabricated compliance or reputation data is written.
+          //
+          // This previously set verification_status 'verified', a made-up FSSAI
+          // licence number, a street address, a 4.5 rating and 14 reviews --
+          // none of which correspond to anything real, all written straight to
+          // the production users collection.
+          //
+          // None of it was needed: the dashboard gate at dashboard/page.tsx
+          // already short-circuits on `isSuper`, so the superadmin reaches the
+          // kitchen portal by virtue of being the superadmin. Compliance state
+          // stays unverified until a real licence is supplied and an admin
+          // verifies it.
+          verification_status: 'pending',
           capacity: 10,
-          subscriberCount: 2,
-          fssai_license: 'FSSAI-12345678901234',
-          address: 'Sector 62, Noida, Uttar Pradesh',
           rate_onetime: 150,
           rate_lunch_weekly: 900,
           rate_lunch_monthly: 3600,
@@ -79,10 +88,6 @@ export default function VendorLoginPage() {
           rate_both_weekly: 1750,
           rate_both_monthly: 6800,
           cuisine_type: 'Home Style',
-          bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
-          rating: 4.5,
-          rating_avg: 4.5,
-          review_count: 14,
         };
 
         try {
