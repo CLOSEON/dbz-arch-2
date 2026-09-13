@@ -54,12 +54,15 @@ export interface SuperadminProvisioning {
 /**
  * Whether superadmin auto-provisioning should run in the current environment.
  *
- * This matters because provisioning WRITES to Firestore: vendor-panel seeds a
- * "Test Vendor" profile carrying verification_status 'verified', a sample FSSAI
- * licence number, sample rates and a 4.5-star/14-review history; rider-panel
- * seeds a verified rider. Those rows are indistinguishable from real ones once
- * written, and a self-verifying account also can't exercise the *unverified*
- * onboarding path.
+ * This matters because provisioning WRITES to Firestore. It no longer writes
+ * any fabricated real-world claim: the FSSAI licence, street address, rating
+ * and review history are gone, and partner roles are provisioned 'pending'
+ * rather than 'verified' (see the superProfile construction below). What
+ * remains is operational configuration — name, phone, rates, capacity — plus
+ * the role itself.
+ *
+ * A superadmin still reaches every portal, because the portal gates
+ * short-circuit on isSuper rather than on verification status.
  *
  * Currently returns true unconditionally, which preserves the behaviour this
  * code had before it was consolidated — deliberately, so the refactor changed
@@ -211,7 +214,19 @@ export function AuthProvider({ children, superadmin }: AuthProviderProps) {
               role: superadmin.role,
               is_superadmin: true,
               is_approved: true,
-              verification_status: 'verified',
+              // Partner roles must NOT be auto-verified. superadmin.role is
+              // 'vendor' under the kitchen portal and 'delivery' under the
+              // rider portal, and verification for those is a real-world check
+              // (FSSAI licence, driving licence, vehicle registration). Writing
+              // 'verified' here fabricated that claim on every first sign-in.
+              //
+              // 'admin' carries no such claim — there is nothing to verify —
+              // so it keeps 'verified' as a plain account-state marker.
+              //
+              // This does not affect access: the portal gates short-circuit on
+              // isSuper, so the superadmin still reaches every portal.
+              verification_status:
+                superadmin.role === 'admin' ? 'verified' : 'pending',
               ...(superadmin.newProfileExtras?.(activeUser) ?? {}),
             } as AppUser;
             try {
