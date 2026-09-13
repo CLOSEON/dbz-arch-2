@@ -273,9 +273,27 @@ export async function signUpWithEmail(
 export async function sendPasswordReset(email: string): Promise<PasswordResetResult> {
   try {
     await sendPasswordResetEmail(auth, normalizeEmail(email));
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[auth] Password reset email requested for', normalizeEmail(email));
+    }
     return { success: true };
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code || '';
+
+    // Hiding "no such account" is right in production — otherwise this form
+    // becomes a way to test which emails are registered. But it also makes the
+    // failure indistinguishable from success while developing, so log the real
+    // reason to the console in dev only. The returned value is unchanged, so
+    // production behaviour is identical.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[auth] Password reset did NOT send. code=${code || '(none)'}. ` +
+        'auth/user-not-found means no account exists for that address; ' +
+        'the UI still reports success on purpose.',
+        err
+      );
+    }
+
     if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
       return { success: true };
     }
