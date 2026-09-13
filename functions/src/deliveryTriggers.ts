@@ -1037,6 +1037,33 @@ export const onSubscriptionCreated = onDocumentWritten('subscriptions/{subId}', 
   const sub = afterData;
   const subId = event.params.subId;
 
+  // ── Swap allowance ────────────────────────────────────────────────────────
+  // Initialised/reset here rather than by the client. The rules allow a user to
+  // CREATE their own allowance but not UPDATE it -- deliberately, since being
+  // able to reset free_swaps_used to 0 would mean unlimited free swaps. That
+  // left re-subscribing unable to reset the allowance: the client's setDoc with
+  // merge is an update on an existing doc, it was denied, and because the call
+  // was .catch()-ed to a console.warn nobody ever saw it. Renewing customers
+  // silently did not get their free swaps back.
+  //
+  // Doing it here keeps the client-side restriction intact and makes the reset
+  // a privileged operation, which is what it is.
+  try {
+    const freeSwapsTotal = sub.meal_type === 'both' ? 2 : 1;
+    await admin.firestore().collection('subscription_swap_allowances').doc(subId).set(
+      {
+        subscription_id: subId,
+        user_id: sub.user_id,
+        free_swaps_total: freeSwapsTotal,
+        free_swaps_used: 0,
+        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error(`[onSubscriptionCreated] Could not set swap allowance for ${subId}:`, err);
+  }
+
   const [userSnap, vendorSnap] = await Promise.all([
     db.collection('users').doc(sub.user_id).get(),
     db.collection('users').doc(sub.vendor_id).get(),

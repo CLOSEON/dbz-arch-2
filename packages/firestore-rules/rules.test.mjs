@@ -206,6 +206,67 @@ async function main() {
     );
   });
 
+  // ── Subscription creation writes a payments doc client-side ───────────────
+  // NOTE: the payments write lives in activateExternalSubscription, which is an
+  // ADMIN function for recording offline payments -- not the customer path.
+  // Keeping the case documents that a customer correctly CANNOT write payments.
+  await it('a customer CANNOT write a payments doc (admin-only ledger)', async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'user' }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertFails(
+      setDoc(doc(db, 'payments', 'pay_1'), {
+        id: 'pay_1',
+        user_id: CUSTOMER,
+        subscription_id: 'sub_1',
+        amount: 4500,
+      })
+    );
+  });
+
+  await it('a customer can create their own subscription', async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'user' }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'subscriptions', 'sub_1'), {
+        id: 'sub_1', user_id: CUSTOMER, vendor_id: 'v1', status: 'active',
+      })
+    );
+  });
+
+  // ── The ACTUAL customer subscribe path (createSubscription) ───────────────
+  await it('a customer can create their swap allowance on subscribe', async () => {
+    await testEnv.clearFirestore();
+    await seed(async (db) => setDoc(doc(db, 'users', CUSTOMER), { role: 'user' }));
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'subscription_swap_allowances', 'sub_1'), {
+        subscription_id: 'sub_1', user_id: CUSTOMER,
+        free_swaps_total: 2, free_swaps_used: 0,
+      }, { merge: true })
+    );
+  });
+
+  await it('a customer CANNOT reset an existing allowance (anti free-swap abuse)', async () => {
+    // This MUST stay denied: being able to set free_swaps_used back to 0 would
+    // mean unlimited free swaps. Re-subscribe resets are done by the
+    // onSubscriptionCreated Cloud Function with the Admin SDK instead.
+    await testEnv.clearFirestore();
+    await seed(async (db) => {
+      await setDoc(doc(db, 'users', CUSTOMER), { role: 'user' });
+      await setDoc(doc(db, 'subscription_swap_allowances', 'sub_1'), {
+        subscription_id: 'sub_1', user_id: CUSTOMER, free_swaps_used: 1,
+      });
+    });
+    const db = testEnv.authenticatedContext(CUSTOMER).firestore();
+    await assertFails(
+      setDoc(doc(db, 'subscription_swap_allowances', 'sub_1'), {
+        subscription_id: 'sub_1', user_id: CUSTOMER, free_swaps_used: 0,
+      }, { merge: true })
+    );
+  });
+
   await testEnv.cleanup();
 
   // ── Report ────────────────────────────────────────────────────────────────
