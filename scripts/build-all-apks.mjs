@@ -84,6 +84,11 @@ function loadBaseCapacitorConfig() {
 }
 const baseCapConfig = loadBaseCapacitorConfig();
 
+// NOTE: these application ids must match the package names registered in
+// Firebase exactly. vendor/rider/admin are registered as com.dabzo.<role>.app
+// (with the .app suffix); only the customer app is plain com.dabzo.app. A
+// mismatch means google-services.json has no entry for the running package, so
+// Firebase services silently have no configuration.
 const APPS = [
   {
     key: 'customer',
@@ -95,21 +100,21 @@ const APPS = [
   {
     key: 'vendor',
     name: 'Dabzzo Vendor',
-    appId: 'com.dabzo.vendor',
+    appId: 'com.dabzo.vendor.app',
     distDir: path.join(root, 'apps', 'vendor-panel', 'out'),
     outputApk: 'dabzzo-vendor.apk',
   },
   {
     key: 'rider',
     name: 'Dabzzo Rider',
-    appId: 'com.dabzo.rider',
+    appId: 'com.dabzo.rider.app',
     distDir: path.join(root, 'apps', 'rider-panel', 'out'),
     outputApk: 'dabzzo-rider.apk',
   },
   {
     key: 'admin',
     name: 'Dabzzo Admin',
-    appId: 'com.dabzo.admin',
+    appId: 'com.dabzo.admin.app',
     distDir: path.join(root, 'apps', 'admin-panel', 'out'),
     outputApk: 'dabzzo-admin.apk',
   },
