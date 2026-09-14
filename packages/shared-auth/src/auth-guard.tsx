@@ -56,6 +56,18 @@ function hasExtendedRoleMembership(user: AuthGuardUser | null, role: string): bo
   if (!user) return false;
   const roles = user.roles as Record<string, unknown> | undefined;
   switch (role) {
+    case 'user':
+      // 'customer' is a second spelling of the baseline role, not a distinct
+      // one. functions/src/authTriggers.ts onUserCreate seeds every new account
+      // with role 'customer' (both as a custom claim and in users/{uid}), while
+      // the client writes 'user' -- so real accounts carry either string
+      // depending on which path created them. firestore.rules already pairs
+      // them (`role in ['user', 'customer']`); the guards did not, so a
+      // 'customer' was refused /dashboard and bounced straight back to /login.
+      // That was the "stuck on the login page after a successful sign-in" bug:
+      // the toast fired because sign-in genuinely succeeded, and the redirect
+      // then failed the destination's guard.
+      return user.role === 'customer';
     case 'admin':
       return user.role === 'superadmin' || roles?.admin === true;
     case 'vendor': {
