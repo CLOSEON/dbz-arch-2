@@ -63,12 +63,32 @@ auth.useDeviceLanguage();
 
 // ─── Firestore with offline cache ────────────────────────────────────────────
 let db: Firestore;
+
+// Opt-in escape hatch for networks that break Firestore's streaming transport.
+//
+// Firestore talks to the backend over WebChannel, a long-lived HTTPS stream.
+// Some corporate proxies, VPNs and antivirus products with HTTPS inspection
+// terminate those streams, which surfaces as a repeating
+//   WebChannelConnection RPC 'Listen' stream transport errored
+// followed by "Could not reach Cloud Firestore backend" -- while ordinary
+// requests to firestore.googleapis.com succeed, so the network looks healthy.
+// The client then serves reads from cache and every uncached get() throws
+// "client is offline", which silently degrades real data to fallback defaults.
+//
+// experimentalAutoDetectLongPolling is already the SDK default (v10+) and
+// handles streams that STALL; it does not reliably catch streams that error
+// outright. Forcing long polling swaps the stream for ordinary polled requests.
+// It costs some latency, so it stays off unless explicitly switched on, and
+// production behaviour is unchanged by default.
+const forceLongPolling = process.env.NEXT_PUBLIC_FIRESTORE_FORCE_LONG_POLLING === 'true';
+
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
     }),
     ignoreUndefinedProperties: true,
+    ...(forceLongPolling ? { experimentalForceLongPolling: true } : {}),
   });
 } catch {
   // Already initialized (HMR / SSR)
