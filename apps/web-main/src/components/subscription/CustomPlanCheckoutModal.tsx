@@ -290,15 +290,15 @@ export function CustomPlanCheckoutModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 10 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 10 }}
-        className="w-full max-w-xl bg-white rounded-3xl p-5 sm:p-7 shadow-2xl border border-slate-100 text-left my-auto max-h-[92vh] flex flex-col"
+        className="w-full sm:max-w-xl bg-slate-50 rounded-t-3xl sm:rounded-3xl shadow-2xl text-left max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden"
       >
         {/* ── Top Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between pb-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-start justify-between gap-3 bg-white px-4 sm:px-6 pt-4 pb-3.5 border-b border-slate-200/80 shrink-0">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100/70 border border-amber-200 text-amber-900 text-xs font-bold tracking-wide uppercase mb-1">
               {isWeekly ? <Calendar className="w-3.5 h-3.5" /> : <CalendarDays className="w-3.5 h-3.5" />}
@@ -326,7 +326,7 @@ export function CustomPlanCheckoutModal({
         </div>
 
         {/* ── Scrollable Body ────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-3">
           {/* ── Payment Failure & Retry Banner ─────────────────────────────── */}
           <AnimatePresence>
             {errorMessage && (
@@ -360,7 +360,7 @@ export function CustomPlanCheckoutModal({
           </AnimatePresence>
 
           {/* ── Pattern Breakdown (Which days, how many meals) ──────────────── */}
-          <div className="rounded-2xl bg-slate-50/80 border border-slate-200/90 p-3.5 sm:p-4">
+          <div className="rounded-2xl bg-white border border-slate-200/80 p-4">
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Utensils className="w-3.5 h-3.5 text-amber-600" />
@@ -417,40 +417,27 @@ export function CustomPlanCheckoutModal({
               <div>
                 {monthlyBreakdown.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-1">
-                    {monthlyBreakdown.map(({ dateKey, dayNum, meals }) => (
-                      <span
-                        key={dateKey}
-                        className={cn(
-                          'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border font-bold',
-                          meals === 2
-                            ? 'bg-orange-50 text-orange-900 border-orange-300'
-                            : 'bg-amber-50 text-amber-900 border-amber-300'
-                        )}
-                      >
-                        <span className="text-slate-500 text-[11px]">Date {dayNum}:</span>
-                        <span className="font-black">{meals} {meals === 1 ? 'Meal' : 'Meals'}</span>
-                      </span>
-                    ))}
+                    {/* One row per date. This list was rendered TWICE -- two
+                        consecutive monthlyBreakdown.map() calls over the same array,
+                        each emitting a span keyed by dateKey into the same parent,
+                        which duplicated every date and collided React keys. */}
                     {monthlyBreakdown.map(({ dateKey, dayNum, meals, slot }) => {
-                      const isDinner = slot === 'dinner';
                       const isBoth = slot === 'both' || meals === 2;
-
+                      const isDinner = slot === 'dinner';
                       return (
                         <span
                           key={dateKey}
                           className={cn(
-                            'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border font-bold',
+                            'inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border font-semibold',
                             isBoth
-                              ? 'bg-orange-50 text-orange-950 border-orange-300'
+                              ? 'bg-orange-50 text-orange-900 border-orange-200'
                               : isDinner
-                              ? 'bg-indigo-50 text-indigo-950 border-indigo-300'
-                              : 'bg-amber-50 text-amber-950 border-amber-300'
+                                ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                                : 'bg-amber-50 text-amber-900 border-amber-200'
                           )}
                         >
-                          <span className="text-slate-500 text-[11px]">Date {dayNum}:</span>
-                          <span className="font-black">
-                            {isBoth ? '🍱 Both' : isDinner ? '🌙 Dinner' : '☀️ Lunch'}
-                          </span>
+                          <span className="text-slate-500 tabular-nums">{dayNum}</span>
+                          <span>{isBoth ? 'Both' : isDinner ? 'Dinner' : 'Lunch'}</span>
                         </span>
                       );
                     })}
@@ -464,7 +451,7 @@ export function CustomPlanCheckoutModal({
 
           {/* ── Customized Meal Box Manifest (if customized) ────────────────── */}
           {customPlanData.customMealConfig && (
-            <div className="rounded-2xl bg-amber-50/70 border border-amber-200/90 p-3.5 sm:p-4">
+            <div className="rounded-2xl bg-white border border-slate-200/80 p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
@@ -486,48 +473,42 @@ export function CustomPlanCheckoutModal({
             </div>
           )}
 
-          {/* ── Pricing & Order Summary Card ───────────────────────────────── */}
-          <div className="rounded-2xl bg-gradient-to-br from-amber-50/80 via-orange-50/50 to-amber-100/30 border border-amber-200/80 p-4 space-y-2 text-xs sm:text-sm">
-            <div className="flex justify-between text-slate-600">
-              <span>Plan Type:</span>
-              <span className="font-bold text-slate-900 capitalize">
-                Custom {planType} Subscription
-              </span>
+          {/* Bill Details.
+              Every line is one label -> value pair on a shared baseline with tabular
+              figures, so amounts form a scannable column, and a dashed rule separates
+              the charges from what is payable. Flat white on the neutral ground: the
+              only saturated element in the sheet is the pay button, so it reads as
+              the primary action. */}
+          <div className="rounded-2xl bg-white border border-slate-200/80 p-4">
+            <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-3">Bill Details</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-600">{totalMeals} meals × ₹{pricePerMeal}</span>
+                <span className="font-semibold text-slate-900 tabular-nums">₹{totalPrice}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-600">Plan</span>
+                <span className="font-semibold text-slate-900 capitalize">Custom {planType}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-600">Starts</span>
+                <span className="font-semibold text-slate-900">
+                  {formatDate(typeof planStartDate === 'string' ? new Date(planStartDate) : planStartDate)}
+                </span>
+              </div>
             </div>
-
-            <div className="flex justify-between text-slate-600">
-              <span>Total Meals:</span>
-              <span className="font-bold text-slate-900">
-                {totalMeals} meals
-              </span>
+            <div className="my-3 border-t border-dashed border-slate-300" />
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-base font-black text-slate-900">To Pay</span>
+              <span className="text-xl font-black text-slate-900 tabular-nums">₹{totalPrice}</span>
             </div>
-
-            <div className="flex justify-between text-slate-600">
-              <span>Rate Per Meal:</span>
-              <span className="font-bold text-slate-900">
-                ₹{pricePerMeal}
-              </span>
-            </div>
-
-            <div className="flex justify-between text-slate-600">
-              <span>Delivery Start Date:</span>
-              <span className="font-bold text-slate-900">
-                {formatDate(typeof planStartDate === 'string' ? new Date(planStartDate) : planStartDate)}
-              </span>
-            </div>
-
-            <div className="pt-2.5 mt-2 border-t border-amber-200/70 flex justify-between items-baseline">
-              <span className="text-sm sm:text-base font-black text-slate-900">
-                Total Payable Amount:
-              </span>
-              <span className="text-2xl sm:text-3xl font-black text-amber-800 tracking-tight">
-                ₹{totalPrice}
-              </span>
-            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              Doorstep delivery and hot packing included. Charged once for the full cycle.
+            </p>
           </div>
 
           {/* ── Confirmation Checkbox Before Payment ───────────────────────── */}
-          <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer select-none">
+          <label className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-white border border-slate-200/80 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={hasConfirmedAgreement}
@@ -541,58 +522,60 @@ export function CustomPlanCheckoutModal({
           </label>
         </div>
 
-        {/* ── Action Buttons Footer ──────────────────────────────────────── */}
-        <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="w-full sm:w-auto px-5 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm transition-colors order-2 sm:order-1"
-          >
-            Modify Plan
-          </button>
-
-          <button
-            type="button"
-            onClick={handleInitiatePayment}
-            disabled={loading || !hasConfirmedAgreement}
-            className={cn(
-              'w-full sm:flex-1 py-3.5 px-6 rounded-xl font-black text-sm sm:text-base transition-all duration-150 flex items-center justify-center gap-2 shadow-lg order-1 sm:order-2',
-              !loading && hasConfirmedAgreement
-                ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/25 active:scale-[0.98] cursor-pointer'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-            )}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>
-                  {paymentStep === 'processing_order' && 'Preparing Order...'}
-                  {paymentStep === 'awaiting_payment' && 'Awaiting Payment...'}
-                  {paymentStep === 'creating_subscription' && 'Activating Subscription...'}
-                  {paymentStep === 'failed' && 'Retrying...'}
-                </span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>Pay ₹{totalPrice} with Razorpay</span>
-                <ChevronRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Development Fast Track Simulation */}
-        <div className="mt-2 text-center">
-          <button
-            type="button"
-            onClick={handleTestDemoPay}
-            disabled={loading}
-            className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 underline"
-          >
-            ⚡ Test Instant Activation (Bypass Gateway)
-          </button>
+        {/* Pay bar.
+            Pinned below the scrolling body so the amount and the action stay on
+            screen. Previously two similar-weight buttons sat at the end of the
+            scroll, so on a phone you had to scroll past the whole schedule to see
+            what you were paying. safe-area padding clears the home indicator. */}
+        <div
+          className="shrink-0 bg-white border-t border-slate-200 px-4 sm:px-6 pt-3"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="shrink-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-none">To Pay</p>
+              <p className="text-lg font-black text-slate-900 tabular-nums leading-tight mt-0.5">₹{totalPrice}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleInitiatePayment}
+              disabled={loading || !hasConfirmedAgreement}
+              className={cn(
+                'flex-1 py-3.5 px-5 rounded-2xl font-black text-sm transition-all duration-150 flex items-center justify-center gap-2',
+                !loading && hasConfirmedAgreement
+                  ? 'bg-[#E68A00] hover:bg-[#D97706] text-white shadow-lg shadow-[#E68A00]/25 active:scale-[0.98] cursor-pointer'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              )}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>
+                    {paymentStep === 'processing_order' && 'Preparing…'}
+                    {paymentStep === 'awaiting_payment' && 'Awaiting payment…'}
+                    {paymentStep === 'creating_subscription' && 'Activating…'}
+                    {paymentStep === 'failed' && 'Retrying…'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4 shrink-0" />
+                  <span>Pay securely</span>
+                  <ChevronRight className="w-4 h-4 shrink-0" />
+                </>
+              )}
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <button type="button" onClick={onClose} disabled={loading}
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors py-1">
+              Modify plan
+            </button>
+            <button type="button" onClick={handleTestDemoPay} disabled={loading}
+              className="text-[11px] font-semibold text-slate-300 hover:text-slate-500 transition-colors py-1">
+              Test activation
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
