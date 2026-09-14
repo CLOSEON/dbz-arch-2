@@ -243,6 +243,25 @@ export function MonthlyCustomPlanBuilder({
     return `${first.shortDay}, ${first.dayNumber} ${first.monthName} – ${last.shortDay}, ${last.dayNumber} ${last.monthName} ${last.year}`;
   }, [days28]);
 
+  // Start-month options, so a plan can be booked for a coming month rather
+  // than only the rolling window that begins today. The 28-day window is not
+  // month-aligned, so "October" means "start the window on 1 October"; for the
+  // current month it means today, since the 1st has already passed.
+  const upcomingMonths = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 4 }, (_, i) => {
+      const first = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      return {
+        key: `${first.getFullYear()}-${first.getMonth()}`,
+        label: first.toLocaleString('en-IN', { month: 'short' }),
+        year: first.getFullYear(),
+        month: first.getMonth(),
+        start: i === 0 ? today : first,
+      };
+    });
+  }, []);
+
   // Check if current start date is tomorrow or today
   const isStartTomorrow = useMemo(() => {
     const tomorrow = new Date();
@@ -272,6 +291,16 @@ export function MonthlyCustomPlanBuilder({
     initialPricePerMeal ?? DEFAULT_MONTHLY_PRICING.pricePerMeal ?? 50
   );
   const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
+
+  // Memoised so ThaliCustomizer's notify-parent effect does not see a new
+  // function identity on every render. That effect lists `onChange` in its deps,
+  // so an inline arrow here re-ran it each render, which set state here, which
+  // re-rendered -- "Maximum update depth exceeded". ThaliCustomizer also skips
+  // propagating an unchanged payload; both halves are needed.
+  const handleCustomMealChange = useCallback(
+    (config: ThaliCustomizerConfig) => setCustomMealConfig(config),
+    [],
+  );
   const [isLoadingPricing, setIsLoadingPricing] = useState<boolean>(true);
   const [existingPlanLoaded, setExistingPlanLoaded] = useState<string | null>(null);
   const [checkoutWarning, setCheckoutWarning] = useState<string | null>(null);
@@ -473,8 +502,20 @@ export function MonthlyCustomPlanBuilder({
     setPlanStartDate((prev) => {
       const next = new Date(prev);
       next.setDate(next.getDate() + deltaDays);
-      return next;
+      // Clamp to today. The back arrow previously had no lower bound, so
+      // holding it produced a plan starting in the past, with meals scheduled
+      // for days that have already been and gone.
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return next < today ? today : next;
     });
+  };
+
+  const handleSetStartMonth = (start: Date) => {
+    setCheckoutWarning(null);
+    const d = new Date(start);
+    d.setHours(0, 0, 0, 0);
+    setPlanStartDate(d);
   };
 
   const handleSetStartTomorrow = () => {
@@ -493,6 +534,23 @@ export function MonthlyCustomPlanBuilder({
   };
 
   // Slot selector handlers
+  // Phone interaction for the 28-day grid.
+  //
+  // Seven columns on a ~375px screen leaves each day cell about 46px wide. The
+  // cell also held four toggle buttons, so each rendered around 10px across --
+  // unreadable, and far below the ~44px minimum touch target. On phones the whole
+  // cell is now a single button that advances through the slot states, which needs
+  // no horizontal room at all. The four-button row is kept from `sm` upwards,
+  // where the cells are wide enough to earn it.
+  const handleCycleSlot = useCallback((dateKey: string) => {
+    const order: MealSlotChoice[] = ['skip', 'lunch', 'dinner', 'both'];
+    setCheckoutWarning(null);
+    setSlots((prev) => {
+      const current = prev[dateKey] || 'skip';
+      return { ...prev, [dateKey]: order[(order.indexOf(current) + 1) % order.length] };
+    });
+  }, []);
+
   const handleSetSlot = useCallback((dateKey: string, targetSlot: MealSlotChoice) => {
     setCheckoutWarning(null);
     setSlots((prev) => {
@@ -734,6 +792,37 @@ export function MonthlyCustomPlanBuilder({
         </div>
       </div>
 
+      {/* Start month.
+          The day arrows shift one day at a time, so reaching a future month took
+          about thirty taps. These jump the 28-day window straight to a month. */}
+      <div className="flex items-center gap-2 mb-3 overflow-x-auto">
+        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 shrink-0">
+          Start in
+        </span>
+        {upcomingMonths.map((m) => {
+          const isActive =
+            planStartDate.getFullYear() === m.start.getFullYear() &&
+            planStartDate.getMonth() === m.start.getMonth();
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => handleSetStartMonth(m.start)}
+              aria-pressed={isActive}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95 shrink-0 shadow-2xs',
+                isActive
+                  ? 'bg-amber-500 text-white shadow-amber-500/20'
+                  : 'bg-white border border-amber-200 hover:bg-amber-50 text-slate-700'
+              )}
+            >
+              {m.label}
+              {m.year !== upcomingMonths[0].year ? ` ${m.year}` : ''}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Quick 28-Day Presets (Batch Selectors) ─────────────────────────── */}
       <div className="mb-4 pb-3 border-b border-amber-100 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 min-w-max text-xs">
@@ -817,17 +906,17 @@ export function MonthlyCustomPlanBuilder({
         </div>
 
         {/* 28-Day Calendar Day Cells */}
-        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {/* Empty initial offset cells (alignment to start day's weekday) */}
           {Array.from({ length: startOffset }).map((_, idx) => (
             <div
               key={`empty-start-${idx}`}
-              className="min-h-[78px] sm:min-h-[96px] rounded-2xl bg-amber-100/20 border border-dashed border-amber-200/40 opacity-40 select-none"
+              className="aspect-square sm:aspect-auto sm:min-h-[96px] rounded-lg sm:rounded-2xl bg-amber-50/40 border border-dashed border-amber-200/40 opacity-40 select-none"
             />
           ))}
 
           {/* Active 28 Days */}
-          {days28.map((day) => {
+          {days28.map((day, dayIdx) => {
             const slot = slots[day.dateKey] || 'skip';
             const isLunch = slot === 'lunch';
             const isDinner = slot === 'dinner';
@@ -838,16 +927,64 @@ export function MonthlyCustomPlanBuilder({
               <div
                 key={day.dateKey}
                 className={cn(
-                  'relative flex flex-col justify-between p-1.5 sm:p-2 rounded-2xl border transition-all duration-150 shadow-2xs select-none',
-                  day.isToday && 'ring-2 ring-amber-500 border-amber-500 shadow-md',
-                  isLunch && 'bg-gradient-to-br from-amber-50 via-amber-100/60 to-orange-50/40 border-amber-300 ring-1 ring-amber-300/60',
-                  isDinner && 'bg-gradient-to-br from-indigo-50/90 via-slate-50 to-amber-50/40 border-indigo-300 ring-1 ring-indigo-300/60',
-                  isBoth && 'bg-gradient-to-br from-amber-100 via-orange-100/70 to-amber-50 border-orange-400 ring-1 ring-orange-400/70 shadow-sm',
-                  isSkipped && 'bg-white/95 border-amber-100/80 hover:border-amber-300'
+                  // Phones get a square day box like a real calendar grid; sm+ keeps
+                  // the taller card that has room for the four toggle buttons. The
+                  // decorative gradients are sm-only too -- at 40px wide they read as
+                  // smudges, so phones get a flat tint instead.
+                  'relative flex flex-col p-0.5 sm:p-2 border transition-all duration-150 select-none',
+                  'aspect-square sm:aspect-auto rounded-lg sm:rounded-2xl sm:shadow-2xs sm:min-h-0',
+                  day.isToday && 'ring-1 sm:ring-2 ring-amber-500 border-amber-500 sm:shadow-md',
+                  isLunch && 'bg-amber-50 border-amber-300 sm:bg-gradient-to-br sm:from-amber-50 sm:via-amber-100/60 sm:to-orange-50/40 sm:ring-1 sm:ring-amber-300/60',
+                  isDinner && 'bg-indigo-50 border-indigo-300 sm:bg-gradient-to-br sm:from-indigo-50/90 sm:via-slate-50 sm:to-amber-50/40 sm:ring-1 sm:ring-indigo-300/60',
+                  isBoth && 'bg-orange-50 border-orange-400 sm:bg-gradient-to-br sm:from-amber-100 sm:via-orange-100/70 sm:to-amber-50 sm:ring-1 sm:ring-orange-400/70 sm:shadow-sm',
+                  isSkipped && 'bg-white border-slate-200/70 hover:border-amber-300'
                 )}
               >
+                {/* Phone: the whole cell is the control (see handleCycleSlot).
+                    Absolutely positioned so it covers the cell without disturbing
+                    the layout the sm+ breakpoint still relies on. */}
+                <button
+                  type="button"
+                  onClick={() => handleCycleSlot(day.dateKey)}
+                  aria-label={`${day.dayNumber} ${day.monthName}: ${slot === 'skip' ? 'skipped' : slot}. Tap to change.`}
+                  className="sm:hidden absolute inset-0 z-10 rounded-lg active:scale-95 transition-transform"
+                />
+
+                {/* Phone: centred date with status dots underneath, the way a
+                    calendar actually reads. Two dots means both meals. */}
+                <div className="sm:hidden flex flex-col items-center justify-center gap-0.5 w-full h-full">
+                  {/* The 28-day window straddles two months, so the grid has to say
+                      which month a number belongs to. Calendar convention: label the
+                      window's first cell and every 1st, not every cell. */}
+                  {(dayIdx === 0 || day.dayNumber === 1) && (
+                    <span className="text-[8px] font-black uppercase tracking-wide text-amber-700 leading-none">
+                      {day.monthName}
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      'text-[13px] leading-none font-bold tabular-nums',
+                      day.isToday
+                        ? 'text-amber-700'
+                        : isSkipped
+                          ? 'text-slate-400'
+                          : 'text-slate-900'
+                    )}
+                  >
+                    {day.dayNumber}
+                  </span>
+                  <span className="flex items-center justify-center gap-0.5 h-1.5">
+                    {(isLunch || isBoth) && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    )}
+                    {(isDinner || isBoth) && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                    )}
+                  </span>
+                </div>
+
                 {/* Top Row: Date with Month Name + Day Indicator */}
-                <div className="flex items-center justify-between w-full mb-1">
+                <div className="hidden sm:flex items-center justify-between w-full mb-1">
                   <div className="flex items-center gap-1 min-w-0">
                     <span
                       className={cn(
@@ -857,7 +994,7 @@ export function MonthlyCustomPlanBuilder({
                     >
                       {day.dayNumber}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                    <span className="hidden sm:inline text-[10px] font-bold text-slate-400 uppercase">
                       {day.monthName}
                     </span>
                   </div>
@@ -886,7 +1023,7 @@ export function MonthlyCustomPlanBuilder({
                 </div>
 
                 {/* Bottom Row: 4 Intuitive Slot Toggle Buttons */}
-                <div className="grid grid-cols-4 gap-0.5 sm:gap-1 w-full mt-auto pt-1 border-t border-amber-100/60">
+                <div className="hidden sm:grid grid-cols-4 gap-0.5 sm:gap-1 w-full mt-auto pt-1 border-t border-amber-100/60">
                   {/* Lunch Toggle */}
                   <button
                     type="button"
@@ -959,9 +1096,27 @@ export function MonthlyCustomPlanBuilder({
           {Array.from({ length: endOffset }).map((_, idx) => (
             <div
               key={`empty-end-${idx}`}
-              className="min-h-[78px] sm:min-h-[96px] rounded-2xl bg-amber-100/20 border border-dashed border-amber-200/40 opacity-40 select-none"
+              className="aspect-square sm:aspect-auto sm:min-h-[96px] rounded-lg sm:rounded-2xl bg-amber-50/40 border border-dashed border-amber-200/40 opacity-40 select-none"
             />
           ))}
+        </div>
+
+        {/* Phones only: the dots need a key, and tap-to-cycle needs saying once.
+            On sm+ each cell still carries labelled buttons, so neither is needed. */}
+        <div className="sm:hidden mt-3 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="flex items-center gap-2.5">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Lunch
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Dinner
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 -ml-0.5" /> Both
+            </span>
+          </span>
+          <span className="text-slate-400 shrink-0">Tap a day to change</span>
         </div>
       </div>
 
@@ -972,7 +1127,7 @@ export function MonthlyCustomPlanBuilder({
           planType="monthly"
           vendorOverrides={vendorOverrides}
           vendorMarginOverride={vendorMarginOverride}
-          onChange={(config) => setCustomMealConfig(config)}
+          onChange={handleCustomMealChange}
           compact
           title="Customize Your Daily Thali Portions (Optional)"
         />

@@ -189,6 +189,16 @@ export function WeeklyCustomPlanBuilder({
     initialPricePerMeal ?? DEFAULT_WEEKLY_PRICING.pricePerMeal ?? 50
   );
   const [customMealConfig, setCustomMealConfig] = useState<ThaliCustomizerConfig | null>(null);
+
+  // Memoised so ThaliCustomizer's notify-parent effect does not see a new
+  // function identity on every render. That effect lists `onChange` in its deps,
+  // so an inline arrow here re-ran it each render, which set state here, which
+  // re-rendered -- "Maximum update depth exceeded". ThaliCustomizer also skips
+  // propagating an unchanged payload; both halves are needed.
+  const handleCustomMealChange = useCallback(
+    (config: ThaliCustomizerConfig) => setCustomMealConfig(config),
+    [],
+  );
   const [isLoadingPricing, setIsLoadingPricing] = useState<boolean>(true);
   const [checkoutWarning, setCheckoutWarning] = useState<string | null>(null);
   const [showConfirmationModal, setShowConfirmationModal] = useState<boolean>(false);
@@ -638,7 +648,7 @@ export function WeeklyCustomPlanBuilder({
           planType="weekly"
           vendorOverrides={vendorOverrides}
           vendorMarginOverride={vendorMarginOverride}
-          onChange={(config) => setCustomMealConfig(config)}
+          onChange={handleCustomMealChange}
           compact
           title="Customize Your Daily Thali Portions (Optional)"
         />
@@ -658,76 +668,73 @@ export function WeeklyCustomPlanBuilder({
           )}
         </div>
 
-        <div className="space-y-3">
-          {/* Total Meals & Slots */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-sm sm:text-base text-slate-700">
-            <span className="font-semibold text-slate-800">Total Meals Scheduled:</span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-black text-slate-900 text-base sm:text-lg">
-                {totalMeals} Meals
-              </span>
-              <span className="text-xs font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-200">
-                ☀️ {slotCounts.lunch} Lunches • 🌙 {slotCounts.dinner} Dinners • 🍱 {slotCounts.both} Full Days
-              </span>
-            </div>
+        {/* Receipt body.
+            Rewritten for legibility on a phone: every line is one label/value
+            pair on a single baseline with tabular figures, so the numbers form a
+            column the eye can scan. Previously the rate explainer ("Kitchen Food
+            Rate + Rs 11 Delivery Fee + 12% Weekly Platform Margin") sat as a
+            right-aligned value and wrapped across three lines against its own
+            label, and the slot counts were a separate bordered pill competing
+            with the total. Same numbers, one hierarchy: rows, then the total,
+            then one muted footnote carrying the fee disclosure. */}
+        <div className="space-y-2.5 text-sm">
+
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-slate-600">Meals scheduled</span>
+            <span className="font-bold text-slate-900 tabular-nums">{totalMeals}</span>
           </div>
 
-          {/* Rate Per Meal */}
-          <div className="flex items-center justify-between text-sm sm:text-base text-slate-700">
-            <span className="font-semibold text-slate-800">Price Per Meal:</span>
-            <div className="text-right">
-              <span className="font-bold text-slate-900">
-                ₹{effectivePricePerMeal}
-              </span>
-              {customMealConfig && (customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
-                <span className="text-xs font-bold text-amber-700 ml-1.5">
-                  {((customMealConfig.customerDeltaPerMeal ?? 0) > 0 ? `+₹${customMealConfig.customerDeltaPerMeal}` : `-₹${Math.abs(customMealConfig.customerDeltaPerMeal ?? 0)}`)} thali delta
-                </span>
+          {totalMeals > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400 -mt-1.5">
+              {slotCounts.lunch > 0 && <span>{slotCounts.lunch} lunch</span>}
+              {slotCounts.dinner > 0 && <span>{slotCounts.dinner} dinner</span>}
+              {slotCounts.both > 0 && (
+                <span>{slotCounts.both} full {slotCounts.both === 1 ? 'day' : 'days'}</span>
               )}
-            </div>
-          </div>
-
-          {/* Platform Pricing Transparency */}
-          <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-amber-100">
-            <span>Pricing Breakdown per Meal:</span>
-            <span className="font-medium text-slate-700">
-              Kitchen Food Rate + ₹11 Delivery Fee + 12% Weekly Platform Margin
-            </span>
-          </div>
-
-          {/* Meals Subtotal & Razorpay Breakdown */}
-          {totalMeals > 0 && weeklyPricingResult && (
-            <div className="space-y-1.5 pt-2 border-t border-amber-100 text-xs sm:text-sm text-slate-600">
-              <div className="flex items-center justify-between">
-                <span>Scheduled Meals Subtotal ({totalMeals} meals):</span>
-                <span className="font-bold text-slate-800">₹{weeklyPricingResult.mealsSubtotal}</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="flex items-center gap-1">
-                  <CreditCard className="w-3.5 h-3.5 text-amber-600" />
-                  Payment Gateway (2% Razorpay):
-                </span>
-                <span className="font-semibold text-slate-700">+₹{weeklyPricingResult.razorpayFee}</span>
-              </div>
             </div>
           )}
 
-          {/* Weekly Total */}
-          <div className="pt-3 border-t border-amber-200/80 flex items-center justify-between">
-            <div>
-              <span className="text-base sm:lg font-black text-slate-900 block">
-                Total Weekly Investment:
-              </span>
-              <span className="text-xs text-slate-500">
-                Doorstep delivery & fresh hot packing included
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-slate-600">Price per meal</span>
+            <span className="font-bold text-slate-900 tabular-nums">₹{effectivePricePerMeal}</span>
+          </div>
+
+          {customMealConfig && (customMealConfig.customerDeltaPerMeal ?? 0) !== 0 && (
+            <div className="flex items-baseline justify-between gap-3 text-xs text-amber-700 -mt-1.5">
+              <span>Thali portion adjustment</span>
+              <span className="font-semibold tabular-nums">
+                {(customMealConfig.customerDeltaPerMeal ?? 0) > 0 ? '+' : '−'}₹{Math.abs(customMealConfig.customerDeltaPerMeal ?? 0)}
               </span>
             </div>
-            <span className="text-2xl sm:text-3xl font-black text-amber-800 tracking-tight">
-              ₹{weeklyTotal}
-            </span>
-          </div>
-        </div>
+          )}
 
+          {totalMeals > 0 && weeklyPricingResult && (
+            <>
+              <div className="flex items-baseline justify-between gap-3 text-slate-600">
+                <span>Subtotal</span>
+                <span className="font-semibold text-slate-800 tabular-nums">₹{weeklyPricingResult.mealsSubtotal}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  Payment gateway
+                </span>
+                <span className="font-semibold text-slate-800 tabular-nums">+₹{weeklyPricingResult.razorpayFee}</span>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-baseline justify-between gap-3 pt-3 mt-1 border-t border-amber-200/70">
+            <span className="font-bold text-slate-900">Total</span>
+            <span className="text-2xl font-black text-amber-800 tracking-tight tabular-nums">₹{weeklyTotal}</span>
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Includes ₹11 delivery and a 12% platform margin, plus 2% payment gateway.
+            Doorstep delivery and hot packing included.
+          </p>
+
+        </div>
         {totalMeals === 0 && (
           <p className="text-xs text-amber-800/90 mt-3 flex items-center gap-1.5 bg-amber-100/60 p-2 rounded-xl border border-amber-200">
             <Info className="w-4 h-4 shrink-0 text-amber-600" />

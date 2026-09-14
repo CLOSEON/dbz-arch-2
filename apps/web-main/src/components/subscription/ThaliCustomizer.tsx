@@ -1,6 +1,6 @@
                      'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Utensils, Sparkles, Plus, Minus, Check, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { getMealComponentsCatalog, calculateComponentDeltas, buildBoxManifest, calculateBaseVendorCost } from '@/lib/queries/mealComponents';
@@ -225,10 +225,26 @@ export function ThaliCustomizer({
     return centralMealPricing?.manifestSummary || buildBoxManifest(quantities, effectiveCatalog);
   }, [centralMealPricing, quantities, effectiveCatalog]);
 
-  // Notify parent component on changes
+  // Notify parent component on changes.
+  //
+  // Guarded against a re-render feedback loop ("Maximum update depth exceeded").
+  // This effect's deps end with `onChange`, and both callers passed it inline as
+  // onChange={(config) => setCustomMealConfig(config)} -- a new closure on every
+  // parent render. Several other deps (deltaResult, manifestSummary,
+  // algorithmicPricing, centralMealPricing) are freshly-built objects too. So the
+  // effect re-ran on virtually every render, each run called setState in the
+  // parent, the parent re-rendered, and the effect ran again.
+  //
+  // The callers now memoise their handler, but that alone is not sufficient while
+  // the object deps stay unstable. Comparing the serialised payload and bailing
+  // out when nothing actually changed terminates the cycle regardless of upstream
+  // identity churn: the effect may still run, but it stops calling setState once
+  // the numbers settle. The payload is plain data (numbers, arrays, records), so
+  // JSON.stringify is a sound fingerprint here.
+  const lastSentRef = useRef<string | null>(null);
   useEffect(() => {
     if (onChange) {
-      onChange({
+      const payload = {
         components: quantities,
         deltaPricePerMeal: customerDeltaPerMeal,
         deltaVendorCostPerMeal: vendorDeltaPerMeal,
@@ -244,7 +260,13 @@ export function ThaliCustomizer({
         vendorMarginPercent: effectiveVendorMargin,
         vendorPayout: centralMealPricing?.vendorCost ?? algorithmicPricing.vendorPayout,
         algorithmicPricing,
-      });
+      };
+
+      const fingerprint = JSON.stringify(payload);
+      if (fingerprint === lastSentRef.current) return;
+      lastSentRef.current = fingerprint;
+
+      onChange(payload);
     }
   }, [
     quantities,
