@@ -16,7 +16,30 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
   const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
   const userRole = (user?.role as string) || '';
-  const isAllowed = !allowedRoles || allowedRoles.length === 0 || isSuper || allowedRoles.includes(userRole);
+
+  // Role strings the app actually writes, beyond the UserRole union.
+  //
+  // functions/src/authTriggers.ts onUserCreate seeds every new account with
+  // role 'customer' -- as a custom claim and in users/{uid} -- while the client
+  // writes 'user'. So a real account carries either string depending on which
+  // path created it. firestore.rules already pairs them (role in ['user',
+  // 'customer']); this guard did not, so a 'customer' failed every allowedRoles
+  // list, was refused /dashboard and bounced straight back to /login. That is
+  // the 'stuck on the login page after signing in' report: the welcome toast
+  // fired because sign-in genuinely succeeded, and the redirect then failed the
+  // destination's guard.
+  //
+  // verifyRider writes role 'delivery_agent' for the same reason.
+  const ROLE_ALIASES: Record<string, string[]> = {
+    user: ['customer'],
+    delivery: ['delivery_agent'],
+  };
+
+  const matchesRole = (allowed: string) =>
+    allowed === userRole || (ROLE_ALIASES[allowed] || []).includes(userRole);
+
+  const isAllowed =
+    !allowedRoles || allowedRoles.length === 0 || isSuper || allowedRoles.some(matchesRole);
 
   useEffect(() => {
     if (!isHydrated) return;
