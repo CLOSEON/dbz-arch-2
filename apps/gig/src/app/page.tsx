@@ -19,6 +19,7 @@ import {
   Flame,
   Users
 } from 'lucide-react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type PartnerType = 'kitchen' | 'rider';
 
@@ -68,9 +69,9 @@ export default function GigHomePage() {
         created_at: serverTimestamp(),
       });
       setSubmittedId(docRef.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to submit kitchen application:', err);
-      setError(err?.message || 'Submission failed. Please try again or WhatsApp us directly.');
+      setError(getErrorMessage(err) || 'Submission failed. Please try again or WhatsApp us directly.');
     } finally {
       setSubmitting(false);
     }
@@ -93,16 +94,16 @@ export default function GigHomePage() {
         created_at: serverTimestamp(),
       });
       setSubmittedId(docRef.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to submit rider application:', err);
-      setError(err?.message || 'Submission failed. Please try again or WhatsApp us directly.');
+      setError(getErrorMessage(err) || 'Submission failed. Please try again or WhatsApp us directly.');
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#FEFCE8] text-slate-900 selection:bg-amber-200">
+    <div className="min-h-dvh bg-[#FEFCE8] text-slate-900 selection:bg-amber-200">
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">

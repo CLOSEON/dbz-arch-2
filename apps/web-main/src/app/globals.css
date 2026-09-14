@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detects content from this app's own directory and does NOT
+   look inside packages/. Any class used ONLY by a shared component therefore
+   generated no CSS at all -- the class appeared in the markup and computed to
+   nothing. That is what made pt-28 on the hero resolve to 0px while text-3xl,
+   which also appears in app code, worked fine.
+   These @source directives put the shared packages back in scope. */
+@source "../../../../packages/shared-ui/src";
+@source "../../../../packages/shared-auth/src";
+
 @theme {
   --color-brand: #E68A00;
   --color-brand-50: #FFFBEB;
@@ -13,11 +22,11 @@
   --animate-fade-in: fadeIn 0.4s ease-out forwards;
   --animate-swipe-in: swipeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-swipe-out: swipeOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-  --glass-bg: rgba(,,,);
-  --glass-border: rgba(,,,);
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.12);
   --glass-blur: blur(16px);
-  --shadow-soft: 0 8px 32px rgba(,,,);
-  --shadow-glow: 0 0 24px rgba(,,,);
+  --shadow-soft: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 24px rgba(230, 138, 0, 0.25);
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -36,9 +45,9 @@
   }
 
   @keyframes pulseRing {
-    0% { box-shadow: 0 0 0 0 rgba(,,,); }
-    70% { box-shadow: 0 0 0 12px rgba(,,,); }
-    100% { box-shadow: 0 0 0 0 rgba(,,,); }
+    0% { box-shadow: 0 0 0 0 rgba(230, 138, 0, 0.35); }
+    70% { box-shadow: 0 0 0 12px rgba(230, 138, 0, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(230, 138, 0, 0); }
   }
 
   @keyframes slideUpSoft {
@@ -111,6 +120,7 @@
   html {
     background-color: #FEFCE8;
     overscroll-behavior: none;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -121,6 +131,13 @@
     letter-spacing: -0.015em;
     overscroll-behavior: none;
     min-height: 100vh;
+    /* 100dvh tracks the *visible* viewport as the mobile URL bar collapses.
+       Plain 100vh includes the area behind that bar, so the page is taller
+       than the screen and content gets pushed out of view / scroll jumps.
+       The 100vh line above stays as the fallback for older browsers. */
+    min-height: 100dvh;
+    /* Nothing should ever scroll the page sideways on a phone. */
+    overflow-x: hidden;
     width: 100%;
     margin: 0;
   }
@@ -142,8 +159,8 @@
     padding-top: max(1.5rem, env(safe-area-inset-top));
     padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
     background:
-      radial-gradient(1200px 280px at 0% -130px, rgba(,,,), transparent 62%),
-      radial-gradient(1000px 240px at 100% -110px, rgba(,,,), transparent 58%);
+      radial-gradient(1200px 280px at 0% -130px, rgba(230, 138, 0, 0.04), transparent 62%),
+      radial-gradient(1000px 240px at 100% -110px, rgba(5, 150, 105, 0.03), transparent 58%);
   }
 
   .page-shell-vendor {
@@ -151,20 +168,20 @@
     padding-top: max(1.5rem, env(safe-area-inset-top));
     padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
     background:
-      radial-gradient(1200px 280px at 0% -130px, rgba(,,,), transparent 62%),
-      radial-gradient(1000px 240px at 100% -110px, rgba(,,,), transparent 58%);
+      radial-gradient(1200px 280px at 0% -130px, rgba(5, 150, 105, 0.04), transparent 62%),
+      radial-gradient(1000px 240px at 100% -110px, rgba(230, 138, 0, 0.03), transparent 58%);
   }
 
   .card {
-    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(,,,)] ring-1 ring-white/80;
+    @apply rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] ring-1 ring-white/80;
   }
 
   .btn-primary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(230,138,0,0.30)] transition-all hover:bg-brand-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20;
   }
 
   .btn-secondary {
-    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(,,,)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
+    @apply flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[0_14px_28px_rgba(15,23,42,0.25)] transition-all hover:bg-slate-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/15;
   }
 
   .btn-outline {
@@ -184,7 +201,7 @@
   }
 
   .pill.active {
-    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(,,,)];
+    @apply border-brand/20 bg-brand text-white shadow-[0_10px_24px_rgba(230,138,0,0.25)];
   }
 
   .pill-container {
@@ -217,7 +234,7 @@
     position: absolute;
     inset: -30% auto -30% -55%;
     width: 42%;
-    background: linear-gradient(90deg, transparent, rgba(,,,), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
     transform: translateX(-140%) skewX(-18deg);
     pointer-events: none;
   }
@@ -253,7 +270,7 @@
 
 @layer utilities {
   .shadow-card {
-    @apply shadow-[0_18px_40px_rgba(,,,)];
+    @apply shadow-[0_18px_40px_rgba(15,23,42,0.07)];
   }
 
   .pb-safe {

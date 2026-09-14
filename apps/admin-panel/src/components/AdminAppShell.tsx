@@ -18,7 +18,7 @@ export function AdminAppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGuard allowedRoles={['admin']}>
-      <div className="min-h-screen bg-slate-50/60 flex flex-col md:flex-row antialiased">
+      <div className="min-h-dvh bg-slate-50/60 flex flex-col md:flex-row antialiased">
         {/* Fixed Desktop Sidebar */}
         <aside className="hidden md:flex flex-col w-64 shrink-0 h-screen sticky top-0 bg-white border-r border-slate-200/80 z-40 shadow-[1px_0_12px_rgba(15,23,42,0.03)] overflow-y-auto">
           <div className="p-6 flex items-center border-b border-slate-100 shrink-0">

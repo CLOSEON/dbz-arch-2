@@ -1,61 +1,67 @@
 import {
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  PhoneAuthProvider,
-  signInWithCredential,
-  type ConfirmationResult,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   type User,
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { Capacitor } from '@capacitor/core';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+export const SUPERADMIN_EMAIL = 'closeon.st@gmail.com';
 
-const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
+export function normalizeEmail(e: string): string {
+  const clean = e.toLowerCase().trim();
+  const [local, domain] = clean.split('@');
+  if (!domain) return clean;
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return local.replace(/\./g, '') + '@gmail.com';
+  }
+  return clean;
+}
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+export function isSuperadminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return normalizeEmail(email) === normalizeEmail(SUPERADMIN_EMAIL);
+}
 
-function isTestAccount(phone: string): boolean {
-  const clean = phone.replace(/\D/g, '');
+export function isAdminUser(user: any): boolean {
+  if (!user) return false;
+  const email = user.email || user.providerData?.[0]?.email || '';
+  if (isSuperadminEmail(email) || user.is_superadmin === true) return true;
+  if (user.role === 'admin' || user.role === 'superadmin') return true;
+  if (user.roles?.admin === true) return true;
+  return false;
+}
+
+export function extractUserEmail(user: User | null | undefined): string {
+  if (!user) return '';
   return (
-    clean === '919000000001' ||
-    clean === '919000000002' ||
-    clean === '919000000003' ||
-    clean === '919000000004' ||
-    clean.endsWith('000000001')
+    user.email ||
+    user.providerData?.[0]?.email ||
+    (user as any).reloadUserInfo?.email ||
+    ''
   );
 }
 
-// ─── Return Types ────────────────────────────────────────────────────────────
+// ─── Return Types ─────────────────────────────────────────────────────────────
 
-export interface WebOtpSentResult {
+export interface SocialAuthResult {
   success: true;
-  verificationId: string;
-}
-
-export interface NativeAutoVerifiedResult {
-  success: true;
-  autoVerified: true;
   user: User;
 }
 
-export interface NativeCodeSentResult {
-  success: true;
-  autoVerified: false;
-  verificationId: string;
-}
-
-export interface OtpErrorResult {
+export interface AuthErrorResult {
   success: false;
   error: string;
   code?: string;
 }
 
-export type SendOtpResult =
-  | WebOtpSentResult
-  | NativeAutoVerifiedResult
-  | NativeCodeSentResult
-  | OtpErrorResult;
+export type SignInResult = SocialAuthResult | AuthErrorResult;
 
 export interface VerifyOtpResult {
   success: boolean;
@@ -63,116 +69,39 @@ export interface VerifyOtpResult {
   error?: string;
 }
 
-// ─── Internal State ──────────────────────────────────────────────────────────
-
-let _recaptchaVerifier: RecaptchaVerifier | null = null;
-let _confirmationResult: ConfirmationResult | null = null;
-
-// ─── Platform Detection ──────────────────────────────────────────────────────
-
-const isNative = Capacitor.isNativePlatform();
-
-// ─── reCAPTCHA Setup & Web Implementation (Stable Singleton) ──────────────────
-
-function getOrCreateRecaptcha(): RecaptchaVerifier {
-  if (typeof window === 'undefined') {
-    throw new Error('reCAPTCHA is only supported in browser environment.');
-  }
-
-  let container = document.getElementById('firebase-recaptcha-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'firebase-recaptcha-container';
-    document.body.appendChild(container);
-  }
-
-  if (_recaptchaVerifier) {
-    return _recaptchaVerifier;
-  }
-
-  _recaptchaVerifier = new RecaptchaVerifier(auth, container, {
-    size: 'invisible',
-    callback: () => {
-      console.log('[Auth] reCAPTCHA solved');
-    },
-    'expired-callback': () => {
-      console.warn('[Auth] reCAPTCHA expired, resetting verifier');
-      cleanupAuth();
-    },
-  });
-
-  return _recaptchaVerifier;
+// Keep legacy types for any code still importing them
+export interface WebOtpSentResult {
+  success: true;
+  verificationId: string;
 }
+export type SendOtpResult = WebOtpSentResult | AuthErrorResult;
 
-async function sendOtpWeb(phoneNumber: string): Promise<SendOtpResult> {
-  console.log('[Auth] Starting Web OTP flow for:', phoneNumber);
+// ─── Error Mapping ────────────────────────────────────────────────────────────
 
-  try {
-    const verifier = getOrCreateRecaptcha();
-    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-
-    console.log('[Auth] Web: OTP sent successfully');
-    return {
-      success: true,
-      verificationId: '_web_confirmation',
-    };
-  } catch (err: any) {
-    console.error('[Auth] Web OTP Error:', err);
-    cleanupAuth();
-
-    if (err.code === 'auth/too-many-requests') {
-      return {
-        success: false,
-        error: 'Too many OTP attempts. Please wait a few minutes before trying again.',
-        code: err.code,
-      };
-    }
-    if (err.code === 'auth/invalid-app-credential' || err.code === 'auth/captcha-check-failed') {
-      return {
-        success: false,
-        error: 'Security verification failed for this domain. Please ensure domain is whitelisted or refresh the page.',
-        code: err.code,
-      };
-    }
-
-    return mapFirebaseError(err);
-  }
-}
-
-// ─── Cleanup ─────────────────────────────────────────────────────────────────
-
-export function cleanupAuth(): void {
-  if (_recaptchaVerifier) {
-    try {
-      _recaptchaVerifier.clear();
-    } catch {
-      // ignore clear error
-    }
-    _recaptchaVerifier = null;
-  }
-  const oldContainer = document.getElementById('firebase-recaptcha-container');
-  if (oldContainer) {
-    oldContainer.innerHTML = '';
-  }
-  _confirmationResult = null;
-}
-
-// ─── Error Mapping ───────────────────────────────────────────────────────────
-
-function mapFirebaseError(err: any): OtpErrorResult {
+function mapFirebaseError(err: any): AuthErrorResult {
   const code = err?.code || '';
   const map: Record<string, string> = {
-    'auth/invalid-phone-number': 'Invalid phone number. Please check and try again.',
-    'auth/too-many-requests': 'Too many attempts. Please wait a few minutes before trying again.',
-    'auth/quota-exceeded': 'SMS quota exceeded. Please try again later.',
-    'auth/captcha-check-failed': 'Security verification failed. Please refresh and try again.',
-    'auth/missing-phone-number': 'Phone number is required.',
-    'auth/invalid-verification-code': 'Invalid OTP code. Please check and try again.',
-    'auth/code-expired': 'OTP has expired. Please request a new one.',
-    'auth/session-expired': 'Session expired. Please request a new OTP.',
+    'auth/popup-closed-by-user':   'Sign-in was cancelled.',
+    'auth/popup-blocked':          'Pop-up was blocked. Please allow pop-ups for this site.',
+    'auth/cancelled-popup-request':'Another sign-in is in progress.',
+    'auth/account-exists-with-different-credential': 'An account already exists with this email using a different sign-in method.',
     'auth/network-request-failed': 'Network error. Please check your connection.',
-    'auth/app-not-authorized': 'This app is not authorized for phone auth. Check Firebase config.',
-    'auth/missing-client-identifier': 'reCAPTCHA verification required. Please try again.',
+    'auth/too-many-requests':      'Too many attempts. Please wait a few minutes.',
+    'auth/user-disabled':          'This account has been disabled.',
+
+    // Email + password. Firebase returns auth/invalid-credential for a wrong
+    // password AND for an unknown email, deliberately, so an attacker cannot
+    // use the error to discover which addresses are registered. The wording
+    // here keeps that property rather than leaking it back.
+    'auth/invalid-credential':     'Incorrect email or password.',
+    'auth/wrong-password':         'Incorrect email or password.',
+    'auth/user-not-found':         'Incorrect email or password.',
+    'auth/invalid-email':          'That does not look like a valid email address.',
+    'auth/email-already-in-use':   'An account already exists with this email. Try signing in instead.',
+    'auth/weak-password':          'Password is too weak. Use at least 6 characters.',
+    'auth/missing-password':       'Please enter your password.',
+    'auth/operation-not-allowed':  'Email sign-in is not enabled for this project yet.',
+    'auth/popup-timeout':          'Sign-in was not completed. Please try again.',
   };
 
   return {
@@ -182,96 +111,304 @@ function mapFirebaseError(err: any): OtpErrorResult {
   };
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
+// ─── Native Social Auth (Capacitor) ──────────────────────────────────────────
 
-export async function sendOtp(phoneNumber: string): Promise<SendOtpResult> {
-  if (isTestAccount(phoneNumber)) {
-    console.log('[Auth] Test account detected. Skipping reCAPTCHA/SMS.');
-  }
-
-  if (isNative) {
-    return sendOtpNative(phoneNumber);
-  }
-  return sendOtpWeb(phoneNumber);
-}
-
-export async function verifyOtp(
-  verificationId: string,
-  otpCode: string
-): Promise<VerifyOtpResult> {
-  if (isNative) {
-    return verifyOtpNative(verificationId, otpCode);
-  }
-  return verifyOtpWeb(otpCode);
-}
-
-// ─── Web Verify ──────────────────────────────────────────────────────────────
-
-async function verifyOtpWeb(otpCode: string): Promise<VerifyOtpResult> {
-  if (!_confirmationResult) {
-    return {
-      success: false,
-      error: 'No active OTP request found. Please request a new OTP.',
-    };
-  }
-
+async function signInNativeGoogle(): Promise<SignInResult> {
   try {
-    const result = await _confirmationResult.confirm(otpCode);
-    cleanupAuth();
-    return { success: true, user: result.user };
-  } catch (err: any) {
-    console.error('[Auth] Web verify error:', err);
-    return {
-      success: false,
-      error:
-        err.code === 'auth/invalid-verification-code'
-          ? 'Invalid OTP. Please check the code and try again.'
-          : err.code === 'auth/code-expired'
-          ? 'OTP has expired. Please request a new one.'
-          : err.message || 'Verification failed.',
-    };
-  }
-}
-
-// ─── Native Implementation (Capacitor SMS Retriever) ──────────────────────────
-
-async function sendOtpNative(phoneNumber: string): Promise<SendOtpResult> {
-  console.log('[Auth] Starting Native OTP flow for:', phoneNumber);
-
-  try {
-    const verifier = getOrCreateRecaptcha();
-    _confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-    return {
-      success: true,
-      autoVerified: false,
-      verificationId: '_native_confirmation',
-    };
-  } catch (err: any) {
-    console.error('[Auth] Native OTP Error:', err);
-    cleanupAuth();
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithGoogle();
+    if (!result.credential?.idToken) throw new Error('No ID token received.');
+    const { GoogleAuthProvider: GAP, signInWithCredential } = await import('firebase/auth');
+    const credential = GAP.credential(result.credential.idToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
+  } catch (err: unknown) {
     return mapFirebaseError(err);
   }
 }
 
-async function verifyOtpNative(
-  verificationId: string,
-  otpCode: string
-): Promise<VerifyOtpResult> {
-  return verifyOtpWeb(otpCode);
+async function signInNativeApple(): Promise<SignInResult> {
+  try {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithApple();
+    if (!result.credential?.idToken) throw new Error('No ID token received.');
+    const { OAuthProvider: OAP, signInWithCredential } = await import('firebase/auth');
+    const provider = new OAP('apple.com');
+    const credential = provider.credential({
+      idToken: result.credential.idToken,
+      rawNonce: result.credential.nonce,
+    });
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+async function signInNativeFacebook(): Promise<SignInResult> {
+  try {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithFacebook();
+    if (!result.credential?.accessToken) throw new Error('No access token received.');
+    const { FacebookAuthProvider: FAP, signInWithCredential } = await import('firebase/auth');
+    const credential = FAP.credential(result.credential.accessToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return { success: true, user: userCred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+// ─── Web Social Auth (Popup) ─────────────────────────────────────────────────
+
+/**
+ * Popup sign-in, with prompt cancellation detection.
+ *
+ * WHY THIS EXISTS
+ *
+ * Firebase detects a dismissed popup in exactly one way (verified in
+ * @firebase/auth's PopupOperation.pollUserCancellation):
+ *
+ *     if (this.authWindow?.window?.closed) { ...reject popup-closed-by-user }
+ *     else reschedule poll every 2-10s
+ *
+ * There is no other timeout anywhere in the popup flow. accounts.google.com
+ * sets a Cross-Origin-Opener-Policy that severs the opener reference, so
+ * `?.window` short-circuits to undefined — falsy — and the loop simply
+ * reschedules forever. It never throws, so there is nothing to catch, and the
+ * promise never settles. That is Chrome's "would block the window.closed call"
+ * warning, and it is why a dismissed popup used to spin the button forever.
+ *
+ * The credential itself is unaffected: it arrives by postMessage, which COOP
+ * does not touch. Successful sign-in has always worked.
+ *
+ * HOW CANCELLATION IS DETECTED INSTEAD
+ *
+ * When the popup closes, focus returns to this window. That fires a `focus`
+ * event we can see without touching the popup at all. After focus returns we
+ * wait a short grace period for a genuine result to land, then treat it as
+ * cancelled.
+ *
+ * TRADE-OFF, stated plainly: focus also returns if the user simply switches
+ * back to this tab while the popup is still open, which would report a
+ * cancellation that did not happen. Two things keep that benign — we check
+ * auth.currentUser before concluding anything, and because AuthProvider
+ * listens to onAuthStateChanged, a sign-in completed afterwards still signs
+ * the user in regardless of what this function returned.
+ */
+
+/** Grace period after focus returns, for a real result to arrive. */
+const POPUP_FOCUS_GRACE_MS = 2500;
+
+/**
+ * Backstop only, for the case where focus never returns (popup on another
+ * monitor, window manager quirks). Deliberately generous: a real sign-in can
+ * involve an email, a password and a 2FA challenge, and this must never cut
+ * off someone who is simply taking their time.
+ */
+const POPUP_HARD_TIMEOUT_MS = 3 * 60 * 1000;
+
+async function signInWebPopup(provider: GoogleAuthProvider | FacebookAuthProvider | OAuthProvider): Promise<SignInResult> {
+  let onFocus: (() => void) | undefined;
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  let hardTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const cleanup = () => {
+    if (onFocus && typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
+    if (graceTimer) clearTimeout(graceTimer);
+    if (hardTimer) clearTimeout(hardTimer);
+  };
+
+  try {
+    const signIn = signInWithPopup(auth, provider).then(
+      (result): SignInResult => ({ success: true, user: result.user })
+    );
+
+    const cancelled = new Promise<SignInResult>((resolve) => {
+      if (typeof window === 'undefined') return;
+
+      onFocus = () => {
+        if (graceTimer) clearTimeout(graceTimer);
+        graceTimer = setTimeout(() => {
+          // If sign-in actually completed, say nothing — the real result wins.
+          if (auth.currentUser) return;
+          resolve({
+            success: false,
+            error: 'Sign-in was cancelled.',
+            code: 'auth/popup-closed-by-user',
+          });
+        }, POPUP_FOCUS_GRACE_MS);
+      };
+      window.addEventListener('focus', onFocus);
+
+      hardTimer = setTimeout(
+        () => resolve({
+          success: false,
+          error: 'Sign-in was not completed. Please try again.',
+          code: 'auth/popup-timeout',
+        }),
+        POPUP_HARD_TIMEOUT_MS
+      );
+    });
+
+    // Whichever settles first. A real success or a real Firebase error always
+    // wins the race when it arrives, because those resolve immediately.
+    return await Promise.race([signIn, cancelled]);
+  } catch (err: unknown) {
+    // Real Firebase failures (popup-blocked, network, invalid config) reject
+    // promptly and land here — they never wait on the timers above.
+    return mapFirebaseError(err);
+  } finally {
+    cleanup();
+  }
+}
+
+export async function signInWithGoogle(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeGoogle();
+  const provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return signInWebPopup(provider);
+}
+
+export async function signInWithFacebook(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeFacebook();
+  const provider = new FacebookAuthProvider();
+  provider.addScope('email');
+  provider.addScope('public_profile');
+  return signInWebPopup(provider);
+}
+
+export async function signInWithApple(): Promise<SignInResult> {
+  if (Capacitor.isNativePlatform()) return signInNativeApple();
+  const provider = new OAuthProvider('apple.com');
+  provider.addScope('email');
+  provider.addScope('name');
+  return signInWebPopup(provider);
+}
+
+// ─── Legacy Stubs (phone OTP — kept for Capacitor backward-compat if needed) ──
+// These are effectively disabled; they return an error to prevent accidental usage.
+
+export async function sendOtp(_phoneNumber: string): Promise<SendOtpResult> {
+  return {
+    success: false,
+    error: 'Phone OTP has been disabled. Please use Google, Facebook, or Apple sign-in.',
+  };
+}
+
+export async function verifyOtp(_verificationId: string, _otpCode: string): Promise<VerifyOtpResult> {
+  return {
+    success: false,
+    error: 'Phone OTP has been disabled. Please use social sign-in.',
+  };
+}
+
+// ─── Email + Password ────────────────────────────────────────────────────────
+//
+// Requires the Email/Password provider to be enabled in the Firebase console
+// (Authentication -> Sign-in method). Without it every call returns
+// auth/operation-not-allowed.
+//
+// Sign-up is deliberately NOT exposed to the partner apps: vendor, rider and
+// admin accounts are created by an administrator, so those portals offer
+// sign-in and password reset only. See createPartnerAccount in Cloud Functions.
+
+export interface PasswordResetResult {
+  success: boolean;
+  error?: string;
+}
+
+/** Sign in an existing account. */
+export async function signInWithEmail(email: string, password: string): Promise<SignInResult> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, normalizeEmail(email), password);
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+/**
+ * Create a new account. Customer app only — the partner portals do not call
+ * this, by design.
+ */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  displayName?: string
+): Promise<SignInResult> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password);
+    if (displayName?.trim()) {
+      // Best effort: a failure here must not sink an otherwise good sign-up.
+      try {
+        await updateProfile(cred.user, { displayName: displayName.trim() });
+      } catch {
+        /* ignore */
+      }
+    }
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return mapFirebaseError(err);
+  }
+}
+
+/**
+ * Send a password reset email.
+ *
+ * Reports success even when the address is not registered. Firebase itself
+ * does not reveal this, and neither should the UI — otherwise the form becomes
+ * a way to test which emails have accounts.
+ */
+export async function sendPasswordReset(email: string): Promise<PasswordResetResult> {
+  try {
+    await sendPasswordResetEmail(auth, normalizeEmail(email));
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[auth] Password reset email requested for', normalizeEmail(email));
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+
+    // Hiding "no such account" is right in production — otherwise this form
+    // becomes a way to test which emails are registered. But it also makes the
+    // failure indistinguishable from success while developing, so log the real
+    // reason to the console in dev only. The returned value is unchanged, so
+    // production behaviour is identical.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[auth] Password reset did NOT send. code=${code || '(none)'}. ` +
+        'auth/user-not-found means no account exists for that address; ' +
+        'the UI still reports success on purpose.',
+        err
+      );
+    }
+
+    if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+      return { success: true };
+    }
+    const mapped = mapFirebaseError(err);
+    return { success: false, error: mapped.error };
+  }
+}
+
+export function cleanupAuth(): void {
+  // No-op: reCAPTCHA / phone auth removed
 }
 
 // ─── Sign Out ────────────────────────────────────────────────────────────────
 
-export async function signOut(): Promise<void> {
-  cleanupAuth();
+const FCM_TOKEN_STORAGE_KEY = 'dabzzo_fcm_token';
 
+export async function signOut(): Promise<void> {
   if (auth.currentUser) {
     const token =
       typeof window !== 'undefined' ? localStorage.getItem(FCM_TOKEN_STORAGE_KEY) : null;
     if (token) {
       try {
         const { doc, updateDoc, arrayRemove, deleteField } = await import('firebase/firestore');
-        const { db } = await import('./firebase');
         await updateDoc(doc(db, 'users', auth.currentUser.uid), {
           push_tokens: arrayRemove(token),
           fcmToken: deleteField(),
@@ -283,7 +420,7 @@ export async function signOut(): Promise<void> {
     }
   }
 
-  if (isNative) {
+  if (Capacitor.isNativePlatform()) {
     try {
       const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
       await FirebaseAuthentication.signOut();

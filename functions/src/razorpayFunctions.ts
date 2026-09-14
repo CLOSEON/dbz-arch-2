@@ -4,9 +4,12 @@ import * as crypto from 'crypto';
 import Razorpay from 'razorpay';
 
 // Helper to get configured Razorpay client
+// SECURITY: no hardcoded fallback credentials. These must come from Cloud
+// Functions config/secrets in every environment; a missing value fails loudly
+// instead of silently falling back to a shared literal.
 export function getRazorpayInstance(): Razorpay {
-  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TarSzNR6D7TlJJ';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
+  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!key_id || !key_secret) {
     throw new HttpsError('failed-precondition', 'Razorpay credentials not configured.');
@@ -19,7 +22,11 @@ export function getRazorpayInstance(): Razorpay {
 }
 
 function getKeySecret(): string {
-  return process.env.RAZORPAY_KEY_SECRET || 'Dkm5TwXg1buq64MUqy7UxBz8';
+  const secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!secret) {
+    throw new HttpsError('failed-precondition', 'Razorpay credentials not configured.');
+  }
+  return secret;
 }
 
 import {
@@ -311,6 +318,38 @@ export const verifyRazorpayPayment = onCall({ region: 'us-central1', cors: true 
   };
 });
 
+
+/**
+ * Verify the Firebase ID token on an onRequest (REST) call.
+ *
+ * The razorpayApi REST surface exists as a fallback for the onCall functions
+ * (Firebase Hosting rewrites /api/razorpay/** here). It previously performed no
+ * authentication at all on any route, while README.md claimed every route
+ * verified an ID token — see IMPLEMENTATION_PLAN.md Phase 2.
+ *
+ * Routes that are self-authenticating via an HMAC signature (verify-payment,
+ * webhook) do not use this; everything that creates a Razorpay resource does.
+ *
+ * Returns the decoded token, or null after already sending a 401.
+ */
+async function requireAuth(
+  req: any,
+  res: any
+): Promise<admin.auth.DecodedIdToken | null> {
+  const header = String(req.headers?.authorization || '');
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!token) {
+    res.status(401).json({ error: 'Unauthenticated: missing bearer token.' });
+    return null;
+  }
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch {
+    res.status(401).json({ error: 'Unauthenticated: invalid token.' });
+    return null;
+  }
+}
+
 /**
  * HTTPS Request Handler: razorpayApi
  * Handles direct REST requests from Firebase Hosting rewrites (/api/razorpay/**).
@@ -331,6 +370,7 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
 
   try {
     if (path === 'create-order' || path === 'create-order/') {
+      if (!(await requireAuth(req, res))) return;
       const data = req.body || {};
       let amount = Number(data.amount);
       const currency = typeof data.currency === 'string' ? data.currency : 'INR';
@@ -409,6 +449,7 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
     }
 
     if (path === 'create-subscription' || path === 'create-subscription/') {
+      if (!(await requireAuth(req, res))) return;
       const data = req.body || {};
       const { plan_id, customer_id, total_count, quantity } = data;
 
@@ -436,6 +477,19 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
     }
 
     if (path === 'create-vendor-account' || path === 'create-vendor-account/') {
+      // Creates a real Razorpay Route sub-account (a payout destination), so
+      // this is admin-only. It had no authentication and no client callers at
+      // all before — see IMPLEMENTATION_PLAN.md Phase 2.
+      const caller = await requireAuth(req, res);
+      if (!caller) return;
+      const callerIsAdmin =
+        caller.admin === true ||
+        caller.role === 'admin' ||
+        caller.role === 'superadmin';
+      if (!callerIsAdmin) {
+        res.status(403).json({ error: 'Forbidden: admin role required.' });
+        return;
+      }
       const data = req.body || {};
       const { name, email, phone, business_name, account_type } = data;
 
@@ -464,7 +518,14 @@ export const razorpayApi = onRequest({ region: 'us-central1', cors: true }, asyn
     }
 
     if (path === 'webhook' || path === 'webhook/') {
-      const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.NEXT_PUBLIC_RAZORPAY_WEBHOOK_SECRET || 'dabzzo_webhook_secret';
+      // SECURITY: server-only secret, no hardcoded fallback, and deliberately
+      // NOT read from a NEXT_PUBLIC_* var — that prefix is inlined into
+      // client bundles by Next.js and would leak the webhook secret to the browser.
+      const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      if (!secret) {
+        res.status(500).json({ error: 'Webhook secret not configured.' });
+        return;
+      }
       const signature = req.headers['x-razorpay-signature'] as string;
 
       if (!signature) {

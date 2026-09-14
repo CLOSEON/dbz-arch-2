@@ -289,7 +289,7 @@ export default function VendorDetailPage() {
   );
 
   return (
-    <div className="pb-36 animate-fade-in bg-[#FEFCE8] min-h-screen">
+    <div className="pb-36 animate-fade-in bg-[#FEFCE8] min-h-dvh">
       {/* Premium Hero */}
       <div className="relative h-72 w-full bg-slate-900">
         {vendor.image ? (
@@ -566,7 +566,7 @@ export default function VendorDetailPage() {
 
                 return (
                   <div key={plan.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:border-amber-300 transition-all">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className={cn(
@@ -581,14 +581,14 @@ export default function VendorDetailPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             {plan.isNonVeg ? <NonVegIcon size={15} /> : <VegIcon size={15} />}
-                            <h3 className="font-black text-slate-900 text-base leading-tight">
+                            <h3 className="font-black text-slate-900 text-base leading-tight text-pretty">
                               {plan.label}
                             </h3>
                           </div>
                           <p className="text-xs font-medium text-slate-400 mt-0.5">
                             {plan.type}
                           </p>
-                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-1">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-1">
                             <span className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-700">4× Roti • 1× Rice • 1× Sabzi • 1× Dal</span>
                             <span className="text-amber-700 font-bold hidden sm:inline">• Adjustable Portions</span>
                           </div>
@@ -608,7 +608,7 @@ export default function VendorDetailPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                      <div className="flex items-center gap-2 shrink-0 w-full lg:w-auto lg:self-auto">
                         {selectedFrequency !== 'one-time' && (
                           <button
                             type="button"

@@ -1,5 +1,6 @@
 'use client';
 
+import { EmailPasswordForm } from '@dabzzo/shared-ui/auth/EmailPasswordForm';
 import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -8,6 +9,7 @@ import { useUiStore } from '@/store/uiStore';
 import { signInWithGoogle, isSuperadminEmail, extractUserEmail, SUPERADMIN_EMAIL } from '@/lib/auth';
 import { resolveUserProfile } from '@/lib/queries/users';
 import type { User } from 'firebase/auth';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -74,8 +76,8 @@ export default function AdminLoginPage() {
       setUser(profile);
       addToast(`Welcome back, ${profile.name || 'Admin'}! 🎉`, 'success');
       router.replace('/admin/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Sign-in failed.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Sign-in failed.', 'error');
     }
   }, [setUser, addToast, router]);
 
@@ -88,15 +90,15 @@ export default function AdminLoginPage() {
         return;
       }
       await handleAuthSuccess(result.user);
-    } catch (err: any) {
-      addToast(err.message || 'Login error occurred.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Login error occurred.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0E11] flex flex-col justify-center px-6 py-10 font-sans">
+    <div className="min-h-dvh bg-[#0B0E11] flex flex-col justify-center px-6 py-10 font-sans">
       <div className="w-full max-w-sm mx-auto flex flex-col">
 
         <div className="flex justify-center mb-10">
@@ -130,6 +132,23 @@ export default function AdminLoginPage() {
               </>
             )}
           </button>
+
+          <div className="flex items-center gap-3 w-full my-5">
+            <span className="h-px flex-1 bg-white/20" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">or</span>
+            <span className="h-px flex-1 bg-white/20" />
+          </div>
+
+          {/* No allowSignUp. Admin accounts are created by an existing admin;
+              self-registration on the ops console would be an obvious hole.
+              handleAuthSuccess still enforces the admin check, so a valid
+              password for a non-admin account is rejected there. */}
+          <EmailPasswordForm
+            signInLabel="Sign In to Console"
+            accentClassName="bg-rose-600 hover:bg-rose-700"
+            onNotify={(m, k) => addToast(m, k)}
+            onSuccess={(u) => { void handleAuthSuccess(u); }}
+          />
 
           <p className="text-center text-[11px] text-slate-600 mt-6">
             Only authorized admin accounts can access this panel.

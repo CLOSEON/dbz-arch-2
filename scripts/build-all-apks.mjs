@@ -24,15 +24,71 @@ const root = path.resolve(__dirname, '..');
 const androidDir = path.join(root, 'android');
 const outputDir = path.join(root, 'build-apks');
 
-const androidStudioJava = '/Applications/Android Studio.app/Contents/jbr/Contents/Home';
-if (!process.env.JAVA_HOME && fs.existsSync(androidStudioJava)) {
-  process.env.JAVA_HOME = androidStudioJava;
-  process.env.PATH = `${androidStudioJava}/bin:${process.env.PATH}`;
-}
-if (!process.env.PATH.includes('/opt/homebrew/bin')) {
-  process.env.PATH = `/opt/homebrew/bin:${process.env.PATH}`;
+const isWin = process.platform === 'win32';
+const SEP = isWin ? ';' : ':';
+
+// Locate a JDK. Android Studio bundles one (jbr). These paths were previously
+// hardcoded to macOS, so this script could not run on Windows at all.
+function findJavaHome() {
+  if (process.env.JAVA_HOME && fs.existsSync(process.env.JAVA_HOME)) return process.env.JAVA_HOME;
+  const candidates = isWin
+    ? [
+        path.join(process.env.ProgramFiles || 'C:\Program Files', 'Android', 'Android Studio', 'jbr'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Android Studio', 'jbr'),
+      ]
+    : [
+        '/Applications/Android Studio.app/Contents/jbr/Contents/Home',
+        '/usr/lib/jvm/default-java',
+      ];
+  return candidates.find((c) => c && fs.existsSync(path.join(c, 'bin', isWin ? 'java.exe' : 'java')));
 }
 
+function findAndroidSdk() {
+  const env = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
+  if (env && fs.existsSync(env)) return env;
+  const candidates = isWin
+    ? [path.join(process.env.LOCALAPPDATA || '', 'Android', 'Sdk')]
+    : [path.join(process.env.HOME || '', 'Library', 'Android', 'sdk')];
+  return candidates.find((c) => c && fs.existsSync(c));
+}
+
+const JAVA_HOME = findJavaHome();
+if (!JAVA_HOME) { console.error('No JDK found. Install Android Studio or set JAVA_HOME.'); process.exit(1); }
+process.env.JAVA_HOME = JAVA_HOME;
+process.env.PATH = path.join(JAVA_HOME, 'bin') + SEP + process.env.PATH;
+
+const ANDROID_SDK = findAndroidSdk();
+if (!ANDROID_SDK) { console.error('No Android SDK found. Set ANDROID_SDK_ROOT.'); process.exit(1); }
+process.env.ANDROID_SDK_ROOT = ANDROID_SDK;
+process.env.ANDROID_HOME = ANDROID_SDK;
+
+console.log('JAVA_HOME   : ' + JAVA_HOME);
+console.log('ANDROID_SDK : ' + ANDROID_SDK);
+
+const GRADLEW = isWin ? path.join(androidDir, 'gradlew.bat') : './gradlew';
+
+// Read plugin configuration from the source of truth. capacitor.config.ts is
+// TypeScript, so rather than transpiling it we read the JSON that `npx cap
+// sync` generates, falling back to parsing the .ts for its `plugins` block.
+function loadBaseCapacitorConfig() {
+  const generated = path.join(androidDir, 'app', 'src', 'main', 'assets', 'capacitor.config.json');
+  if (fs.existsSync(generated)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(generated, 'utf8'));
+      if (parsed && parsed.plugins) return parsed;
+    } catch { /* fall through */ }
+  }
+  console.warn('⚠️  No generated capacitor.config.json with plugins found.');
+  console.warn('   Run `npx cap sync android` first, or the APK ships without plugin config.');
+  return {};
+}
+const baseCapConfig = loadBaseCapacitorConfig();
+
+// NOTE: these application ids must match the package names registered in
+// Firebase exactly. vendor/rider/admin are registered as com.dabzo.<role>.app
+// (with the .app suffix); only the customer app is plain com.dabzo.app. A
+// mismatch means google-services.json has no entry for the running package, so
+// Firebase services silently have no configuration.
 const APPS = [
   {
     key: 'customer',
@@ -44,21 +100,21 @@ const APPS = [
   {
     key: 'vendor',
     name: 'Dabzzo Vendor',
-    appId: 'com.dabzo.vendor',
+    appId: 'com.dabzo.vendor.app',
     distDir: path.join(root, 'apps', 'vendor-panel', 'out'),
     outputApk: 'dabzzo-vendor.apk',
   },
   {
     key: 'rider',
     name: 'Dabzzo Rider',
-    appId: 'com.dabzo.rider',
+    appId: 'com.dabzo.rider.app',
     distDir: path.join(root, 'apps', 'rider-panel', 'out'),
     outputApk: 'dabzzo-rider.apk',
   },
   {
     key: 'admin',
     name: 'Dabzzo Admin',
-    appId: 'com.dabzo.admin',
+    appId: 'com.dabzo.admin.app',
     distDir: path.join(root, 'apps', 'admin-panel', 'out'),
     outputApk: 'dabzzo-admin.apk',
   },
@@ -81,6 +137,7 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
+const failures = [];
 const skipWeb = process.argv.includes('--skip-web');
 if (!skipWeb) {
   console.log('🚀 Step 1: Ensuring all static web exports are fresh...');
@@ -101,17 +158,32 @@ for (const app of appsToBuild) {
   fs.mkdirSync(publicDir, { recursive: true });
 
   console.log(`📂 Copying assets from ${app.distDir} to Android assets...`);
-  execSync(`cp -R "${app.distDir}/." "${publicDir}/"`, { cwd: root });
+  if (!fs.existsSync(app.distDir)) {
+    console.error(`Missing web build for ${app.name}: ${app.distDir}`);
+    failures.push(app.name);
+    continue;
+  }
+  // fs.cpSync rather than `cp -R`, which does not exist under cmd.exe.
+  fs.cpSync(app.distDir, publicDir, { recursive: true });
 
   // Update capacitor config in assets
   const capConfigPath = path.join(androidDir, 'app', 'src', 'main', 'assets', 'capacitor.config.json');
+  // Start from the REAL Capacitor config and override only the per-app
+  // identity. This previously wrote a minimal object from scratch, which
+  // silently discarded the entire `plugins` block — so FirebaseAuthentication
+  // providers, PushNotifications and SplashScreen settings never reached any
+  // APK. The visible symptom was native Google sign-in failing with
+  // "provider is not enabled", because the providers list was simply absent.
   const capConfig = {
+    ...baseCapConfig,
     appId: app.appId,
     appName: app.name,
     webDir: 'public',
-    server: { androidScheme: 'https' },
+    server: { androidScheme: 'https', ...(baseCapConfig.server || {}) },
   };
   fs.writeFileSync(capConfigPath, JSON.stringify(capConfig, null, 2));
+  const pluginNames = Object.keys(capConfig.plugins || {});
+  console.log(`   plugins carried into APK: ${pluginNames.length ? pluginNames.join(', ') : 'NONE'}`);
 
   // Update strings.xml app_name
   const stringsPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'values', 'strings.xml');
@@ -128,10 +200,19 @@ for (const app of appsToBuild) {
     fs.writeFileSync(stringsPath, stringsXml);
   }
 
-  console.log(`🔨 Assembling Gradle APK for ${app.name}...`);
-  execSync('./gradlew assembleDebug --no-daemon', { cwd: androidDir, stdio: 'inherit' });
+  // One invocation. This previously ran assembleDebug twice — once without the
+  // application id and again with it — so every APK paid double the Gradle time
+  // and the first build was discarded.
   console.log(`🔨 Assembling Gradle APK for ${app.name} (${app.appId})...`);
-  execSync(`./gradlew assembleDebug -PcustomApplicationId=${app.appId} --no-daemon`, { cwd: androidDir, stdio: 'inherit' });
+  try {
+    execSync(`${GRADLEW} assembleDebug -PcustomApplicationId=${app.appId} --no-daemon`, {
+      cwd: androidDir, stdio: 'inherit',
+    });
+  } catch {
+    console.error(`Gradle failed for ${app.name}`);
+    failures.push(app.name);
+    continue;
+  }
 
   const generatedApk = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   const destination = path.join(outputDir, app.outputApk);
@@ -143,11 +224,16 @@ for (const app of appsToBuild) {
     console.log(`🎉 SUCCESS: Generated ${app.outputApk} (${sizeMb} MB) in ${destination}`);
   } else {
     console.error(`❌ ERROR: Could not find generated APK for ${app.name}`);
+    failures.push(app.name);
   }
 }
 
 console.log('\n==================================================');
-console.log('✅ ALL APKs GENERATED SUCCESSFULLY:');
+if (failures.length) {
+  console.error(`❌ ${failures.length} app(s) FAILED: ${failures.join(', ')}`);
+  process.exitCode = 1;
+}
+console.log(failures.length ? 'APKs produced in this run:' : '✅ ALL APKs GENERATED SUCCESSFULLY:');
 fs.readdirSync(outputDir).forEach(file => {
   if (file.endsWith('.apk')) {
     const stats = fs.statSync(path.join(outputDir, file));

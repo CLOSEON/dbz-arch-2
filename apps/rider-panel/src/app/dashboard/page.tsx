@@ -29,6 +29,7 @@ import { PendingVerificationScreen } from '@/components/shared/PendingVerificati
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
 import { generateBoxTag } from '@/lib/boxTag';
 import { LocationTracker } from '@/lib/delivery/locationTracker';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { ssr: false });
 
@@ -39,9 +40,9 @@ export default function RiderDashboard() {
   const activeTrip = useDeliveryStore((s) => s.activeTrip);
   const agentOrders = useDeliveryStore((s) => s.agentOrders);
 
-  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || (user as any)?.is_superadmin === true;
-  const isRiderRole = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || (user as any)?.roles?.delivery || user?.role === 'admin' || isSuper;
-  const isVerifiedRider = isSuper || ((user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && (user as any)?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested');
+  const isSuper = user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || user?.is_superadmin === true;
+  const isRiderRole = user?.role === 'delivery' || (user?.role as string) === 'delivery_agent' || user?.roles?.delivery || user?.role === 'admin' || isSuper;
+  const isVerifiedRider = isSuper || ((user?.is_approved === true || user?.verification_status === 'verified') && user?.is_rejected !== true && user?.is_suspended !== true && user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested');
 
   const [isMounting, setIsMounting] = useState(true);
   const [loadingImage, setLoadingImage] = useState(false);
@@ -62,7 +63,8 @@ export default function RiderDashboard() {
 
   // Customer unavailability timer state
   const [unavailabilityStartTimes, setUnavailabilityStartTimes] = useState<Record<string, number>>({});
-  const [nowTick, setNowTick] = useState(Date.now());
+  // Lazy initializer: reading the clock directly during render is impure.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Current rider coordinates from active GPS
@@ -297,7 +299,7 @@ export default function RiderDashboard() {
   const pickupStopsList = activeTrip?.pickupStops || [];
   const pendingPickups = pickupStopsList.filter((s: any) => s.status !== 'completed');
 
-  let remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
+  const remainingDrops = agentOrders.filter(o => o.status !== 'delivered' && o.status !== 'failed');
   if (activeTrip?.dropStops) {
     remainingDrops.sort((a, b) => {
       const stopA = activeTrip!.dropStops!.find((s: any) => s.orderId === a.id);
@@ -370,8 +372,8 @@ export default function RiderDashboard() {
       setRiderConfirmedCount(String(expectedCount));
       setPickupStep('count');
       toast.success('Kitchen OTP Verified! ✓ Confirm tiffin count.');
-    } catch (err: any) {
-      toast.error(err.message || 'Verification failed');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Verification failed');
     } finally {
       setVerifyingVendorOTP(false);
     }
@@ -406,8 +408,8 @@ export default function RiderDashboard() {
       toast.success(data.allDone ? 'All Kitchen Meals Collected! Proceeding to Customer Deliveries 🛵' : 'Kitchen Pickup Completed! Proceeding to next stop.');
       setVendorOTP('');
       setPickupStep('otp');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to confirm pickup');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to confirm pickup');
     } finally {
       setVerifyingVendorOTP(false);
     }
@@ -437,8 +439,8 @@ export default function RiderDashboard() {
         toast.success(`Delivery #${completedDropsCount + 1} completed! Proceeding to next stop.`);
       }
       setDropoffOTP('');
-    } catch (err: any) {
-      toast.error('OTP verification failed: ' + (err?.message || 'Unknown error'));
+    } catch (err: unknown) {
+      toast.error('OTP verification failed: ' + (getErrorMessage(err) || 'Unknown error'));
     } finally {
       setVerifyingDropoffOTP(false);
     }
@@ -455,8 +457,8 @@ export default function RiderDashboard() {
       }
       setUnavailabilityStartTimes(prev => ({ ...prev, [orderId]: data.unavailability_started_at || Date.now() }));
       toast.success('10-minute customer waiting timer started. Alert sent to customer.');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to start timer');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to start timer');
     }
   };
 
@@ -480,9 +482,9 @@ export default function RiderDashboard() {
         delete next[orderId];
         return next;
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       failedOrdersRef.current.delete(orderId);
-      toast.error(err.message || 'Failed to mark customer unavailable');
+      toast.error(getErrorMessage(err) || 'Failed to mark customer unavailable');
     }
   }, [activeTrip]);
 

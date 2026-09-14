@@ -243,7 +243,7 @@ function CustomerTrackContent() {
     const dayAfterStr = dayAfter.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     let fromOrders: any[] = [];
-    let fromDeliveryOrders: any[] = [];
+    const fromDeliveryOrders: any[] = [];
 
     const mapOrderDoc = (d: any) => {
       const data = d.data ? d.data() : d;
@@ -420,7 +420,7 @@ function CustomerTrackContent() {
           status: 'pending',
           meal: { type: mealType, name: mealType === 'lunch' ? 'Lunch' : 'Dinner' },
           scheduledSlot,
-          vendorName: (sub as any).vendor_name || (sub as any).kitchen_name,
+          vendorName: sub.vendor_name || sub.kitchen_name,
           vendorId: sub.vendor_id,
           address: { line1: 'Delivery Address from Plan' }, // Placeholder or use user.location if available
           createdAt: { toDate: () => targetDate, seconds: targetDate.getTime() / 1000 },

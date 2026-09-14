@@ -1,0 +1,35 @@
+{
+  "name": "@dabzzo/shared-queries",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./addresses": "./src/addresses.ts",
+    "./admin": "./src/admin.ts",
+    "./audit": "./src/audit.ts",
+    "./delivery": "./src/delivery.ts",
+    "./discounts": "./src/discounts.ts",
+    "./mealComponents": "./src/mealComponents.ts",
+    "./menu": "./src/menu.ts",
+    "./notifications": "./src/notifications.ts",
+    "./offers": "./src/offers.ts",
+    "./payments": "./src/payments.ts",
+    "./pricing": "./src/pricing.ts",
+    "./reviews": "./src/reviews.ts",
+    "./rewards": "./src/rewards.ts",
+    "./subscriptions": "./src/subscriptions.ts",
+    "./support": "./src/support.ts",
+    "./swaps": "./src/swaps.ts",
+    "./users": "./src/users.ts",
+    "./vendorAdmin": "./src/vendorAdmin.ts"
+  },
+  "dependencies": {
+    "@dabzzo/shared-auth": "*",
+    "@dabzzo/shared-lib": "*",
+    "@dabzzo/shared-types": "*",
+    "firebase": "^12.13.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  }
+}

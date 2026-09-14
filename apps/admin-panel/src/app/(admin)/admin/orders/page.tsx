@@ -13,6 +13,7 @@ import { isAdminUser } from '@/lib/auth';
 import { Order, OrderStatusLog, Batch } from '@/types';
 import type { RiderTrip } from '@/types/delivery';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function AdminOrdersTrackingPage() {
   const { user, isHydrated } = useAuthStore();
@@ -120,8 +121,8 @@ export default function AdminOrdersTrackingPage() {
           if (searchQuery === order.id) {
             handleSearch();
           }
-        } catch (err: any) {
-          toast.error('Failed to force status: ' + err.message, { id: toastId });
+        } catch (err: unknown) {
+          toast.error('Failed to force status: ' + getErrorMessage(err), { id: toastId });
         }
       }
     });
@@ -201,8 +202,8 @@ export default function AdminOrdersTrackingPage() {
 
       setRelatedRecords(related);
 
-    } catch (err: any) {
-      toast.error('Search failed: ' + err.message, { id: toastId });
+    } catch (err: unknown) {
+      toast.error('Search failed: ' + getErrorMessage(err), { id: toastId });
     } finally {
       setIsSearching(false);
     }
@@ -400,7 +401,7 @@ export default function AdminOrdersTrackingPage() {
                   {statusLogs.map((log, i) => (
                     <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
                       <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-white bg-slate-200 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2"></div>
-                      <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.25rem)] p-3 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm">
+                      <div className="w-[calc(100%_-_2.5rem)] md:w-[calc(50%_-_1.25rem)] p-3 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-black uppercase tracking-wider text-brand">{log.to_status.replace(/_/g, ' ')}</span>
                           <span className="text-[9px] text-slate-400 font-bold">{log.timestamp ? new Date((log.timestamp as any).seconds * 1000).toLocaleTimeString() : 'N/A'}</span>

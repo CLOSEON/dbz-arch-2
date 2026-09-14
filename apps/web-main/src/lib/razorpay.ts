@@ -7,7 +7,28 @@
  */
 
 import { httpsCallable } from 'firebase/functions';
+
+/**
+ * Bearer token for the REST fallback endpoints.
+ *
+ * The callable path carries Firebase auth automatically; the REST fallback does
+ * not, and the razorpayApi function now requires a verified ID token on every
+ * route that creates a Razorpay resource. Without this the fallback would 401.
+ * See IMPLEMENTATION_PLAN.md Phase 2.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch (e) {
+    console.warn('[Razorpay] Could not attach auth token to REST fallback:', e);
+  }
+  return headers;
+}
 import { functions } from '@/lib/firebase';
+import { getErrorMessage, getErrorCode } from '@dabzzo/shared-lib/errors';
 
 /**
  * Load Razorpay checkout script dynamically
@@ -19,7 +40,7 @@ export function loadRazorpayCheckoutScript(): Promise<void> {
 
   _checkoutScriptPromise = new Promise((resolve, reject) => {
     // Check if already loaded
-    if (typeof window !== 'undefined' && (window as any).Razorpay) {
+    if (typeof window !== 'undefined' && window.Razorpay) {
       resolve();
       return;
     }
@@ -66,7 +87,7 @@ export async function openRazorpayCheckout(options: {
 }): Promise<void> {
   await loadRazorpayCheckoutScript();
 
-  const Razorpay = (window as any).Razorpay;
+  const Razorpay = window.Razorpay;
   if (!Razorpay) {
     throw new Error('Razorpay SDK could not be initialized.');
   }
@@ -147,12 +168,12 @@ export async function verifyPaymentSignature(
       return true;
     }
     throw new Error(res?.data?.error || 'Payment signature verification failed');
-  } catch (callableErr: any) {
-    if (callableErr?.code === 'permission-denied' || callableErr?.code === 'invalid-argument') {
-      console.error('[Razorpay] Verification rejected by server:', callableErr.message);
+  } catch (callableErr: unknown) {
+    if (getErrorCode(callableErr) === 'permission-denied' || getErrorCode(callableErr) === 'invalid-argument') {
+      console.error('[Razorpay] Verification rejected by server:', getErrorMessage(callableErr));
       throw callableErr;
     }
-    console.warn('[Razorpay] Callable verification fallback to REST:', callableErr?.message || callableErr);
+    console.warn('[Razorpay] Callable verification fallback to REST:', getErrorMessage(callableErr) || callableErr);
   }
 
   // 2. Fallback to REST endpoint
@@ -215,15 +236,15 @@ export async function createRazorpayOrder(
     if (res?.data?.order_id) {
       return res.data;
     }
-  } catch (callableErr: any) {
-    console.warn('[Razorpay] Callable createRazorpayOrder fallback to REST:', callableErr?.message || callableErr);
+  } catch (callableErr: unknown) {
+    console.warn('[Razorpay] Callable createRazorpayOrder fallback to REST:', getErrorMessage(callableErr) || callableErr);
   }
 
   // 2. Fallback to REST endpoint
   try {
     const response = await fetch('/api/razorpay/create-order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(payload),
     });
 
@@ -261,7 +282,7 @@ export async function createRazorpaySubscription(
   try {
     const response = await fetch('/api/razorpay/create-subscription', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({
         user_id,
         vendor_id,

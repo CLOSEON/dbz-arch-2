@@ -39,6 +39,7 @@ import { useAuthStore } from '@/store/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function AdminOffersPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -96,7 +97,7 @@ export default function AdminOffersPage() {
         const allSnap = await getDocs(collection(db, 'users'));
         list = allSnap.docs
           .map((d) => ({ id: d.id, ...d.data() } as AppUser))
-          .filter((u) => u.role === 'vendor' || (u as any).roles?.vendor || Boolean(u.kitchen_name));
+          .filter((u) => u.role === 'vendor' || u.roles?.vendor || Boolean(u.kitchen_name));
       }
 
       // 3. Fallback: getApprovedVendors helper
@@ -121,7 +122,7 @@ export default function AdminOffersPage() {
     try {
       const allOffers = await getAllOffers();
       setOffers(allOffers);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[AdminOffers] Error loading offers data:', err);
       addToast('Failed to load offers data', 'error');
     } finally {
@@ -142,7 +143,7 @@ export default function AdminOffersPage() {
       (v) =>
         (v.kitchen_name && v.kitchen_name.toLowerCase().includes(q)) ||
         (v.name && v.name.toLowerCase().includes(q)) ||
-        (Boolean((v as any).business_name) && String((v as any).business_name).toLowerCase().includes(q)) ||
+        (Boolean(v.business_name) && String(v.business_name).toLowerCase().includes(q)) ||
         (v.address && v.address.toLowerCase().includes(q))
     );
   }, [vendors, kitchenSearchQuery]);
@@ -192,8 +193,8 @@ export default function AdminOffersPage() {
 
     try {
       validateImageFile(file);
-    } catch (err: any) {
-      addToast(err.message || 'Invalid image file', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Invalid image file', 'error');
       triggerHapticNotification(NotificationType.Error);
       return;
     }
@@ -272,9 +273,9 @@ export default function AdminOffersPage() {
       triggerHapticNotification(NotificationType.Success);
       setIsModalOpen(false);
       await loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[AdminOffers] Save error:', err);
-      addToast(err.message || 'Failed to save offer', 'error');
+      addToast(getErrorMessage(err) || 'Failed to save offer', 'error');
       triggerHapticNotification(NotificationType.Error);
     } finally {
       setSaving(false);
@@ -295,7 +296,7 @@ export default function AdminOffersPage() {
           addToast('Offer deleted successfully', 'success');
           triggerHapticNotification(NotificationType.Success);
           await loadData();
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('[AdminOffers] Delete error:', err);
           addToast('Failed to delete offer', 'error');
           triggerHapticNotification(NotificationType.Error);
@@ -346,7 +347,7 @@ export default function AdminOffersPage() {
   const getKitchenName = (kitchenId?: string | null) => {
     if (!kitchenId) return 'No Kitchen';
     const found = vendors.find((v) => v.id === kitchenId);
-    return found?.kitchen_name || found?.name || (found as any)?.business_name || found?.id || 'Selected Kitchen';
+    return found?.kitchen_name || found?.name || found?.business_name || found?.id || 'Selected Kitchen';
   };
 
   const activeCount = offers.filter((o) => o.isActive).length;
@@ -817,7 +818,7 @@ export default function AdminOffersPage() {
                             ) : (
                               filteredVendors.map((v) => {
                                 const isSelected = formKitchenId === v.id;
-                                const displayName = v.kitchen_name || v.name || (v as any).business_name || 'Kitchen';
+                                const displayName = v.kitchen_name || v.name || v.business_name || 'Kitchen';
                                 return (
                                   <div
                                     key={v.id}

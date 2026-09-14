@@ -1,31 +1,10 @@
 'use client';
+// Per-app branding wrapper; markup lives in @dabzzo/shared-ui.
+import { Logo as SharedLogo, type LogoProps } from '@dabzzo/shared-ui';
 
-import { useState } from 'react';
-
-interface LogoProps {
-  className?: string;
-  size?: number;
-}
-
-export function Logo({ className = '', size = 36 }: LogoProps) {
-  const [imgError, setImgError] = useState(false);
-
+export function Logo(props: Omit<LogoProps, 'src' | 'alt' | 'badgeClassName' | 'label' | 'labelClassName'>) {
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      {!imgError ? (
-        <img
-          src="/logo-delivery.png"
-          alt="Dabzzo Delivery"
-          style={{ height: `${size}px`, width: 'auto' }}
-          className="object-contain rounded-xl shadow-xs"
-          onError={() => setImgError(true)}
-        />
-      ) : (
-        <div className="flex items-center gap-1.5 font-extrabold text-xl tracking-tight text-slate-900">
-          <span className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center text-sm font-black shadow-xs">D</span>
-          <span>Dabzzo <span className="text-xs font-bold text-orange-700 uppercase tracking-wider">Delivery</span></span>
-        </div>
-      )}
-    </div>
+    <SharedLogo {...props} src="/logo-delivery.png" alt="Dabzzo Delivery"
+      badgeClassName="bg-orange-600" label="Delivery" labelClassName="text-orange-700" />
   );
 }

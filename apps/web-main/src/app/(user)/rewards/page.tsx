@@ -8,6 +8,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { redeemVoucher } from '@/lib/queries/rewards';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function RewardsPage() {
   const user = useAuthStore(s => s.user);
@@ -59,9 +60,9 @@ export default function RewardsPage() {
     try {
       await redeemVoucher(user.id, voucherId, activeSubscriptionId);
       toast.success('Voucher redeemed! Added 1 day to your subscription. 🎉');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || 'Failed to redeem voucher.');
+      toast.error(getErrorMessage(err) || 'Failed to redeem voucher.');
     } finally {
       setRedeemingId(null);
     }

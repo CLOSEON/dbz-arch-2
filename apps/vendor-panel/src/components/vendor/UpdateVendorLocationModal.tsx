@@ -7,6 +7,7 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { reverseGeocode } from '@/lib/geo';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 // Dynamically import map to avoid Next.js SSR issues
 const LocationPickerMap = dynamic(() => import('./LocationPickerMap'), {
@@ -169,9 +170,9 @@ export function UpdateVendorLocationModal({
         onSuccess({ address: cleanAddress, lat: parsedLat, lng: parsedLng });
       }
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to update vendor location:', err);
-      toast.error(err.message || 'Failed to update location');
+      toast.error(getErrorMessage(err) || 'Failed to update location');
     } finally {
       setIsSaving(false);
     }

@@ -58,6 +58,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { formatDate, cn } from '@/lib/utils';
 import type { AppUser, Vendor, Subscription } from '@/types';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const WEEKDAYS = [
   { full: 'monday', short: 'Mon' },
@@ -121,16 +122,14 @@ export function UserManagementHub() {
   const [extPaymentNotes, setExtPaymentNotes] = useState<string>('');
   const [extVendorId, setExtVendorId] = useState<string>('');
   const [extVendorCostPerMeal, setExtVendorCostPerMeal] = useState<number>(35);
+  // Lazy initializer: without the arrow this recomputes on every render and
+  // throws the result away, and reads the clock during render (impure).
   const [extStartDate, setExtStartDate] = useState<string>(
-    new Date(Date.now() + 86400000).toISOString().split('T')[0] // tomorrow
+    () => new Date(Date.now() + 86400000).toISOString().split('T')[0] // tomorrow
   );
   const [extDeliverySlot, setExtDeliverySlot] = useState<string>('lunch');
 
   // ── 1. Initial Load: Users & Vendors ─────────────────────────────────────────
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -149,6 +148,10 @@ export function UserManagementHub() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
   // ── 2. Select User & Fetch Subscriptions / Credits ───────────────────────────
   const selectUser = async (user: AppUser) => {
@@ -368,9 +371,9 @@ export function UserManagementHub() {
       // Immediate fresh refresh
       await selectUser(selectedUser);
       await loadAllData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to activate external subscription:', err);
-      const errMsg = err?.message || 'Failed to activate external subscription. Please check permissions.';
+      const errMsg = getErrorMessage(err) || 'Failed to activate external subscription. Please check permissions.';
       setExtModalError(errMsg);
       setNotification({
         text: errMsg,

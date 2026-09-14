@@ -15,11 +15,19 @@
     "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.3.4",
     "firebase": "^12.13.0",
-    "firebase-admin": "^13.1.0"
+    "firebase-admin": "^13.1.0",
+    "@dabzzo/shared-types": "*",
+    "@dabzzo/shared-lib": "*",
+    "@dabzzo/shared-ui": "*"
   },
   "peerDependencies": {
     "next": "*",
     "react": "*",
     "react-dom": "*"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node popup-race.test.mjs"
   }
 }

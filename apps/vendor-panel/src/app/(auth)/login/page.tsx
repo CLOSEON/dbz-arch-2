@@ -1,5 +1,6 @@
 'use client';
 
+import { EmailPasswordForm } from '@dabzzo/shared-ui/auth/EmailPasswordForm';
 import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -12,6 +13,7 @@ import { db } from '@/lib/firebase';
 import type { UserRole, AppUser } from '@/types';
 import type { User } from 'firebase/auth';
 import { ArrowRight } from 'lucide-react';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type AuthStep = 'social' | 'onboarding';
 
@@ -64,11 +66,20 @@ export default function VendorLoginPage() {
           role: 'vendor' as UserRole,
           is_approved: true,
           is_superadmin: true,
-          verification_status: 'verified',
+          // No fabricated compliance or reputation data is written.
+          //
+          // This previously set verification_status 'verified', a made-up FSSAI
+          // licence number, a street address, a 4.5 rating and 14 reviews --
+          // none of which correspond to anything real, all written straight to
+          // the production users collection.
+          //
+          // None of it was needed: the dashboard gate at dashboard/page.tsx
+          // already short-circuits on `isSuper`, so the superadmin reaches the
+          // kitchen portal by virtue of being the superadmin. Compliance state
+          // stays unverified until a real licence is supplied and an admin
+          // verifies it.
+          verification_status: 'pending',
           capacity: 10,
-          subscriberCount: 2,
-          fssai_license: 'FSSAI-12345678901234',
-          address: 'Sector 62, Noida, Uttar Pradesh',
           rate_onetime: 150,
           rate_lunch_weekly: 900,
           rate_lunch_monthly: 3600,
@@ -77,10 +88,6 @@ export default function VendorLoginPage() {
           rate_both_weekly: 1750,
           rate_both_monthly: 6800,
           cuisine_type: 'Home Style',
-          bio: 'Authentic home cooked homestyle meals prepared fresh daily.',
-          rating: 4.5,
-          rating_avg: 4.5,
-          review_count: 14,
         };
 
         try {
@@ -115,8 +122,8 @@ export default function VendorLoginPage() {
       setPrefillPhoto(firebaseUser.photoURL || null);
       setKitchenName(profile.kitchen_name || '');
       setStep('onboarding');
-    } catch (err: any) {
-      addToast(err.message || 'Sign-in failed. Please try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Sign-in failed. Please try again.', 'error');
     }
   }, [setUser, addToast, router]);
 
@@ -148,15 +155,15 @@ export default function VendorLoginPage() {
       setUser(user);
       addToast('Kitchen registered! Awaiting admin approval.', 'success');
       router.replace('/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Registration failed. Try again.', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Registration failed. Try again.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center px-6 py-10 font-sans">
+    <div className="min-h-dvh bg-[#F8FAFC] flex flex-col justify-center px-6 py-10 font-sans">
       <div className="w-full max-w-md mx-auto flex flex-col">
 
         <div className="flex justify-center mb-10">
@@ -176,6 +183,23 @@ export default function VendorLoginPage() {
                 {loading ? <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin" /> : <GoogleIcon />}
                 <span className="flex-1 text-center">Continue with Google</span>
               </button>
+
+              <div className="flex items-center gap-3 w-full">
+                <span className="h-px flex-1 bg-slate-200" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">or</span>
+                <span className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              {/* No allowSignUp: kitchen accounts are created by an admin, so
+                  this portal offers sign-in and password reset only. */}
+              <div className="w-full">
+                <EmailPasswordForm
+                  signInLabel="Sign In to Kitchen"
+                  accentClassName="bg-rose-600 hover:bg-rose-700"
+                  onNotify={(m, k) => addToast(m, k)}
+                  onSuccess={(u) => { void handleAuthSuccess(u); }}
+                />
+              </div>
             </div>
           )}
 

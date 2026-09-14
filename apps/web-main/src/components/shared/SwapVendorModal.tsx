@@ -11,6 +11,7 @@ import { useUiStore } from '@/store/uiStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerHapticImpact, triggerHapticNotification, ImpactStyle, NotificationType } from '@/lib/haptics';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 // Geolocation distance helper
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -128,6 +129,9 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
         // 1. Create payment order (Callable Cloud Function + REST fallback)
         const order = await createRazorpayOrder(
           5000, // ₹50.00 in paise
+          // Runs inside the handleSwap click handler, not during render; a
+          // unique receipt id per attempt is the intent.
+          // eslint-disable-next-line react-hooks/purity
           `swap_${delivery.id}_${Date.now()}`.slice(0, 40),
           {
             user_id: userId,
@@ -143,7 +147,7 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
         // 2. Open Razorpay Checkout modal
         setPaymentStatus('awaiting_payment');
         const paymentResponse = await new Promise<any>((resolve, reject) => {
-          const RazorpayConstructor = (window as any).Razorpay;
+          const RazorpayConstructor = window.Razorpay;
           if (!RazorpayConstructor) {
             reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
             return;
@@ -199,9 +203,9 @@ export function SwapVendorModal({ isOpen, onClose, userLocation, userId, deliver
         onSwapSuccess(delivery.id);
         onClose();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       triggerHapticNotification(NotificationType.Error);
-      setError(err.message || 'Swap operation failed');
+      setError(getErrorMessage(err) || 'Swap operation failed');
       setSwappingId(null);
       setPaymentStatus('idle');
     }

@@ -12,6 +12,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
+  // Required for env(safe-area-inset-*) to report anything but 0 on notched
+  // iPhones. globals.css already uses those insets in ~50 places; without
+  // viewport-fit=cover they all silently collapse to the fallback and content
+  // sits under the notch and the home indicator. This app ships via Capacitor,
+  // so that is a real device, not a hypothetical.
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
@@ -31,7 +37,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning applies to THIS element's attributes only,
+    // one level deep -- it does not hide real content mismatches. Browser
+    // extensions (QuillBot writes data-qb-installed, Grammarly and password
+    // managers do similar) mutate <html> before React hydrates, which React
+    // otherwise reports as a hydration error the app cannot fix.
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-slate-50 text-slate-900 antialiased font-sans">
         <Toaster position="top-center" />
         <PermissionGuard />

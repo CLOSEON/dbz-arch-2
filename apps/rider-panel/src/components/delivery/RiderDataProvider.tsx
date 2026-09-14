@@ -16,10 +16,10 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const isDelivery = user?.role === 'delivery' || 
                        (user?.role as string) === 'delivery_agent' || 
-                       (user as any)?.roles?.delivery === true || 
+                       user?.roles?.delivery === true || 
                        user?.role === 'admin' || 
                        user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com' || 
-                       (user as any)?.is_superadmin === true;
+                       user?.is_superadmin === true;
 
     if (!user?.id || !isDelivery) {
       return;
@@ -115,7 +115,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       if (unsubOrders) unsubOrders();
       if (unsubTrip) unsubTrip();
     };
-  }, [user?.id, user?.role, (user as any)?.roles, setAgentOrders, setActiveTrip, setLastSynced]);
+  }, [user?.id, user?.role, user?.roles, setAgentOrders, setActiveTrip, setLastSynced]);
 
   return <>{children}</>;
 }

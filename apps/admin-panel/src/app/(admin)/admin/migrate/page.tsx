@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import type { Order, OrderStatus } from '@/types';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 export default function MigrateOrdersPage() {
   const user = useAuthStore((s) => s.user);
@@ -101,9 +102,9 @@ export default function MigrateOrdersPage() {
 
       addToast('Migration completed successfully!', 'success');
       log('Migration completed successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      log(`Error during migration: ${error.message}`);
+      log(`Error during migration: ${getErrorMessage(error)}`);
       addToast('Migration failed.', 'error');
     } finally {
       setLoading(false);
@@ -147,9 +148,9 @@ export default function MigrateOrdersPage() {
                   await seedTestAccounts();
                   addToast('Seeded 4 core test accounts! (+919000000001-4)', 'success');
                   log('Successfully seeded 4 test accounts (+919000000001 Admin, +919000000002 Vendor, +919000000003 Rider, +919000000004 Customer)');
-                } catch (err: any) {
-                  addToast(err.message || 'Seed failed', 'error');
-                  log(`Seed error: ${err.message}`);
+                } catch (err: unknown) {
+                  addToast(getErrorMessage(err) || 'Seed failed', 'error');
+                  log(`Seed error: ${getErrorMessage(err)}`);
                 } finally {
                   setLoading(false);
                 }

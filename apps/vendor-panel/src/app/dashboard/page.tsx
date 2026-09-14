@@ -23,6 +23,7 @@ import { PendingVerificationScreen } from '@/components/shared/PendingVerificati
 import { generateBoxTag } from '@/lib/boxTag';
 import { getBoxManifest } from '@/lib/mealManifest';
 import { VegIcon, NonVegIcon, DietaryBadge } from '@/components/shared/DietaryIcon';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 type ActiveTab = 'overview' | 'tags' | 'menu' | 'subscribers' | 'rates';
 
@@ -77,11 +78,11 @@ export default function VendorDashboard() {
 
   const isSuper = (user?.email || '').toLowerCase().trim() === 'closeon.st@gmail.com' || 
                   user?.is_superadmin === true || 
-                  (user as any)?.roles?.admin === true || 
+                  user?.roles?.admin === true || 
                   user?.role === 'admin';
   const isVendorRole = user?.role === 'vendor' || isSuper;
   const isVerifiedVendor = (user?.is_approved === true || user?.verification_status === 'verified' || isSuper) &&
-    user?.is_rejected !== true && (user as any)?.is_suspended !== true &&
+    user?.is_rejected !== true && user?.is_suspended !== true &&
     user?.verification_status !== 'rejected' && user?.verification_status !== 'details_requested';
 
   // Custom confirmation dialog state
@@ -243,9 +244,9 @@ export default function VendorDashboard() {
           } else {
             toast.error(res.data?.message || 'Failed to mark ready.');
           }
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error(e);
-          toast.error(e.message || 'Error marking batch ready.');
+          toast.error(getErrorMessage(e) || 'Error marking batch ready.');
         } finally {
           setIsMarkingReady(null);
         }
@@ -323,7 +324,11 @@ export default function VendorDashboard() {
               {vendorProfile?.kitchen_name?.[0]?.toUpperCase() || vendorProfile?.name?.[0]?.toUpperCase() || 'K'}
             </div>
 
-            <div>
+            {/* min-w-0 is required here. A flex child defaults to
+                min-width:auto, so it refuses to shrink below its content and
+                pushes the whole page wider than the viewport -- which is what
+                made the vendor dashboard scroll sideways on a phone. */}
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   {vendorProfile?.kitchen_name || vendorProfile?.name || 'Kitchen Hub'}
@@ -363,14 +368,14 @@ export default function VendorDashboard() {
               {/* Superadmin Kitchen Switcher Toggle Under Location */}
               {isSuper && allVendors.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
-                  <div className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 px-2.5 py-1 rounded-xl transition-all shadow-2xs">
+                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/90 px-2.5 py-1 rounded-xl transition-all shadow-2xs">
                     <ChefHat className="w-3.5 h-3.5 text-brand shrink-0" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">Switch Kitchen:</span>
                     <select
                       id="kitchen-switch"
                       value={activeVendorId || vendorProfile?.id || ''}
                       onChange={(e) => setActiveVendorId(e.target.value)}
-                      className="bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer pr-1"
+                      className="min-w-0 max-w-[45vw] sm:max-w-none truncate bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer pr-1"
                     >
                       {allVendors.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -443,10 +448,10 @@ export default function VendorDashboard() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             
             {/* 1. Active Subscribers */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
-                <span className="uppercase tracking-wider">Active Subscribers</span>
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-brand flex items-center justify-center">
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2 text-slate-400 text-[10px] sm:text-xs font-bold mb-2">
+                <span className="uppercase tracking-wide sm:tracking-wider leading-tight">Active Subscribers</span>
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-brand flex items-center justify-center shrink-0">
                   <Users className="w-4 h-4" />
                 </div>
               </div>
@@ -459,10 +464,10 @@ export default function VendorDashboard() {
             </div>
 
             {/* 2. Today's Prep Volume */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
-                <span className="uppercase tracking-wider">Today's Prep</span>
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2 text-slate-400 text-[10px] sm:text-xs font-bold mb-2">
+                <span className="uppercase tracking-wide sm:tracking-wider leading-tight">Today's Prep</span>
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                   <ChefHat className="w-4 h-4" />
                 </div>
               </div>
@@ -494,10 +499,10 @@ export default function VendorDashboard() {
             </div>
 
             {/* 3. Kitchen Capacity */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
-                <span className="uppercase tracking-wider">Slot Capacity</span>
-                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2 text-slate-400 text-[10px] sm:text-xs font-bold mb-2">
+                <span className="uppercase tracking-wide sm:tracking-wider leading-tight">Slot Capacity</span>
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                   <Activity className="w-4 h-4" />
                 </div>
               </div>
@@ -513,10 +518,10 @@ export default function VendorDashboard() {
             </div>
 
             {/* 4. Total Revenue */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
-                <span className="uppercase tracking-wider">Estimated Revenue</span>
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2 text-slate-400 text-[10px] sm:text-xs font-bold mb-2">
+                <span className="uppercase tracking-wide sm:tracking-wider leading-tight">Estimated Revenue</span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                   <IndianRupee className="w-4 h-4" />
                 </div>
               </div>
@@ -790,7 +795,7 @@ export default function VendorDashboard() {
               </div>
 
               <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs">
-                <div className="grid grid-cols-7 gap-2 mb-3">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-3">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
                     <div key={day} className="text-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
                       {day}
@@ -798,7 +803,7 @@ export default function VendorDashboard() {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-7 gap-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
                   {(() => {
                     const groupedByDate: Record<string, { displayDate: string; totalCount: number; details: any[] }> = {};
                     prepSchedule.forEach((prep: any) => {

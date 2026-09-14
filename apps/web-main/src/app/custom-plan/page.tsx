@@ -98,7 +98,7 @@ function CustomPlanContent() {
   const kitchenTitle = selectedVendor?.kitchen_name || selectedVendor?.name;
 
   return (
-    <div className="min-h-screen bg-[#FEFCE8] py-8 px-3 sm:px-6">
+    <div className="min-h-dvh bg-[#FEFCE8] py-8 px-3 sm:px-6">
       {/* Top Navigation & Brand Header */}
       <div className="max-w-4xl mx-auto mb-6 flex items-center justify-between">
         <Link
@@ -231,7 +231,7 @@ function CustomPlanContent() {
             const isWeekly =
               (sub as any).billingCycle === 'weekly' ||
               sub.frequency === 'weekly' ||
-              (sub as any).subscriptionType === 'custom_weekly';
+              sub.subscriptionType === 'custom_weekly';
             setActiveTab(isWeekly ? 'weekly' : 'monthly');
           }}
         />
@@ -254,7 +254,7 @@ export default function CustomPlanPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#FEFCE8] flex items-center justify-center p-8">
+        <div className="min-h-dvh bg-[#FEFCE8] flex items-center justify-center p-8">
           <div className="text-center space-y-2">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-brand flex items-center justify-center mx-auto animate-pulse">
               <ChefHat className="w-5 h-5" />

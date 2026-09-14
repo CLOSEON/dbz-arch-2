@@ -1,14 +1,3 @@
-import { create } from 'zustand';
-
-interface NetworkState {
-  isOnline: boolean;
-  setOnline: (status: boolean) => void;
-}
-
-// Ensure SSR safety by defaulting to true
-const initialStatus = typeof navigator !== 'undefined' ? navigator.onLine : true;
-
-export const useNetworkStore = create<NetworkState>((set) => ({
-  isOnline: initialStatus,
-  setOnline: (status) => set({ isOnline: status }),
-}));
+// Thin re-export — canonical version lives in packages/shared-lib.
+// See IMPLEMENTATION_PLAN.md Phase 1.
+export * from '@dabzzo/shared-lib/stores/networkStore';

@@ -35,15 +35,16 @@ import { riderPaymentConverter, RiderPayment } from '@/types/payout';
 import type { Order, AppUser } from '@/types';
 import { MissedDeliveryModal } from '@/components/admin/MissedDeliveryModal';
 import { useAuthStore } from '@/store/authStore';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
+ 
 declare global {
   interface Window {
     google?: typeof google;
     initGoogleMap?: () => void;
   }
 }
-/* eslint-enable @typescript-eslint/no-namespace, @typescript-eslint/no-unsafe-declaration-merging, no-var */
+ 
 
 function getTimestampMs(timestamp: any): number {
   if (!timestamp) return 0;
@@ -55,7 +56,7 @@ function getTimestampMs(timestamp: any): number {
 
 export default function AdminDeliveryOversightPage() {
   const { user, isHydrated } = useAuthStore();
-  const isAdmin = user?.role === 'admin' || (user as any)?.is_superadmin === true || user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com';
+  const isAdmin = user?.role === 'admin' || user?.is_superadmin === true || user?.email?.toLowerCase().trim() === 'closeon.st@gmail.com';
 
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -90,7 +91,7 @@ export default function AdminDeliveryOversightPage() {
     const unsub = onSnapshot(q, snap => {
       const rawRiders = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as AppUser))
-        .filter(u => u.role === 'delivery' || (u as any).roles?.delivery || u.phone === '+919900990044' || u.phone === '+919930577000');
+        .filter(u => u.role === 'delivery' || u.roles?.delivery || u.phone === '+919900990044' || u.phone === '+919930577000');
       
       // Deduplicate by unique phone number or email (keeping active primary account)
       const seen = new Set<string>();
@@ -196,6 +197,10 @@ export default function AdminDeliveryOversightPage() {
     }
     if (window.google?.maps) initMap();
     else {
+      // The Maps SDK is loaded with &callback=initGoogleMap, so it invokes
+      // window.initGoogleMap once ready — assigning to window is the API's
+      // contract, not incidental mutation. Runs inside an effect, not render.
+      // eslint-disable-next-line react-hooks/immutability
       window.initGoogleMap = initMap;
       const key = process.env.NEXT_PUBLIC_GMAPS_KEY || '';
       if (!document.getElementById('google-maps-js-sdk') && key) {
@@ -279,8 +284,8 @@ export default function AdminDeliveryOversightPage() {
     try {
       await approveUserRole(rider.id, rider.phone, rider.name || 'Rider', 'delivery');
       toast.success(`Approved & Verified Rider ${rider.name || rider.phone}! 🎉`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to approve rider');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to approve rider');
     }
   };
 
@@ -294,8 +299,8 @@ export default function AdminDeliveryOversightPage() {
         updated_at: Timestamp.now()
       });
       toast.success(`Approval revoked for ${rider.name || rider.phone}. Account set to Pending.`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to revoke approval');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to revoke approval');
     }
   };
 
@@ -319,8 +324,8 @@ export default function AdminDeliveryOversightPage() {
           toast.error(`No user registered with phone number ${phoneInput.trim()}`);
         }
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to approve rider by phone');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to approve rider by phone');
     }
   };
 
@@ -337,8 +342,8 @@ export default function AdminDeliveryOversightPage() {
       toast.success(`Info requested from ${infoModalRider.name || infoModalRider.phone}`);
       setInfoModalRider(null);
       setInfoNote('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to request info');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to request info');
     }
   };
 
@@ -349,8 +354,8 @@ export default function AdminDeliveryOversightPage() {
     try {
       await rejectUserRole(rider.id, rider.phone, reason);
       toast.success(`Rejected rider application for ${rider.name || rider.phone}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to reject rider');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || 'Failed to reject rider');
     }
   };
 
@@ -435,8 +440,8 @@ export default function AdminDeliveryOversightPage() {
                 
                 const assignRes = await forceAssignRiders();
                 toast.success(`🎉 Auto-Dispatch Completed! Assigned ${assignRes.assignedCount || 0} batches to riders.`, { id: toastId, duration: 4000 });
-              } catch (err: any) {
-                toast.error(err.message || 'Auto-dispatch failed', { id: toastId });
+              } catch (err: unknown) {
+                toast.error(getErrorMessage(err) || 'Auto-dispatch failed', { id: toastId });
               } finally {
                 setIsDispatching(false);
               }

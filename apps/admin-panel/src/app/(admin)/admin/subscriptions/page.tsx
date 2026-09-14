@@ -20,10 +20,6 @@ export default function AdminSubscriptions() {
   const [search, setSearch] = useState('');
   const [showPricingConfig, setShowPricingConfig] = useState(false);
 
-  useEffect(() => {
-    loadSubscriptions();
-  }, []);
-
   async function loadSubscriptions() {
     setLoading(true);
     try {
@@ -49,6 +45,10 @@ export default function AdminSubscriptions() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadSubscriptions();
+  }, []);
 
   const filtered = useMemo(() => {
     let list = subs;

@@ -19,6 +19,7 @@ import { db } from '@/lib/firebase';
 import { Box, History, CreditCard, Utensils, Calendar, ChevronRight, Navigation, ArrowLeftRight, SkipForward, Clock, XCircle, Sun, Moon } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { generateBoxTag } from '@/lib/boxTag';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
   ssr: false,
@@ -169,6 +170,68 @@ export default function OrdersPage() {
     onConfirm: () => {},
   });
 
+  async function loadOrders() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      // Fix 15: Use vendor-only query instead of getAllUsers() full collection scan
+      const [subs, vendorList] = await Promise.all([
+        getUserSubscriptions(user.id),
+        getApprovedVendors(),
+      ]);
+      setVendorsList(vendorList);
+
+      const vendorMap: Record<string, any> = {};
+      vendorList.forEach((v) => { vendorMap[v.id] = v; });
+
+      const enriched: EnrichedSubscription[] = subs.map((s) => {
+        const vendor = vendorMap[s.vendor_id] ?? {};
+        const mealType = s.meal_type;
+        let price = s.paid_amount ?? s.total_price ?? 0;
+        let title = 'Subscription';
+
+        if (s.frequency === 'one-time') {
+          price = price || (mealType === 'dinner' ? (vendor.rate_dinner || 0) : (vendor.rate_lunch || 0));
+          title = `${mealType === 'both' ? 'Lunch + Dinner' : mealType === 'dinner' ? 'Dinner' : 'Lunch'} Single Meal`;
+        } else if (mealType === 'lunch') {
+          price = price || vendor.rate_lunch_weekly || vendor.rate_lunch || 0;
+          title = 'Lunch Plan';
+        } else if (mealType === 'dinner') {
+          price = price || vendor.rate_dinner_weekly || vendor.rate_dinner || 0;
+          title = 'Dinner Plan';
+        } else if (mealType === 'both') {
+          price = price || vendor.rate_both_weekly || vendor.rate_both || 0;
+          title = 'Lunch + Dinner';
+        }
+
+        return {
+          ...s,
+          vendorName: vendor.kitchen_name || s.vendor_name || vendor.name || 'Vendor',
+          vendorImage: vendor.image ?? '',
+          planTitle: title,
+          planPrice: price,
+          planFrequency: s.frequency || 'weekly',
+          createdMs: toMillis(s.created_at),
+        };
+      });
+
+      const uniqueMap = new Map<string, EnrichedSubscription>();
+      enriched.forEach((item) => {
+        const key = `${item.vendor_id}-${item.meal_type}-${item.status}`;
+        const existing = uniqueMap.get(key);
+        if (!existing || (item.createdMs ?? 0) > (existing.createdMs ?? 0)) {
+          uniqueMap.set(key, item);
+        }
+      });
+
+      setOrders(Array.from(uniqueMap.values()).sort((a, b) => (b.createdMs ?? 0) - (a.createdMs ?? 0)));
+    } catch (err) {
+      addToast('Failed to load orders', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!user?.id) return;
 
@@ -232,7 +295,7 @@ export default function OrdersPage() {
 
               return {
                 ...s,
-                vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
+                vendorName: vendor.kitchen_name || s.vendor_name || vendor.name || 'Vendor',
                 vendorImage: vendor.image ?? '',
                 planTitle: title,
                 planPrice: price,
@@ -440,68 +503,6 @@ export default function OrdersPage() {
     setUpcomingDeliveries(filtered);
   }, [realOrders, activeSubs, user, skippedSlots, vendorsList]);
 
-  async function loadOrders() {
-    if (!user) return;
-    setLoading(true);
-    try {
-      // Fix 15: Use vendor-only query instead of getAllUsers() full collection scan
-      const [subs, vendorList] = await Promise.all([
-        getUserSubscriptions(user.id),
-        getApprovedVendors(),
-      ]);
-      setVendorsList(vendorList);
-
-      const vendorMap: Record<string, any> = {};
-      vendorList.forEach((v) => { vendorMap[v.id] = v; });
-
-      const enriched: EnrichedSubscription[] = subs.map((s) => {
-        const vendor = vendorMap[s.vendor_id] ?? {};
-        const mealType = s.meal_type;
-        let price = s.paid_amount ?? s.total_price ?? 0;
-        let title = 'Subscription';
-
-        if (s.frequency === 'one-time') {
-          price = price || (mealType === 'dinner' ? (vendor.rate_dinner || 0) : (vendor.rate_lunch || 0));
-          title = `${mealType === 'both' ? 'Lunch + Dinner' : mealType === 'dinner' ? 'Dinner' : 'Lunch'} Single Meal`;
-        } else if (mealType === 'lunch') {
-          price = price || vendor.rate_lunch_weekly || vendor.rate_lunch || 0;
-          title = 'Lunch Plan';
-        } else if (mealType === 'dinner') {
-          price = price || vendor.rate_dinner_weekly || vendor.rate_dinner || 0;
-          title = 'Dinner Plan';
-        } else if (mealType === 'both') {
-          price = price || vendor.rate_both_weekly || vendor.rate_both || 0;
-          title = 'Lunch + Dinner';
-        }
-
-        return {
-          ...s,
-          vendorName: vendor.kitchen_name || (s as any).vendor_name || vendor.name || 'Vendor',
-          vendorImage: vendor.image ?? '',
-          planTitle: title,
-          planPrice: price,
-          planFrequency: s.frequency || 'weekly',
-          createdMs: toMillis(s.created_at),
-        };
-      });
-
-      const uniqueMap = new Map<string, EnrichedSubscription>();
-      enriched.forEach((item) => {
-        const key = `${item.vendor_id}-${item.meal_type}-${item.status}`;
-        const existing = uniqueMap.get(key);
-        if (!existing || (item.createdMs ?? 0) > (existing.createdMs ?? 0)) {
-          uniqueMap.set(key, item);
-        }
-      });
-
-      setOrders(Array.from(uniqueMap.values()).sort((a, b) => (b.createdMs ?? 0) - (a.createdMs ?? 0)));
-    } catch (err) {
-      addToast('Failed to load orders', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleCancel(subId: string) {
     setConfirmConfig({
       isOpen: true,
@@ -555,8 +556,8 @@ export default function OrdersPage() {
           const slotKey = `${d.toLocaleDateString('en-CA')}_${delivery.meal?.type || 'lunch'}`;
           setSkippedSlots(prev => [...new Set([...prev, slotKey])]);
           addToast(`Skipped! You earned ${result.creditsEarned} credits 🎉`, 'success');
-        } catch (err: any) {
-          addToast(err?.message || 'Cannot skip this delivery', 'error');
+        } catch (err: unknown) {
+          addToast(getErrorMessage(err) || 'Cannot skip this delivery', 'error');
         } finally { setSkipping(null); }
       }
     });
@@ -575,8 +576,8 @@ export default function OrdersPage() {
       } else {
         addToast('Skip cancelled — 1 day deducted, remainder refunded ✓', 'success');
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Cannot undo skip', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Cannot undo skip', 'error');
     } finally { setSkipping(null); }
   }
 
@@ -599,8 +600,8 @@ export default function OrdersPage() {
       await cancelSwapRequest(delivery.id, user.id);
       setSwappedIds(prev => prev.filter(id => id !== delivery.id));
       addToast('Swap request cancelled.', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Cannot cancel swap request', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Cannot cancel swap request', 'error');
     } finally { setSwapping(null); }
   }
 

@@ -161,28 +161,10 @@ export default function VendorDetailClient(props: PageProps) {
     custom_component_rates: {}
   });
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('edit') === 'true' || urlParams.get('tab') === 'pricing') {
-        setActiveTab('pricing');
-      } else if (urlParams.get('tab')) {
-        const tab = urlParams.get('tab') as ActiveTab;
-        if (['overview', 'menu', 'pricing', 'subscribers', 'orders', 'settings'].includes(tab)) {
-          setActiveTab(tab);
-        }
-      }
-    }
-    if (vendorId) {
-      loadVendorData();
-    }
-  }, [vendorId]);
-
-  useEffect(() => {
-    if (vendorId && menuDate) {
-      loadDailyMenuData(menuDate);
-    }
-  }, [vendorId, menuDate]);
+  const normalizeItems = (items?: (MenuItem | string)[]): string[] => {
+    if (!items || !Array.isArray(items)) return [];
+    return items.map(item => typeof item === 'string' ? item : (item.name || ''));
+  };
 
   async function loadVendorData() {
     if (!vendorId) return;
@@ -239,10 +221,10 @@ export default function VendorDetailClient(props: PageProps) {
         image: vendorData.image || '',
         vendor_margin_percent: typeof vendorData.vendor_margin_percent === 'number'
           ? String(vendorData.vendor_margin_percent)
-          : (typeof (vendorData as any).vendor_margin_override === 'number' ? String((vendorData as any).vendor_margin_override) : ''),
+          : (typeof vendorData.vendor_margin_override === 'number' ? String(vendorData.vendor_margin_override) : ''),
         standard_meal_payout: typeof vendorData.standard_meal_payout === 'number'
           ? String(vendorData.standard_meal_payout)
-          : (typeof (vendorData as any).vendor_base_payout === 'number' ? String((vendorData as any).vendor_base_payout) : ''),
+          : (typeof vendorData.vendor_base_payout === 'number' ? String(vendorData.vendor_base_payout) : ''),
         custom_component_rates: (() => {
           const initialCustomRates: Record<string, string> = {};
           if (vendorData.custom_component_rates && typeof vendorData.custom_component_rates === 'object') {
@@ -275,10 +257,22 @@ export default function VendorDetailClient(props: PageProps) {
     }
   }
 
-  const normalizeItems = (items?: (MenuItem | string)[]): string[] => {
-    if (!items || !Array.isArray(items)) return [];
-    return items.map(item => typeof item === 'string' ? item : (item.name || ''));
-  };
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') === 'true' || urlParams.get('tab') === 'pricing') {
+        setActiveTab('pricing');
+      } else if (urlParams.get('tab')) {
+        const tab = urlParams.get('tab') as ActiveTab;
+        if (['overview', 'menu', 'pricing', 'subscribers', 'orders', 'settings'].includes(tab)) {
+          setActiveTab(tab);
+        }
+      }
+    }
+    if (vendorId) {
+      loadVendorData();
+    }
+  }, [vendorId]);
 
   async function loadDailyMenuData(dateStr: string) {
     setMenuLoading(true);
@@ -301,6 +295,12 @@ export default function VendorDetailClient(props: PageProps) {
       setMenuLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (vendorId && menuDate) {
+      loadDailyMenuData(menuDate);
+    }
+  }, [vendorId, menuDate]);
 
   async function handleSaveMenu() {
     setSavingMenu(true);
@@ -622,7 +622,7 @@ export default function VendorDetailClient(props: PageProps) {
     );
   }
 
-  const isSuspended = (vendor as any).is_suspended === true;
+  const isSuspended = vendor.is_suspended === true;
 
   const TABS: { key: ActiveTab; label: string; icon: any }[] = [
     { key: 'overview', label: 'Overview', icon: BarChart3 },
@@ -1844,7 +1844,7 @@ export default function VendorDetailClient(props: PageProps) {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {history.map((order) => {
+              {history.map((order, orderIdx) => {
                 // Safely extract address — can be string or Firestore map object
                 const rawAddr = (order as any).delivery_address ?? (order as any).address ?? '';
                 const addrStr = typeof rawAddr === 'string'
@@ -1866,7 +1866,7 @@ export default function VendorDetailClient(props: PageProps) {
                 const orderId = order.id ?? '';
 
                 return (
-                  <div key={orderId || Math.random()} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div key={orderId || `order-${orderIdx}`} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-slate-900 font-mono">

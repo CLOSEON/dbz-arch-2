@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detects content from this app's own directory and does NOT
+   look inside packages/. Any class used ONLY by a shared component therefore
+   generated no CSS at all -- the class appeared in the markup and computed to
+   nothing. That is what made pt-28 on the hero resolve to 0px while text-3xl,
+   which also appears in app code, worked fine.
+   These @source directives put the shared packages back in scope. */
+@source "../../../../packages/shared-ui/src";
+@source "../../../../packages/shared-auth/src";
+
 @theme {
   --color-brand: #E68A00;
   --color-brand-50: #FFFBEB;
@@ -121,6 +130,13 @@
     letter-spacing: -0.015em;
     overscroll-behavior: none;
     min-height: 100vh;
+    /* 100dvh tracks the *visible* viewport as the mobile URL bar collapses.
+       Plain 100vh includes the area behind that bar, so the page is taller
+       than the screen and content gets pushed out of view / scroll jumps.
+       The 100vh line above stays as the fallback for older browsers. */
+    min-height: 100dvh;
+    /* Nothing should ever scroll the page sideways on a phone. */
+    overflow-x: hidden;
   }
   
   h1, h2, h3, h4, h5, h6 {

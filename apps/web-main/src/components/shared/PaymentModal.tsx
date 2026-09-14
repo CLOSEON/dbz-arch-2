@@ -7,6 +7,7 @@ import { renewSubscription } from '@/lib/queries/subscriptions';
 import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -48,7 +49,7 @@ export function PaymentModal({ isOpen, onClose, subscription, amount, onSuccess 
       // 3. Open Razorpay Checkout modal
       setPaymentStatus('awaiting_payment');
       const paymentResponse = await new Promise<any>((resolve, reject) => {
-        const RazorpayConstructor = (window as any).Razorpay;
+        const RazorpayConstructor = window.Razorpay;
         if (!RazorpayConstructor) {
           reject(new Error('Razorpay SDK failed to load. Please check your internet connection.'));
           return;
@@ -103,8 +104,8 @@ export function PaymentModal({ isOpen, onClose, subscription, amount, onSuccess 
       addToast('Renewal successful! Subscription extended. 🎉', 'success');
       onSuccess();
       onClose();
-    } catch (err: any) {
-      addToast(err.message || 'Payment renewal failed', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Payment renewal failed', 'error');
       setPaymentStatus('idle');
     } finally {
       setLoading(false);

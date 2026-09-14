@@ -28,7 +28,7 @@ export default function VendorSupportPage() {
       addToast('Support ticket created! We will get back to you soon.', 'success');
       setSubject('');
       setMessage('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast('Failed to create ticket', 'error');
     } finally {
       setLoading(false);

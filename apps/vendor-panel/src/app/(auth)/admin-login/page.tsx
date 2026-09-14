@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { loginWithEmailPassword } from '@/lib/queries/users';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 /**
  * HIDDEN ADMIN LOGIN — Not linked from any public page.
@@ -31,15 +32,15 @@ export default function AdminLoginPage() {
       setUser(user);
       addToast(`Welcome back, ${user.name} 👑`, 'success');
       router.replace('/admin/dashboard');
-    } catch (err: any) {
-      addToast(err.message || 'Login failed', 'error');
+    } catch (err: unknown) {
+      addToast(getErrorMessage(err) || 'Login failed', 'error');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-5 py-12">
+    <div className="min-h-dvh bg-slate-950 flex flex-col items-center justify-center px-5 py-12">
       <div className="text-center mb-10">
         <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto mb-4 border border-slate-700">
           <span className="text-2xl">👑</span>

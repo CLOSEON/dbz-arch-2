@@ -26,15 +26,11 @@ export default function AdminVendors() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchActionLoading, setBatchActionLoading] = useState(false);
 
-  useEffect(() => {
-    loadVendors();
-  }, []);
-
   async function loadVendors() {
     setLoading(true);
     try {
       const list = await getAllUsers();
-      const rawVendors = list.filter(u => u.role === 'vendor' || (u as any).roles?.vendor);
+      const rawVendors = list.filter(u => u.role === 'vendor' || u.roles?.vendor);
       
       // Deduplicate vendors by unique account ID (each vendor is a distinct kitchen)
       const seen = new Set<string>();
@@ -60,6 +56,10 @@ export default function AdminVendors() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadVendors();
+  }, []);
 
   async function handleApproval(id: string, approved: boolean) {
     try {
@@ -118,9 +118,9 @@ export default function AdminVendors() {
 
   const filtered = useMemo(() => {
     let list = users;
-    if (filter === 'pending') list = list.filter(u => !u.is_approved && !(u as any).is_suspended);
-    if (filter === 'approved') list = list.filter(u => u.is_approved && !(u as any).is_suspended);
-    if (filter === 'suspended') list = list.filter(u => (u as any).is_suspended);
+    if (filter === 'pending') list = list.filter(u => !u.is_approved && !u.is_suspended);
+    if (filter === 'approved') list = list.filter(u => u.is_approved && !u.is_suspended);
+    if (filter === 'suspended') list = list.filter(u => u.is_suspended);
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -164,9 +164,9 @@ export default function AdminVendors() {
         <div className="flex items-center gap-1 p-1 bg-slate-200/60 rounded-xl">
           {(['pending', 'approved', 'suspended', 'all'] as const).map((t) => {
             const count = users.filter(u => {
-              if (t === 'pending') return !u.is_approved && !(u as any).is_suspended;
-              if (t === 'approved') return u.is_approved && !(u as any).is_suspended;
-              if (t === 'suspended') return (u as any).is_suspended;
+              if (t === 'pending') return !u.is_approved && !u.is_suspended;
+              if (t === 'approved') return u.is_approved && !u.is_suspended;
+              if (t === 'suspended') return u.is_suspended;
               return true;
             }).length;
 
@@ -224,7 +224,7 @@ export default function AdminVendors() {
           </div>
 
           {filtered.map((v) => {
-            const isSuspended = (v as any).is_suspended === true;
+            const isSuspended = v.is_suspended === true;
             const vegMonthly = v.rate_veg_lunch_monthly || v.rate_lunch_monthly || v.rate_veg_both_monthly || v.rate_both_monthly;
             const nonVegMonthly = v.rate_nonveg_lunch_monthly || v.rate_nonveg_both_monthly;
             const addonsCount = v.addons?.length || 0;

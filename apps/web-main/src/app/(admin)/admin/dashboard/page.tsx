@@ -53,6 +53,7 @@ import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { CustomPlanInsightsCard } from '@/components/admin/CustomPlanInsightsCard';
 import { UserManagementHub } from '@/components/admin/UserManagementHub';
+import { getErrorMessage } from '@dabzzo/shared-lib/errors';
 
 const DeliveryMap = dynamic(() => import('@/components/delivery/DeliveryMap'), { 
   ssr: false,
@@ -354,9 +355,9 @@ export default function AdminDashboard() {
       toast.success('Successfully moved tiffin to new vendor! 🏪');
       setSelectedOrderToMove(null);
       loadKitchenOverrideData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || 'Failed to move order');
+      toast.error(getErrorMessage(err) || 'Failed to move order');
     } finally {
       setMovingOrder(false);
     }

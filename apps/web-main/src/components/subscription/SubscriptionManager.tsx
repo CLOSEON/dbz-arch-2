@@ -239,7 +239,10 @@ export function SubscriptionManager({
     if (onModifyPlan) {
       onModifyPlan(sub);
     } else {
-      // Default navigation to builder
+      // Default navigation to builder. Runs inside the handleModify click
+      // handler, not render. (Note: this is a full page load rather than a
+      // client-side router.push, which is a deliberate fallback here.)
+      // eslint-disable-next-line react-hooks/immutability
       window.location.href = `/custom-plan?modifySubId=${sub.id}`;
     }
   };
@@ -459,20 +462,20 @@ export function SubscriptionManager({
               </div>
 
               {/* Custom Thali Manifest Banner */}
-              {Boolean((sub as any).custom_meal_config?.manifestSummary || (sub as any).meal_components?.length) && (
+              {Boolean(sub.custom_meal_config?.manifestSummary || sub.meal_components?.length) && (
                 <div className="p-3 rounded-2xl bg-orange-50/70 border border-orange-200/80 text-xs font-semibold text-slate-700 mb-4 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <span className="text-sm shrink-0">🍱</span>
                     <span className="truncate">
                       <span className="font-bold text-orange-950 mr-1">Custom Portions:</span>
                       <span className="text-orange-900 font-medium">
-                        {(sub as any).custom_meal_config?.manifestSummary || (sub as any).meal_components?.join(', ')}
+                        {sub.custom_meal_config?.manifestSummary || sub.meal_components?.join(', ')}
                       </span>
                     </span>
                   </div>
-                  {Boolean((sub as any).custom_meal_config?.customerDeltaPerMeal) && (
+                  {Boolean(sub.custom_meal_config?.customerDeltaPerMeal) && (
                     <span className="shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-200/70 text-orange-900">
-                      {(sub as any).custom_meal_config.customerDeltaPerMeal > 0 ? `+₹${(sub as any).custom_meal_config.customerDeltaPerMeal}` : `-₹${Math.abs((sub as any).custom_meal_config.customerDeltaPerMeal)}`}/meal
+                      {sub.custom_meal_config.customerDeltaPerMeal > 0 ? `+₹${sub.custom_meal_config.customerDeltaPerMeal}` : `-₹${Math.abs(sub.custom_meal_config.customerDeltaPerMeal)}`}/meal
                     </span>
                   )}
                 </div>
@@ -630,7 +633,7 @@ export function SubscriptionManager({
                 <div className="flex justify-between">
                   <span className="text-slate-600">Plan Type:</span>
                   <span className="font-bold text-slate-900">
-                    {(selectedSubForDetails as any).subscriptionType === 'custom_monthly'
+                    {selectedSubForDetails.subscriptionType === 'custom_monthly'
                       ? 'Monthly Custom Plan'
                       : 'Weekly Custom Plan'}
                   </span>
@@ -644,7 +647,7 @@ export function SubscriptionManager({
                 <div className="flex justify-between">
                   <span className="text-slate-600">Total Price:</span>
                   <span className="font-black text-amber-600">
-                    ₹{(selectedSubForDetails as any).customPlan?.totalPrice || selectedSubForDetails.price}
+                    ₹{selectedSubForDetails.customPlan?.totalPrice || selectedSubForDetails.price}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -672,11 +675,11 @@ export function SubscriptionManager({
                 <h4 className="text-xs font-black uppercase text-slate-500 mb-2">
                   Full Meal Schedule Breakdown
                 </h4>
-                {(selectedSubForDetails as any).subscriptionType === 'custom_monthly' ? (
+                {selectedSubForDetails.subscriptionType === 'custom_monthly' ? (
                   <MiniMonthCalendar
                     pattern={
-                      (selectedSubForDetails as any).customPlan?.pattern ||
-                      (selectedSubForDetails as any).deliveryPattern ||
+                      selectedSubForDetails.customPlan?.pattern ||
+                      selectedSubForDetails.deliveryPattern ||
                       {}
                     }
                   />
@@ -684,8 +687,8 @@ export function SubscriptionManager({
                   <div className="grid grid-cols-7 gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
                     {WEEKDAY_NAMES.map(({ full, short }) => {
                       const pattern =
-                        (selectedSubForDetails as any).customPlan?.pattern ||
-                        (selectedSubForDetails as any).deliveryPattern ||
+                        selectedSubForDetails.customPlan?.pattern ||
+                        selectedSubForDetails.deliveryPattern ||
                         {};
                       const count = Number(
                         pattern[full] ?? pattern[short.toLowerCase()] ?? pattern[short] ?? 0

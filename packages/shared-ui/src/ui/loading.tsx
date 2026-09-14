@@ -339,7 +339,7 @@ export function DabzzoLoading({ onDone }: { onDone?: boolean }) {
 export function DabzzoLoadingScreen() {
   return (
     <div
-      className="min-h-screen flex items-center justify-center"
+      className="min-h-dvh flex items-center justify-center"
       style={{
         background:
           'radial-gradient(ellipse 80% 60% at 50% 45%, rgba(230, 138, 0, 0.12) 0%, rgba(254, 243, 199, 0.35) 45%, #FAF8F5 100%)',

@@ -1,0 +1,50 @@
+{
+  "name": "@dabzzo/shared-lib",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./boxTag": "./src/boxTag.ts",
+    "./errors": "./src/errors.ts",
+    "./geo": "./src/geo.ts",
+    "./geolocation": "./src/geolocation.ts",
+    "./haptics": "./src/haptics.ts",
+    "./hooks/useDeliveryNavigation": "./src/hooks/useDeliveryNavigation.ts",
+    "./notifications": "./src/notifications.ts",
+    "./notifications/constants": "./src/notifications/constants.ts",
+    "./notifications/push": "./src/notifications/push.ts",
+    "./notifications/pushInit": "./src/notifications/pushInit.tsx",
+    "./offers": "./src/offers.ts",
+    "./offline/actionQueue": "./src/offline/actionQueue.ts",
+    "./pricing": "./src/pricing.ts",
+    "./pricingEngine": "./src/pricingEngine.ts",
+    "./storage": "./src/storage.ts",
+    "./stores/authStore": "./src/stores/authStore.ts",
+    "./stores/deliveryStore": "./src/stores/deliveryStore.ts",
+    "./stores/networkStore": "./src/stores/networkStore.ts",
+    "./stores/uiStore": "./src/stores/uiStore.ts",
+    "./stores/vendorStore": "./src/stores/vendorStore.ts",
+    "./utils": "./src/utils.ts"
+  },
+  "dependencies": {
+    "@dabzzo/shared-auth": "*",
+    "@dabzzo/shared-types": "*",
+    "clsx": "^2.1.1",
+    "firebase": "^12.13.0",
+    "tailwind-merge": "^3.6.0",
+    "@dabzzo/shared-queries": "*",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.4",
+    "zustand": "^5.0.13"
+  },
+  "peerDependencies": {
+    "next": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -24,6 +24,7 @@ const targetApp = process.argv[2];
 const allApps = ['web-main', 'admin-panel', 'vendor-panel', 'rider-panel', 'gig'];
 
 const apps = targetApp ? [targetApp] : allApps;
+const failed = [];
 
 console.log(`🚀 Starting static export builds for ${targetApp ? `app: ${targetApp}` : 'all workspace apps'}...\n`);
 
@@ -31,12 +32,19 @@ for (const appName of apps) {
   const appPath = path.join(appsDir, appName);
   if (!fs.existsSync(appPath)) {
     console.error(`❌ App "${appName}" does not exist in ${appsDir}`);
+    failed.push(appName);
+    process.exitCode = 1;
     continue;
   }
 
   console.log(`--------------------------------------------------`);
   console.log(`📦 Building static export for app: ${appName}...`);
   console.log(`--------------------------------------------------`);
+
+  // Copy root .env/.env.local into the app dir — Next.js reads env files
+  // from process.cwd(), and this script runs `next build` with cwd set to
+  // apps/<name>, so the root env would otherwise be invisible to the build.
+  execSync(`"${process.execPath}" "${path.join(root, 'scripts', 'sync-env.mjs')}" ${appName}`, { stdio: 'inherit' });
 
   const apiDir = path.join(appPath, 'src', 'app', 'api');
   const apiBackup = path.join(appPath, 'src', 'app', '_api_backup');
@@ -52,6 +60,7 @@ for (const appName of apps) {
     console.log(`✅ ${appName} build complete! Output generated in apps/${appName}/out\n`);
   } catch (err) {
     console.error(`❌ Build failed for ${appName}:`, err.message);
+    failed.push(appName);
     process.exitCode = 1;
   } finally {
     if (fs.existsSync(apiBackup)) {
@@ -62,4 +71,12 @@ for (const appName of apps) {
   }
 }
 
-console.log('\n🎉 Static export build completed successfully!');
+// Report honestly. This previously printed "completed successfully" even when
+// an app had failed (process.exitCode was set, but the success banner printed
+// regardless) — which reads as a green build in CI logs and in a terminal.
+if (process.exitCode === 1) {
+  console.error(`\n❌ Static export build FAILED for: ${failed.join(', ')}`);
+  console.error(`   (${apps.length - failed.length}/${apps.length} apps built)`);
+} else {
+  console.log('\n🎉 Static export build completed successfully!');
+}
