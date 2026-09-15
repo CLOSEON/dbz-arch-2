@@ -6,6 +6,64 @@ Format per entry: date, phase, files added/changed/removed, and the reason — e
 
 ---
 
+## 2026-09-15 — web-main Track Meal page overhaul + repo-wide Razorpay build blocker fixed
+
+Post-plan work (adds to the completed Phase 1–6 status, not part of any phase). Two independent work streams in one session:
+
+### 1. Customer app (web-main): Track Meal page overhaul + Rewards nav removal
+
+Goal: make the Track page reflect delivery reality — a real DELIVERED state, an explicit FAILED state, less noise for the common case — without touching the backend status flow or the platform's visual identity.
+
+**Files:**
+
+| File | Change |
+|---|---|
+| `apps/web-main/src/components/layout/UserNav.tsx` | Removed the Rewards icon + nav item from `NAV_ITEMS` (covers both the bottom-tab and sidebar variants). `/rewards` route and `RewardsModal` untouched — Rewards is still reachable from the Profile page. |
+| `apps/web-main/src/components/delivery/DeliveryCompleteCard.tsx` | **New.** Compact delivered-order summary: green "DELIVERED" hero, meal name, kitchen, delivered date/time, delivery address, "View Orders" link to `/orders`. |
+| `apps/web-main/src/components/delivery/RiderTrackingCard.tsx` | Added `scheduledSlot?: string` prop so the ETA hero shows the real slot (8:00 AM / 11:00 AM / 8:00 PM) instead of hardcoded 1:00 PM/8:00 PM by meal type. Extended `showMap` to `rider_assigned`/`picked_up` (was `out_for_delivery`/`delivered` only) — the live Leaflet map now appears whenever GPS is available. Removed the dead "Map unlocks when rider picks up" placeholder and the misleading no-op "Tap to rate your experience" ⭐ row. |
+| `apps/web-main/src/app/(user)/track/page.tsx` | See "Track page rewrite" below. |
+
+**Track page rewrite** (bulk of the session):
+
+- **DELIVERED → `DeliveryCompleteCard`.** A `delivered` order now renders the new summary card instead of the full live-tracking card (whose countdown / ETA / OTP reveal UI is meaningless post-delivery).
+- **Duplicate map removed.** The page previously mounted TWO maps — a Google-Maps `LiveDeliveryMap` at top AND a Leaflet map inside `RiderTrackingCard`. Removed the dead Google duplicate.
+- **FAILED → compact "NOT DELIVERED" card.** Failed orders get a rose/red card (reason-aware copy for `customer_unavailable`) with a "Contact Support" link to `/support`, replacing a card indistinguishable from a live delivery.
+- **`resolveDeliveredAt()` helper** normalizes the delivered timestamp across every shape the writers produce: `timestamps.deliveredAt` (canonical data model), `delivered_at` (top-level, written by `functions/src/deliveryTriggers.ts` on `verifyDeliveryOTP` / `updateDeliveryStatus`), and `deliveredAt` (legacy camelCase).
+- **Notifications collapsed behind an "Updates" toggle** (progressive disclosure) that auto-expands on a `delay_alert`.
+- **Header simplified** to a single status pill + meal name + one subtitle line; the next-order card dropped its redundant Scheduled/Status grid.
+- **Dead code removed:** unused date-string local vars (`todayStr`, `tomorrowStr`, `dayAfterStr`, dead `now`/`start`) and a shadowed dead `qOrders` query; re-added the missing `Link` import (the failed state's support link compiled only because `useSearchParams` happened to be imported from `next/navigation` — `Link` itself was not).
+- Superadmin inspector mode unchanged, still renders above everything.
+
+**Judgement calls, made explicitly:**
+
+- `DeliveryCompleteCard` and the page helpers type order data as `any`, consistent with the entire page/app. The order documents are legacy-mapped (snake_case + camelCase + nested `timestamps`), and the canonical `DeliveryOrder` type does not cover the union of shapes read here — full typing would need a normalization layer, out of scope.
+- Rewards removed from **navigation only**; profile modal + functionality preserved.
+
+**Verified:** `tsc --noEmit` clean on web-main; lint on the touched files went **40 problems → 36** (warnings 8 → 2; +3 `no-explicit-any` from the new helpers, matching file-wide style); full static-export build of all 5 apps passes.
+
+### 2. Repo-wide: pre-existing Razorpay `Window` declaration conflict (build blocker)
+
+`npm run build:web` and `tsc --noEmit` were failing in **all** apps with `TS2687`/`TS2717`:
+
+```
+All declarations of 'Razorpay' must have identical modifiers.
+./src/hooks/useRazorpay.ts:17:5
+```
+
+**Cause:** every app's `src/hooks/useRazorpay.ts` carried its own non-optional `declare global { interface Window { Razorpay: new (options: RazorpayOptions) => RazorpayInstance; } }` (byte-identical ×4), colliding with the canonical optional declaration in `packages/shared-types/src/index.ts` (`Window.Razorpay?: RazorpayConstructor`). Two global augmentations of the same property with different types are a hard TS error.
+
+**Fix:** the shared-types declaration is canonical; the per-app duplicates were redundant and removed from all 4 apps. `web-main` already accessed the SDK via `(window as any).Razorpay` (safe). `admin-panel`, `vendor-panel`, and `rider-panel` called `new window.Razorpay({...})` unguarded — the shared declaration makes the property optional, so a null guard was added that rejects with "Razorpay SDK failed to load." before constructing. No behaviour change when the SDK loads normally.
+
+**Files:** `apps/{web-main,admin-panel,vendor-panel,rider-panel}/src/hooks/useRazorpay.ts` — modified.
+
+**Verified:** web-main typecheck 0 errors; `npm run build:web` ✅ all 5 apps; `npm run test:functions` ✅ 99/99.
+
+### Hygiene note (not this session's source changes)
+
+`git status` also shows modified **`functions/lib/*.js`** (compiled Cloud Functions output, git-tracked, regenerated whenever the functions build/test runs) and **`apps/{gig,vendor-panel}/.next/*`** (static-export artifacts) — build-output churn only. IMPLEMENTATION_PLAN.md §2.2 already flags that `functions/lib/` should be `.gitignore`'d; that decision is still open.
+
+---
+
 ## 2026-09-12 — Correction: the delivery_address impact claim was overstated
 
 The previous entry said the `delivery_address` type mismatch meant the 2 km swap-candidate search "silently matches nobody". **That overstated it, and the correction matters before anyone migrates data.**

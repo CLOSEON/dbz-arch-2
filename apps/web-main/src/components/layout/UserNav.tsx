@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Package, Gift, UserCircle } from 'lucide-react';
+import { Home, Package, UserCircle } from 'lucide-react';
 import { triggerHapticSelection } from '@/lib/haptics';
 
 const NAV_ITEMS = [
@@ -16,11 +16,6 @@ const NAV_ITEMS = [
     href: '/orders',
     label: 'Orders',
     icon: Package,
-  },
-  {
-    href: '/rewards',
-    label: 'Rewards',
-    icon: Gift,
   },
   {
     href: '/profile',

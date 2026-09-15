@@ -21,6 +21,11 @@ This document is the single source of truth for the work. Every phase lists exac
 
 **`npm run verify` right now:** typecheck ✅ (apps + packages), functions typecheck ✅, lint ❌ (known), functions tests ✅ **99/99**. All 5 apps build.
 
+### Update — 2026-09-15 (post-plan additions)
+
+- **Repo-wide build blocker cleared.** The duplicate `declare global { Window.Razorpay }` in every app's `src/hooks/useRazorpay.ts` (non-optional, ×4) collided with the canonical optional declaration in `packages/shared-types` → `TS2687`/`TS2717` on every `tsc` and every `next build` in the repo. Per-app duplicates removed; 3 non-web apps (admin/vendor/rider) got a null-guard before `new window.Razorpay` since the canonical property is optional; web-main already used `(window as any)`. Typecheck and all 5 static-export builds now pass. See CHANGELOG 2026-09-15.
+- **web-main Track Meal page overhauled** (DELIVERED → new summary card, FAILED → compact not-delivered card, duplicate map removed, notifications behind an Updates toggle, scheduled-slot ETA in `RiderTrackingCard`). Rewards removed from navigation only. See CHANGELOG 2026-09-15 and `apps/web-main/docs/track-page-ux.md`.
+
 ### Phase 4 — what the tests found
 
 Coverage went 47 → 99 tests across `utils/geo` (the 2 km dispatch math), `authTriggers.setUserRole`, `adminManagementTriggers` and `swapFunctions`. Two of the security guards were **mutation-checked** — deleting the guard, confirming exactly one test goes red, restoring it — because a mocked `firebase-admin` is easy to get subtly wrong in a way that leaves assertions vacuous.
@@ -231,7 +236,7 @@ Create/extend shared packages so there is exactly **one** definition of anything
 ### Phase 3 — Lint & correctness cleanup (2 days, scales with final numbers)
 - [ ] Run `eslint --fix` where safe (unused-vars, unescaped-entities) across all 5 apps; hand-fix the rest.
 - [ ] Replace `data() as any` Firestore casts with typed converters (`withConverter<T>()`) using the now-canonical types from Phase 1 — this alone should collapse most of the 311 `no-explicit-any` hits in web-main and its counterparts.
-- [ ] Add an ambient `Window.Razorpay` type instead of `(window as any).Razorpay` casts.
+- [ ] Add an ambient `Window.Razorpay` type instead of `(window as any).Razorpay` casts. *(The ambient type now exists canonically in `packages/shared-types`; the conflicting per-app `declare global` duplicates were removed 2026-09-15 — see CHANGELOG. Remaining work is converting the `(window as any)` call-sites to the shared `RazorpayConstructor` type.)*
 - [ ] Triage every `set-state-in-effect` / `exhaustive-deps` / `purity` / `immutability` hit individually — these are React-Compiler-era rules flagging real render-loop or stale-closure risk in a 19-app... sorry, 5-app codebase running React 19 + Next 16; not stylistic.
 - [ ] Fold final admin-panel/vendor-panel/rider-panel/gig lint numbers into this checklist once the background run (kicked off during this planning session) completes.
 

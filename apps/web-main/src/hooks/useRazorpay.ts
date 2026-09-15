@@ -12,12 +12,6 @@
 import { useCallback, useState } from 'react';
 import { createRazorpayOrder, verifyPaymentSignature, loadRazorpayCheckoutScript } from '@/lib/razorpay';
 
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance;
-  }
-}
-
 interface RazorpayOptions {
   key: string;
   amount: number;
