@@ -11,12 +11,6 @@
 
 import { useCallback, useState } from 'react';
 
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance;
-  }
-}
-
 interface RazorpayOptions {
   key: string;
   amount: number;
@@ -140,7 +134,12 @@ export function useRazorpay() {
 
       // 3. Open Razorpay modal
       await new Promise<void>((resolve, reject) => {
-        const rzp = new window.Razorpay({
+        const RazorpayCtor = window.Razorpay;
+        if (!RazorpayCtor) {
+          reject(new Error('Razorpay SDK failed to load.'));
+          return;
+        }
+        const rzp = new RazorpayCtor({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
           amount: order.amount,
           currency,

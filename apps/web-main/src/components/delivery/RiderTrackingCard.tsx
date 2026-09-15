@@ -116,6 +116,7 @@ interface RiderTrackingCardProps {
   status: TrackingStatus;
   mealName?: string;
   mealType: 'lunch' | 'dinner' | 'both';
+  scheduledSlot?: string;
   riderName?: string;
   riderPhone?: string;
   riderRating?: number;
@@ -132,6 +133,7 @@ export function RiderTrackingCard({
   status,
   mealName = 'Tiffin',
   mealType,
+  scheduledSlot,
   riderName = 'Dabzzo Rider',
   riderPhone,
   riderRating = 4.8,
@@ -146,7 +148,17 @@ export function RiderTrackingCard({
   const [revealOtp, setRevealOtp] = useState(false);
   const [copiedPin, setCopiedPin] = useState(false);
   const [msgIdx, setMsgIdx] = useState(0);
-  const etaTarget = mealType === 'lunch' ? '13:00' : '20:00';
+
+  // Compute accurate ETA hour from scheduledSlot, falling back to meal type
+  const etaHour = scheduledSlot === '8am' ? 8
+    : scheduledSlot === '11am' ? 11
+    : scheduledSlot === '8pm' ? 20
+    : mealType === 'dinner' ? 20 : 13;
+  const etaTarget = `${String(etaHour).padStart(2, '0')}:00`;
+  const etaLabel = scheduledSlot === '8am' ? '8:00 AM'
+    : scheduledSlot === '11am' ? '11:00 AM'
+    : scheduledSlot === '8pm' ? '8:00 PM'
+    : mealType === 'dinner' ? '8:00 PM' : '1:00 PM';
   const countdown = useLiveCountdown(etaTarget);
 
   // Cycle through status messages
@@ -163,7 +175,8 @@ export function RiderTrackingCard({
     : (STEPS[stepIndex] ?? STEPS[0]);
   const isDelivered = status === 'delivered';
   const isCancelled = status === 'cancelled';
-  const showMap = (status === 'out_for_delivery' || status === 'delivered') && !!driverLocation && typeof driverLocation.lat === 'number' && typeof driverLocation.lng === 'number';
+  const hasValidGps = !!driverLocation && typeof driverLocation.lat === 'number' && typeof driverLocation.lng === 'number';
+  const showMap = !isDelivered && !isCancelled && hasValidGps;
   const showRider = ['rider_assigned', 'vendor_ready', 'picked_up', 'out_for_delivery', 'delivered'].includes(status) || !!riderPhone;
 
   return (
@@ -196,7 +209,7 @@ export function RiderTrackingCard({
             </p>
             <div className="flex items-baseline gap-2 mb-3">
               <span className="text-[36px] font-black text-white leading-none">
-                {isDelivered ? '🎉' : isCancelled ? '😔' : (mealType === 'lunch' ? '1:00 PM' : '8:00 PM')}
+                {isDelivered ? '🎉' : isCancelled ? '😔' : etaLabel}
               </span>
               {!isDelivered && !isCancelled && (
                 <span className="text-white/60 text-sm font-semibold">today</span>
@@ -447,24 +460,6 @@ export function RiderTrackingCard({
             </div>
           </motion.div>
         )}
-
-        {!showMap && !isDelivered && !isCancelled && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="bg-white rounded-[24px] border border-dashed border-slate-200 p-5 flex flex-col items-center justify-center gap-2 text-center"
-          >
-            <motion.div
-              animate={{ y: [0, -5, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-              className="text-3xl"
-            >
-              🛵
-            </motion.div>
-            <p className="text-xs font-bold text-slate-700">Map unlocks when rider picks up</p>
-            <p className="text-[10px] text-slate-400">Live GPS tracking will appear here</p>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* ── Rider Info Card ── */}
@@ -530,18 +525,6 @@ export function RiderTrackingCard({
             </motion.div>
             <h3 className="font-black text-emerald-800 text-lg">Enjoy your meal!</h3>
             <p className="text-emerald-600 text-xs font-medium mt-1">{mealName} has been delivered fresh to you</p>
-            <div className="flex justify-center gap-1 mt-3">
-              {[...Array(5)].map((_, i) => (
-                <motion.span
-                  key={i}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4 + i * 0.08 }}
-                  className="text-2xl"
-                >⭐</motion.span>
-              ))}
-            </div>
-            <p className="text-[10px] font-semibold text-emerald-500 mt-2">Tap to rate your experience</p>
           </motion.div>
         )}
       </AnimatePresence>

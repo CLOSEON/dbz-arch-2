@@ -1,24 +1,17 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/lib/firebase';
 import { isSuperadminEmail } from '@/lib/auth/auth-service';
 import {
   collection, query, orderBy, onSnapshot, where, doc, getDoc, limit,
-  Timestamp,
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { Loader2, Clock, Bell, AlertTriangle, Package, ChevronRight, Navigation, CheckCircle2, MapPin, Crown, RotateCcw } from 'lucide-react';
+import { Loader2, Clock, Bell, AlertTriangle, Package, Navigation, MapPin, Crown, RotateCcw } from 'lucide-react';
 import dynamic from 'next/dynamic';
-
-const LiveDeliveryMap = dynamic(() => import('@/components/delivery/LiveDeliveryMap'), {
-  ssr: false,
-});
-import { motion, AnimatePresence } from 'framer-motion';
-import type { DeliveryOrder } from '@/types/delivery';
-import { generateBoxTag } from '@/lib/boxTag';
 
 const RiderTrackingCard = dynamic(
   () => import('@/components/delivery/RiderTrackingCard').then(m => ({ default: m.RiderTrackingCard })),
@@ -33,6 +26,9 @@ const RiderTrackingCard = dynamic(
     ),
   }
 );
+import { motion, AnimatePresence } from 'framer-motion';
+import { DeliveryCompleteCard } from '@/components/delivery/DeliveryCompleteCard';
+import { generateBoxTag } from '@/lib/boxTag';
 
 /* ─── helpers ──────────────────────────────────────────────────────────────── */
 
@@ -112,12 +108,27 @@ function getOrderETA(order: any, riderTrip?: any, driverLocation?: {lat: number,
   return { type: 'scheduled', label: timeString };
 }
 
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-}
-
 const LIVE_STATUSES = ['picking_up', 'out_for_delivery', 'picked_up', 'preparing', 'vendor_ready', 'rider_assigned'];
 const DONE_STATUSES = ['delivered', 'failed'];
+
+function resolveDeliveredAt(order: any): Date | null {
+  const ts = order?.deliveredAt || order?.delivered_at || order?.timestamps?.deliveredAt;
+  if (!ts) return null;
+  if (ts instanceof Date) return ts;
+  if (typeof ts === 'object' && 'seconds' in ts) return new Date(ts.seconds * 1000);
+  if (typeof ts === 'string' || typeof ts === 'number') {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function getMealName(order: any): string {
+  const type = order?.meal?.type || order?.meal_type;
+  const name = order?.meal?.name;
+  const label = type ? `${type.charAt(0).toUpperCase()}${type.slice(1)}` : '';
+  return name && name !== 'Tiffin' ? name : label ? `${label} Tiffin` : 'Tiffin';
+}
 
 /* ─── component ─────────────────────────────────────────────────────────────── */
 
@@ -142,6 +153,8 @@ function CustomerTrackContent() {
   const [riderTrip, setRiderTrip] = useState<any>(null);
 
   const [activeSubs, setActiveSubs] = useState<any[]>([]);
+
+  const [showUpdates, setShowUpdates] = useState(false);
 
   // 1. Fetch active platform orders for superadmin switcher
   useEffect(() => {
@@ -232,16 +245,6 @@ function CustomerTrackContent() {
     }
     setLoading(true);
 
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-
-    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const tomorrowStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const dayAfter = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-    const dayAfterStr = dayAfter.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-
     let fromOrders: any[] = [];
     const fromDeliveryOrders: any[] = [];
 
@@ -265,6 +268,7 @@ function CustomerTrackContent() {
         status: data.status,
         delivery_otp: data.delivery_otp || data.otp || null,
         otp: data.delivery_otp || data.otp || null,
+        deliveredAt: data.timestamps?.deliveredAt || data.delivered_at || data.deliveredAt || null,
         timestamps: data.timestamps || {
           preparedAt: null,
           pickedAt: null,
@@ -287,10 +291,6 @@ function CustomerTrackContent() {
       setLoading(false);
     };
 
-    const qOrders = query(
-      collection(db, 'orders'),
-      where('user_id', '==', user.id)
-    );
     let unsubOrders = () => {};
     let unsubSubs = () => {};
 
@@ -379,11 +379,7 @@ function CustomerTrackContent() {
 
   const latestDelivered = allOrders
     .filter((o) => DONE_STATUSES.includes(o.status))
-    .sort((a, b) => {
-      const aT = a.timestamps?.deliveredAt?.seconds ?? 0;
-      const bT = b.timestamps?.deliveredAt?.seconds ?? 0;
-      return bT - aT; // newest first
-    })[0] ?? null;
+    .sort((a, b) => (resolveDeliveredAt(b)?.getTime() ?? 0) - (resolveDeliveredAt(a)?.getTime() ?? 0))[0] ?? null;
 
   const currentOrder: any | null = liveOrder ?? latestDelivered;
 
@@ -462,6 +458,13 @@ function CustomerTrackContent() {
     return () => unsub();
   }, [currentOrder?.id]);
 
+  /* Auto-expand Updates when a delay alert arrives */
+  useEffect(() => {
+    if (notifications.some((n) => n.type === 'delay_alert')) {
+      setShowUpdates(true);
+    }
+  }, [notifications]);
+
   function handleCallRider(phone: string) {
     try {
       if (Capacitor.isNativePlatform() && (Capacitor as any).Plugins?.Phone) {
@@ -472,6 +475,20 @@ function CustomerTrackContent() {
     } catch {
       window.open(`tel:${phone}`, '_self');
     }
+  }
+
+  function getVendorName(order: any): string {
+    if (!order) return '';
+    return order.vendor_name
+      || order.vendorName
+      || order.vendor?.kitchen_name
+      || order.vendor?.name
+      || activeSubs.find((s) =>
+          (s.id === (order.subscription_id || order.subscriptionId)) ||
+          (s.vendor_id === (order.vendor_id || order.vendorId))
+        )?.vendor_name
+      || activeSubs.find((s) => s.vendor_id === (order.vendor_id || order.vendorId))?.kitchen_name
+      || '';
   }
 
   const renderSuperadminBanner = () => {
@@ -616,7 +633,17 @@ function CustomerTrackContent() {
   }
 
   const isLive = currentOrder && LIVE_STATUSES.includes(currentOrder.status);
-  const isDelivered = currentOrder && DONE_STATUSES.includes(currentOrder.status);
+  const isDelivered = currentOrder && DONE_STATUSES.includes(currentOrder.status) && currentOrder.status === 'delivered';
+  const isFailed = currentOrder && currentOrder.status === 'failed';
+
+  const headerTitle = currentOrder ? getMealName(currentOrder) : nextOrder ? getMealName(nextOrder) : 'Today\'s Tiffin';
+  const headerSubtitle = [
+    ...(currentOrder?.meal?.type || nextOrder?.meal?.type ? [currentOrder?.meal?.type || nextOrder?.meal?.type] : []),
+    ...(getVendorName(currentOrder || nextOrder) ? [getVendorName(currentOrder || nextOrder)] : []),
+    ...(currentOrder?.address?.line1 || nextOrder?.address?.line1 ? [currentOrder?.address?.line1 || nextOrder?.address?.line1] : []),
+  ].join(' · ');
+
+  const failureReason = currentOrder?.failure_reason || currentOrder?.failedReason;
 
   return (
     <div className="pb-28 animate-fade-in">
@@ -624,98 +651,112 @@ function CustomerTrackContent() {
       <div className="pt-6 pb-4 px-6 max-w-md mx-auto">
         {isSuper && renderSuperadminBanner()}
 
-        <p className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full inline-block">
-          {isLive ? '🟢 Live Tracking' : '📦 Delivery Status'}
-        </p>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
+            {isLive && (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              </span>
+            )}
+            {isLive ? 'Live Tracking' : isFailed ? 'Delivery Unsuccessful' : isDelivered ? 'Delivery Complete' : 'Delivery Status'}
+          </span>
+        </div>
         <h1 className="text-[28px] font-black text-slate-900 tracking-tight leading-tight mt-2.5">
-          {currentOrder?.meal?.name ?? nextOrder?.meal?.name ?? 'Today\'s Tiffin'}
+          {headerTitle}
         </h1>
-        <p className="text-sm text-slate-400 font-medium capitalize mt-1">
-          {impersonatedCustomer?.name ? `${impersonatedCustomer.name} · ` : ''}{currentOrder?.meal?.type ?? nextOrder?.meal?.type} · {currentOrder?.address?.line1 ?? nextOrder?.address?.line1 ?? ''}
-        </p>
+        {headerSubtitle && (
+          <p className="text-sm text-slate-400 font-medium capitalize mt-1 truncate">
+            {impersonatedCustomer?.name ? `${impersonatedCustomer.name} · ` : ''}{headerSubtitle}
+          </p>
+        )}
       </div>
 
       <div className="px-6 max-w-md mx-auto space-y-5">
-        
-        {/* ── Live Map (Only if rider assigned) ───────────────────────── */}
-        {riderLocation && currentOrder?.address && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 -mt-2"
-          >
-            <LiveDeliveryMap
-              riderLocation={riderLocation}
-              riderName={currentOrder.agentName ?? 'Dabzzo Rider'}
-              stops={[
-                ...(currentOrder.address?.lat && currentOrder.address?.lng
-                  ? [{
-                      id: 'home',
-                      label: 'Your Door',
-                      emoji: '🏠',
-                      location: { lat: currentOrder.address.lat, lng: currentOrder.address.lng },
-                      done: currentOrder.status === 'delivered',
-                    }]
-                  : []),
-              ]}
-              className="w-full"
-            />
-          </motion.div>
-        )}
 
-        {/* ── Card 1: Current order (live / latest delivered) ─────────────── */}
+        {/* ── Card 1: Current order (live / delivered / failed) ─────────────── */}
         {currentOrder && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
           >
-            {/* Live status badge */}
             {isLive && (
-              <div className="flex items-center gap-2 mb-3">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-                </span>
-                <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">Rider is live</span>
-              </div>
-            )}
-            {isDelivered && (
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">
-                  Delivered {currentOrder.timestamps?.deliveredAt
-                    ? formatTime(new Date(currentOrder.timestamps.deliveredAt.seconds * 1000))
-                    : ''}
-                </span>
-              </div>
+              <RiderTrackingCard
+                status={currentOrder.status as any}
+                mealName={getMealName(currentOrder)}
+                mealType={currentOrder.meal?.type as any}
+                scheduledSlot={currentOrder.scheduledSlot}
+                riderName={currentOrder.agentName ?? 'Dabzzo Rider'}
+                riderPhone={currentOrder.agentPhone}
+                riderRating={4.8}
+                vehicleNumber={currentOrder.vehicleNumber}
+                otp={currentOrder.delivery_otp || currentOrder.otp || undefined}
+                boxTag={generateBoxTag({
+                  customerName: impersonatedCustomer?.name || currentOrder.customer_name || currentOrder.customerName || currentOrder.userName || user?.name || 'Customer',
+                  vendorName: getVendorName(currentOrder) || 'Kitchen',
+                  sequenceNumber: 1,
+                  planType: currentOrder.plan_type || currentOrder.planType || 'weekly',
+                  cycleNumber: currentOrder.cycle_number || 1,
+                  orderId: currentOrder.id
+                })}
+                driverLocation={riderLocation || currentOrder.driverLocation || undefined}
+                destLocation={currentOrder.address}
+                onCallRider={handleCallRider}
+              />
             )}
 
-            <RiderTrackingCard
-              status={currentOrder.status as any}
-              mealName={currentOrder.meal?.name}
-              mealType={currentOrder.meal?.type as any}
-              riderName={currentOrder.agentName ?? 'Dabzzo Rider'}
-              riderPhone={currentOrder.agentPhone}
-              riderRating={4.8}
-              vehicleNumber={currentOrder.vehicleNumber}
-              otp={currentOrder.delivery_otp || currentOrder.otp || undefined}
-              boxTag={generateBoxTag({
-                customerName: impersonatedCustomer?.name || currentOrder.customer_name || currentOrder.customerName || currentOrder.userName || user?.name || 'Customer',
-                vendorName: currentOrder.vendorName || currentOrder.vendor?.kitchen_name || currentOrder.vendor?.name || activeSubs.find((s: any) => s.id === (currentOrder.subscription_id || currentOrder.subscriptionId) || s.vendor_id === (currentOrder.vendor_id || currentOrder.vendorId))?.vendor_name || 'Kitchen',
-                sequenceNumber: 1,
-                planType: currentOrder.plan_type || currentOrder.planType || 'weekly',
-                cycleNumber: currentOrder.cycle_number || 1,
-                orderId: currentOrder.id
-              })}
-              driverLocation={riderLocation || currentOrder.driverLocation || undefined}
-              destLocation={currentOrder.address}
-              onCallRider={handleCallRider}
-            />
+            {isDelivered && (
+              <DeliveryCompleteCard
+                order={currentOrder}
+                vendorName={getVendorName(currentOrder)}
+              />
+            )}
+
+            {isFailed && (
+              <motion.div
+                initial={{ scale: 0.94, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', bounce: 0.25, duration: 0.5 }}
+                className="bg-white rounded-[28px] border border-slate-100 shadow-sm overflow-hidden"
+              >
+                <div className="bg-gradient-to-br from-rose-500 to-red-600 px-6 py-7 text-white relative overflow-hidden">
+                  <div className="absolute inset-0 opacity-[0.06] pointer-events-none">
+                    <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full border-2 border-white" />
+                    <div className="absolute -right-4 -top-4 w-28 h-28 rounded-full border border-white" />
+                  </div>
+                  <div className="relative z-10 flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-6 h-6 text-white" strokeWidth={2.5} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-100/80">
+                        Delivery Unsuccessful
+                      </p>
+                      <p className="text-2xl font-black leading-tight mt-0.5">NOT DELIVERED</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-5 space-y-3">
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    {failureReason === 'customer_unavailable'
+                      ? 'Your rider arrived but could not reach you this time. Your delivery was not completed.'
+                      : 'Your delivery could not be completed. Our team has been notified and will follow up shortly.'}
+                  </p>
+                  <Link
+                    href="/support"
+                    className="flex items-center justify-center w-full py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-wider hover:bg-slate-800 active:scale-[0.98] transition-all"
+                  >
+                    Contact Support
+                  </Link>
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         )}
 
-        {/* ── Card 2: Next order (upcoming with ETA) ───────────────────────── */}
+        {/* ── Card 2: Next order (upcoming) ─────────────────────────────────── */}
         {nextOrder && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -728,7 +769,6 @@ function CustomerTrackContent() {
             </div>
 
             <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
-              {/* Top gradient strip */}
               <div className="h-1 bg-gradient-to-r from-brand/60 via-brand to-brand/60" />
 
               <div className="p-5 space-y-4">
@@ -739,12 +779,12 @@ function CustomerTrackContent() {
                       {nextOrder.meal?.type === 'lunch' ? '🍛' : '🍽️'}
                     </div>
                     <div>
-                      <p className="font-black text-slate-900 text-sm leading-tight">{nextOrder.meal?.name}</p>
+                      <p className="font-black text-slate-900 text-sm leading-tight truncate">{getMealName(nextOrder)}</p>
                       <p className="text-[10px] font-semibold text-slate-400 capitalize mt-0.5">{nextOrder.meal?.type}</p>
                     </div>
                   </div>
 
-                  {/* ETA pill */}
+                  {/* Status / ETA pill */}
                   {(() => {
                     if (nextOrder.status === 'failed') {
                       return (
@@ -776,43 +816,22 @@ function CustomerTrackContent() {
                   </div>
                 )}
 
-                {/* Divider */}
-                <div className="border-t border-slate-50" />
-
-                {/* Details grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-50 rounded-xl p-3">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Scheduled</p>
-                    <p className="text-xs font-black text-slate-800">{formatTime(getSlotTime(nextOrder))}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-3">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Status</p>
-                    <p className="text-xs font-black text-slate-800 capitalize">
-                      {nextOrder.status === 'pending' ? 'Scheduled' : nextOrder.status}
-                    </p>
-                  </div>
-                </div>
-
                 {/* Delivery address */}
                 {nextOrder.address?.line1 && (
                   <div className="flex items-start gap-2.5 bg-slate-50 rounded-xl p-3">
                     <MapPin className="w-3.5 h-3.5 text-brand shrink-0 mt-0.5" />
-                    <p className="text-xs font-semibold text-slate-700 leading-relaxed">{nextOrder.address.line1}</p>
+                    <p className="text-xs font-semibold text-slate-700 leading-relaxed truncate">{nextOrder.address.line1}</p>
                   </div>
                 )}
 
-                {/* Rider not assigned yet notice */}
+                {/* Rider status */}
                 {!nextOrder.agentName && (
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5" />
-                      <span className="font-semibold">Rider will be assigned closer to delivery time</span>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
+                    <Package className="w-3.5 h-3.5 shrink-0" />
+                    <span className="font-semibold">Rider will be assigned closer to delivery time</span>
                   </div>
                 )}
 
-                {/* Rider assigned */}
                 {nextOrder.agentName && (
                   <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
                     <div className="w-8 h-8 rounded-xl bg-brand/20 flex items-center justify-center shrink-0">
@@ -829,47 +848,76 @@ function CustomerTrackContent() {
           </motion.div>
         )}
 
-        {/* ── Notification Feed (for current order) ───────────────────────── */}
+        {/* ── Notification feed (progressive disclosure) ───────────────────── */}
         {notifications.length > 0 && (
           <motion.div
             className="space-y-3 mt-2"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.25 }}
+            transition={{ delay: 0.2 }}
           >
-            <div className="flex items-center gap-2 ml-1">
-              <Bell className="w-3.5 h-3.5 text-slate-400" />
-              <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Updates</h2>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowUpdates((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3 transition-all active:scale-[0.99]"
+            >
+              <span className="flex items-center gap-2">
+                <Bell className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Updates</span>
+                {notifications.some((n) => n.type === 'delay_alert') && (
+                  <span className="text-[9px] font-black uppercase tracking-wider text-white bg-amber-500 rounded-full px-2 py-0.5">
+                    Delay
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-400">{notifications.length}</span>
+                <span
+                  className={`w-2 h-2 border-b-2 border-r-2 border-slate-400 rotate-45 origin-center transition-transform ${showUpdates ? '-rotate-135 translate-y-[1px]' : ''}`}
+                />
+              </span>
+            </button>
+
             <AnimatePresence initial={false}>
-              {notifications.map((notif, i) => (
+              {showUpdates && (
                 <motion.div
-                  key={notif.id}
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className={`rounded-2xl p-4 border flex items-start gap-3 shadow-sm ${
-                    notif.type === 'delay_alert'
-                      ? 'bg-amber-50 border-amber-100'
-                      : 'bg-white border-slate-100'
-                  }`}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
                 >
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-sm ${
-                    notif.type === 'delay_alert' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {notif.type === 'delay_alert' ? <AlertTriangle className="w-4 h-4" /> : '📋'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                        {notif.type === 'delay_alert' ? 'Delay Alert' : 'Update'}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400 shrink-0">{notif.timeString}</span>
-                    </div>
-                    <p className="text-xs font-medium text-slate-700 leading-relaxed mt-0.5">{notif.message}</p>
+                  <div className="space-y-2.5 pt-0.5">
+                    {notifications.map((notif, i) => (
+                      <motion.div
+                        key={notif.id}
+                        initial={{ opacity: 0, x: 12 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.04 }}
+                        className={`rounded-2xl p-4 border flex items-start gap-3 shadow-sm ${
+                          notif.type === 'delay_alert'
+                            ? 'bg-amber-50 border-amber-100'
+                            : 'bg-white border-slate-100'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-sm ${
+                          notif.type === 'delay_alert' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {notif.type === 'delay_alert' ? <AlertTriangle className="w-4 h-4" /> : '📋'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                              {notif.type === 'delay_alert' ? 'Delay Alert' : 'Update'}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-400 shrink-0">{notif.timeString}</span>
+                          </div>
+                          <p className="text-xs font-medium text-slate-700 leading-relaxed mt-0.5">{notif.message}</p>
+                        </div>
+                      </motion.div>
+                    ))}
                   </div>
                 </motion.div>
-              ))}
+              )}
             </AnimatePresence>
           </motion.div>
         )}
@@ -894,4 +942,3 @@ export default function CustomerTrackPage() {
     </Suspense>
   );
 }
-
